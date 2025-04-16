@@ -48,18 +48,20 @@ class RoutinesBloc {
     try {
       if (kIsWeb) {
         // For web, create some default recommended routines
+        print('Creating default recommended routines for web');
         _allRecRoutines = [
           Routine(
-            routineName: 'Full Body Starter',
-            mainTargetedBodyPart: MainTargetedBodyPart.FullBody,
+            routineName: 'Push Day',
+            mainTargetedBodyPart: MainTargetedBodyPart.Chest,
             parts: [
               Part(
                 setType: SetType.Regular,
-                targetedBodyPart: TargetedBodyPart.FullBody,
+                targetedBodyPart: TargetedBodyPart.Chest,
                 exercises: [
-                  Exercise(name: 'Squats', sets: 3, reps: '10', weight: 0),
-                  Exercise(name: 'Push-ups', sets: 3, reps: '10', weight: 0),
-                  Exercise(name: 'Plank', sets: 3, reps: '0', weight: 0)
+                  Exercise(name: 'Bench Press', sets: 4, reps: '8-12', weight: 0),
+                  Exercise(name: 'Shoulder Press', sets: 3, reps: '10-12', weight: 0),
+                  Exercise(name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', weight: 0),
+                  Exercise(name: 'Triceps Dips', sets: 3, reps: '12-15', weight: 0)
                 ],
               )
             ],
@@ -70,16 +72,38 @@ class RoutinesBloc {
             completionCount: 0,
           ),
           Routine(
-            routineName: 'Upper Body Focus',
-            mainTargetedBodyPart: MainTargetedBodyPart.Chest,
+            routineName: 'Pull Day',
+            mainTargetedBodyPart: MainTargetedBodyPart.Back,
             parts: [
               Part(
                 setType: SetType.Regular,
-                targetedBodyPart: TargetedBodyPart.Chest,
+                targetedBodyPart: TargetedBodyPart.Back,
                 exercises: [
-                  Exercise(name: 'Push-ups', sets: 4, reps: '12', weight: 0),
-                  Exercise(name: 'Dips', sets: 3, reps: '10', weight: 0),
-                  Exercise(name: 'Pull-ups', sets: 3, reps: '8', weight: 0)
+                  Exercise(name: 'Pull-ups', sets: 4, reps: '8-12', weight: 0),
+                  Exercise(name: 'Bent Over Rows', sets: 3, reps: '10-12', weight: 0),
+                  Exercise(name: 'Lat Pulldown', sets: 3, reps: '10-12', weight: 0),
+                  Exercise(name: 'Bicep Curls', sets: 3, reps: '12-15', weight: 0)
+                ],
+              )
+            ],
+            createdDate: DateTime.now(),
+            weekdays: [],
+            routineHistory: [],
+            lastCompletedDate: DateTime.now(),
+            completionCount: 0,
+          ),
+          Routine(
+            routineName: 'Leg Day',
+            mainTargetedBodyPart: MainTargetedBodyPart.Leg,
+            parts: [
+              Part(
+                setType: SetType.Regular,
+                targetedBodyPart: TargetedBodyPart.Leg,
+                exercises: [
+                  Exercise(name: 'Squats', sets: 4, reps: '8-12', weight: 0),
+                  Exercise(name: 'Romanian Deadlifts', sets: 3, reps: '8-10', weight: 0),
+                  Exercise(name: 'Lunges', sets: 3, reps: '10-12', weight: 0),
+                  Exercise(name: 'Leg Curls', sets: 3, reps: '12-15', weight: 0)
                 ],
               )
             ],
@@ -91,11 +115,15 @@ class RoutinesBloc {
           )
         ];
       } else {
+        print('Fetching recommended routines from database');
         _allRecRoutines = await dbProvider.getAllRecRoutines();
       }
       
+      print('Loaded ${_allRecRoutines.length} recommended routines');
       if (!_allRecRoutinesFetcher.isClosed) {
         _allRecRoutinesFetcher.sink.add(_allRecRoutines);
+      } else {
+        print('Error: allRecRoutinesFetcher is closed');
       }
     } catch (exp) {
       if (!_allRecRoutinesFetcher.isClosed) {
@@ -107,18 +135,19 @@ class RoutinesBloc {
 
   Future<void> addRoutine(Routine routine) async {
     try {
-      // Deep copy template routines to avoid sharing references
-      final routineToAdd = routine.id == null ?
-        Routine.deepCopy(routine) :
-        routine;
-
+      // Always create a deep copy to avoid reference sharing
+      final routineToAdd = Routine.deepCopy(routine);
+      
       print('Adding routine: ${routineToAdd.routineName}');
       final routineId = await dbProvider.newRoutine(routineToAdd);
       routineToAdd.id = routineId;
       print('Routine saved to DB with id: $routineId');
       
-      // Update local list first for immediate UI update
-      _allRoutines.add(routineToAdd);
+      // Create new list to preserve existing routines
+      final updatedRoutines = List<Routine>.from(_allRoutines);
+      updatedRoutines.add(routineToAdd);
+      _allRoutines = updatedRoutines;
+      
       print('Local routines list updated, now has ${_allRoutines.length} routines');
       
       if (!_allRoutinesFetcher.isClosed) {
@@ -145,20 +174,47 @@ class RoutinesBloc {
 
   Future<void> updateRoutine(Routine routine) async {
     try {
-      final index = _allRoutines.indexWhere((r) => r.id == routine.id);
-      if (index != -1) {
-        _allRoutines[index] = Routine.deepCopy(routine);
-        await dbProvider.updateRoutine(routine);
-        await firebaseProvider.uploadRoutines(_allRoutines);
-        if (!_allRoutinesFetcher.isClosed) {
-          _allRoutinesFetcher.sink.add(_allRoutines);
-        }
-        if (!_currentRoutineFetcher.isClosed) {
-          _currentRoutineFetcher.sink.add(routine);
-        }
+      debugPrint('Updating routine ${routine.routineName} (ID: ${routine.id})');
+      
+      // First try to find existing routine
+      var index = _allRoutines.indexWhere((r) => r.id == routine.id);
+      
+      // If not found, try to add it
+      if (index == -1) {
+        debugPrint('Routine not found in local list, attempting to add');
+        _allRoutines.add(Routine.deepCopy(routine));
+        index = _allRoutines.length - 1;
       }
+
+      // Create new list to ensure state update
+      final updatedRoutines = List<Routine>.from(_allRoutines);
+      updatedRoutines[index] = Routine.deepCopy(routine);
+      _allRoutines = updatedRoutines;
+
+      debugPrint('Local routine updated, now saving to database');
+      if (routine.id != null) {
+        await dbProvider.updateRoutine(routine);
+      } else {
+        routine.id = await dbProvider.newRoutine(routine);
+      }
+      debugPrint('Database update complete');
+      
+      debugPrint('Syncing to Firebase');
+      await firebaseProvider.uploadRoutines(_allRoutines);
+      debugPrint('Firebase sync complete');
+
+      if (!_allRoutinesFetcher.isClosed) {
+        debugPrint('Updating routines stream');
+        _allRoutinesFetcher.sink.add(_allRoutines);
+      }
+      
+      if (!_currentRoutineFetcher.isClosed) {
+        debugPrint('Updating current routine stream');
+        _currentRoutineFetcher.sink.add(routine);
+      }
+      
     } catch (e) {
-      print("Error updating routine: $e");
+      debugPrint("Error updating routine: $e");
       rethrow;
     }
   }

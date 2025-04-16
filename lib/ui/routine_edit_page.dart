@@ -144,9 +144,18 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
 
       if (widget.addOrEdit == AddOrEdit.add) {
         routineCopy.mainTargetedBodyPart = widget.mainTargetedBodyPart!;
-        routinesBloc.addRoutine(routineCopy);
+        if (routineCopy.id == null) {
+          routinesBloc.addRoutine(routineCopy);
+        } else {
+          routinesBloc.updateRoutine(routineCopy);
+        }
       } else {
-        routinesBloc.updateRoutine(routineCopy);
+        if (routineCopy.id != null) {
+          routinesBloc.updateRoutine(routineCopy);
+        } else {
+          // Handle case where we should update but have no ID
+          routinesBloc.addRoutine(routineCopy);
+        }
       }
       Navigator.pop(context);
     }

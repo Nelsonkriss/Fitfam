@@ -157,24 +157,72 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
   Widget _buildMainLayout() {
     if (!_finished) return _buildStepper(_exercises);
 
-    return Stack(
-      children: [
-        Container(
-          alignment: Alignment.center,
-          child: const Text('You finished it!', style: TextStyle(color: Colors.white, fontSize: 24)),
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
         ),
-        Align(
-          alignment: Alignment.topCenter,
-          child: ConfettiWidget(
-            confettiController: _confettiController,
-            blastDirectionality: BlastDirectionality.explosive,
-            maxBlastForce: 8,
-            minBlastForce: 4,
-            emissionFrequency: 0.05,
-            colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange, Colors.purple],
+      ),
+      child: Stack(
+        children: [
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Workout Complete! 🎉',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Icon(Icons.check_circle, size: 80, color: Colors.white),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
-        ),
-      ],
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirectionality: BlastDirectionality.explosive,
+              maxBlastForce: 8,
+              minBlastForce: 4,
+              emissionFrequency: 0.05,
+              colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange, Colors.purple],
+            ),
+          ),
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  backgroundColor: const Color(0xFF00C9FF),
+                ),
+                child: const Text(
+                  'DONE',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

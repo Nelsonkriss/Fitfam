@@ -334,7 +334,7 @@ class _SettingPageState extends State<SettingPage> {
                             ],
                           ),
                           onPressed: () => launchUrl(
-                              Uri.parse("https://github.com/Livinglist/Dumbbell")),
+                              Uri.parse("https://github.com/Nelsonkriss/Fitfam")),
                         ),
                       ],
                       icon: const Icon(Icons.info),

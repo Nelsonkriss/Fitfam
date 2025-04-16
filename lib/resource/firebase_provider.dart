@@ -24,7 +24,7 @@ class FirebaseProvider {
   final FirebaseAuth firebaseAuth;
   final FirebaseFirestore firestore;
 
-  final GoogleSignIn googleSignIn = GoogleSignIn(
+  final GoogleSignIn? googleSignIn = kIsWeb ? null : GoogleSignIn(
     scopes: <String>['email'],
   );
 
@@ -50,7 +50,6 @@ class FirebaseProvider {
 
       final userRef = firestore.collection("users").doc(user.uid);
       
-      // Convert routines to JSON-serializable format
       final routinesData = routines.map((routine) {
         try {
           return jsonEncode(routine.toMap());
@@ -166,8 +165,7 @@ class FirebaseProvider {
         accessToken: credential.authorizationCode,
       );
 
-      final authResult =
-      await firebaseAuth.signInWithCredential(oauthCredential);
+      final authResult = await firebaseAuth.signInWithCredential(oauthCredential);
       await _handleAppleUserUpdate(authResult.user!, credential);
       return authResult.user;
     } catch (e) {
@@ -179,8 +177,8 @@ class FirebaseProvider {
   Future<void> _handleAppleUserUpdate(
       User user, AuthorizationCredentialAppleID credential) async {
     if (user.displayName == null && credential.givenName != null) {
-      final displayName =
-      "${credential.givenName} ${credential.familyName ?? ''}".trim();
+      final displayName = 
+          "${credential.givenName} ${credential.familyName ?? ''}".trim();
       await user.updateDisplayName(displayName);
     }
 
@@ -193,7 +191,15 @@ class FirebaseProvider {
 
   Future<User?> signInWithGoogle() async {
     try {
-      final googleUser = await googleSignIn.signIn();
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider();
+        final userCredential = await firebaseAuth.signInWithPopup(googleProvider);
+        await _handleGoogleAuthUpdate(userCredential.user!);
+        return userCredential.user;
+      }
+      
+      if (googleSignIn == null) return null;
+      final googleUser = await googleSignIn?.signIn();
       if (googleUser == null) return null;
 
       final googleAuth = await googleUser.authentication;
@@ -202,9 +208,8 @@ class FirebaseProvider {
         idToken: googleAuth.idToken,
       );
 
-      final authResult =
-      await firebaseAuth.signInWithCredential(credential);
-      await _handleGoogleUserUpdate(authResult.user!, googleUser);
+      final authResult = await firebaseAuth.signInWithCredential(credential);
+      await _handleGoogleAuthUpdate(authResult.user!);
       return authResult.user;
     } catch (e) {
       print("Google sign-in error: $e");
@@ -212,22 +217,23 @@ class FirebaseProvider {
     }
   }
 
-  Future<void> _handleGoogleUserUpdate(
-      User user, GoogleSignInAccount googleUser) async {
-    if (user.displayName == null) {
-      await user.updateDisplayName(googleUser.displayName);
+  Future<void> _handleGoogleAuthUpdate(User user) async {
+    if (user.displayName == null && user.email != null) {
+      await user.updateDisplayName(user.email!.split('@')[0]);
     }
 
     await sharedPrefsProvider.setSignInMethod(SignInMethod.google);
     await sharedPrefsProvider.saveGmailAndPassword(
-      googleUser.email,
-      '', // Google doesn't provide a password
+      user.email ?? '',
+      '',
     );
   }
 
   Future<void> signOut() async {
     await firebaseAuth.signOut();
-    await googleSignIn.signOut();
+    if (googleSignIn != null) {
+      await googleSignIn?.signOut();
+    }
     await sharedPrefsProvider.signOut();
   }
 
