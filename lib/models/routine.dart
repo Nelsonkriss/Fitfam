@@ -56,20 +56,30 @@ class Routine {
   factory Routine.fromMap(Map<String, dynamic> map) {
     return Routine(
       id: map['id'] as int?,
-      routineName: map['routineName'] as String,
-      mainTargetedBodyPart: MainTargetedBodyPart.values[map['mainTargetedBodyPart'] as int],
-      parts: (map['parts'] as List).map((p) => Part.fromMap(p)).toList(),
-      createdDate: DateTime.parse(map['createdDate'] as String),
-      lastCompletedDate: DateTime.parse(map['lastCompletedDate'] as String),
-      completionCount: map['completionCount'] as int,
-      weekdays: (map['weekdays'] as List).cast<int>(),
-      routineHistory: (map['routineHistory'] as List).cast<int>(),
+      routineName: (map['routineName'] as String?) ?? 'Unnamed Routine',
+      mainTargetedBodyPart: MainTargetedBodyPart.values[
+        (map['mainTargetedBodyPart'] as int?) ?? 0
+      ],
+      parts: (map['parts'] as List? ?? []).map((p) => Part.fromMap(p)).toList(),
+      createdDate: _parseDateTime(map['createdDate']),
+      lastCompletedDate: _parseDateTime(map['lastCompletedDate']),
+      completionCount: (map['completionCount'] as int?) ?? 0,
+      weekdays: (map['weekdays'] as List? ?? []).cast<int>(),
+      routineHistory: (map['routineHistory'] as List? ?? []).cast<int>(),
     );
   }
 
   @override
   String toString() {
     return 'Routine(id: $id, name: $routineName)';
+  }
+
+  static DateTime _parseDateTime(dynamic date) {
+    try {
+      return DateTime.parse(date as String);
+    } catch (e) {
+      return DateTime.now();
+    }
   }
 }
 

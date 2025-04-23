@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:workout_planner/resource/firebase_provider.dart';
 import 'package:workout_planner/utils/routine_helpers.dart';
@@ -208,32 +207,9 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
     );
   }
   Future<void> _saveQrToGallery() async {
-    final status = await Permission.storage.request();
-    if (!status.isGranted) return;
-
-    final qrPainter = QrPainter(
-      data: dataString,
-      version: QrVersions.auto,
-      errorCorrectionLevel: QrErrorCorrectLevel.H, // Corrected here
-      color: const Color(0xff222222),
-      emptyColor: Colors.white,
-      gapless: true,
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Image saving is currently unavailable')),
     );
-
-    final imageData = await qrPainter.toImageData(300.0, format: ImageByteFormat.png);
-    if (imageData == null) return;
-
-    final result = await ImageGallerySaver.saveImage(
-      imageData.buffer.asUint8List(),
-      quality: 100,
-      name: "workout_qr_${DateTime.now().millisecondsSinceEpoch}",
-    );
-
-    if (result['isSuccess'] == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved to gallery')),
-      );
-    }
   }
   void updateWorkWeekdays(List<int> checkedWeekdays) {
     setState(() {

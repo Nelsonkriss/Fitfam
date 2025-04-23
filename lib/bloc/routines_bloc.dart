@@ -64,6 +64,7 @@ class RoutinesBloc {
                   Exercise(name: 'Triceps Dips', sets: 3, reps: '12-15', weight: 0)
                 ],
               )
+              
             ],
             createdDate: DateTime.now(),
             weekdays: [],

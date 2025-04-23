@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
 import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/models/workout_session.dart';
+import 'package:workout_planner/bloc/workout_session_bloc.dart';
 import 'package:workout_planner/ui/components/routine_card.dart';
 import 'package:workout_planner/utils/date_time_extension.dart';
 
@@ -18,11 +20,14 @@ class CalenderPageState extends State<CalenderPage> {
   final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController scrollController = ScrollController();
   late Map<String, Routine> dateToRoutineMap;
+  List<WorkoutSession> _sessions = [];
 
   @override
   void initState() {
     super.initState();
-
+    if (kDebugMode) {
+      print("Initializing CalenderPage");
+    }
     dateToRoutineMap = getWorkoutDates(widget.routines);
   }
 
@@ -43,11 +48,24 @@ class CalenderPageState extends State<CalenderPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SliverGrid.count(
-      crossAxisCount: 13,
-      mainAxisSpacing: 4,
-      crossAxisSpacing: 4,
-      children: buildMonthRow(),
+    return StreamBuilder<List<WorkoutSession>>(
+      stream: workoutSessionBloc.allSessions,
+      builder: (context, snapshot) {
+        if (snapshot.hasData) {
+          _sessions = snapshot.data!;
+          if (kDebugMode) {
+            print("Calendar received ${_sessions.length} sessions");
+          }
+          dateToRoutineMap = getWorkoutDates(widget.routines);
+        }
+        
+        return SliverGrid.count(
+          crossAxisCount: 13,
+          mainAxisSpacing: 4,
+          crossAxisSpacing: 4,
+          children: buildMonthRow(),
+        );
+      },
     );
   }
 
@@ -115,38 +133,26 @@ class CalenderPageState extends State<CalenderPage> {
 
   String intToMonth(int i) {
     switch (i) {
-      case 1:
-        return 'Jan';
-      case 2:
-        return 'Feb';
-      case 3:
-        return 'Mar';
-      case 4:
-        return 'Apr';
-      case 5:
-        return 'May';
-      case 6:
-        return 'Jun';
-      case 7:
-        return 'Jul';
-      case 8:
-        return 'Aug';
-      case 9:
-        return 'Sep';
-      case 10:
-        return 'Oct';
-      case 11:
-        return 'Nov';
-      case 12:
-        return 'Dec';
-      default:
-        throw Exception('Inside _intToMonth()');
+      case 1: return 'Jan';
+      case 2: return 'Feb';
+      case 3: return 'Mar';
+      case 4: return 'Apr';
+      case 5: return 'May';
+      case 6: return 'Jun';
+      case 7: return 'Jul';
+      case 8: return 'Aug';
+      case 9: return 'Sep';
+      case 10: return 'Oct';
+      case 11: return 'Nov';
+      case 12: return 'Dec';
+      default: throw Exception('Invalid month');
     }
   }
 
   Map<String, Routine> getWorkoutDates(List<Routine> routines) {
     Map<String, Routine> dates = {};
 
+    // Add routine history dates
     for (var routine in routines) {
       if (routine.routineHistory.isNotEmpty) {
         for (var timestamp in routine.routineHistory) {
@@ -156,7 +162,20 @@ class CalenderPageState extends State<CalenderPage> {
       }
     }
 
-    print(dates);
+    // Add workout session dates
+    for (var session in _sessions) {
+      if (session.isCompleted && session.endTime != null) {
+        var routine = routines.firstWhere(
+          (r) => r.id == session.routine.id,
+          orElse: () => session.routine,
+        );
+        dates[session.endTime!.toSimpleString()] = routine;
+      }
+    }
+
+    if (kDebugMode) {
+      print("Workout dates: $dates");
+    }
     return dates;
   }
 }

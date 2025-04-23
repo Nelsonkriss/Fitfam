@@ -12,6 +12,8 @@ import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/ui/routine_detail_page.dart';
 import 'package:workout_planner/bloc/routines_bloc.dart';
 
+import '../../models/main_targeted_body_part.dart';
+
 // We use an underscore to indicate that these variables are private.
 // See https://www.dartlang.org/guides/language/effective-dart/design#libraries
 final _rowHeight = 300.0;

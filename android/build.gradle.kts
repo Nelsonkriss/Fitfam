@@ -4,13 +4,9 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20")
-        classpath("com.android.tools.build:gradle:8.1.2")
-    }
-    configurations.all {
-        resolutionStrategy {
-            force("org.jetbrains.kotlin:kotlin-stdlib:1.9.20")
-        }
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+        classpath("com.android.tools.build:gradle:7.3.0")
+        classpath("com.google.gms:google-services:4.3.15")
     }
 }
 

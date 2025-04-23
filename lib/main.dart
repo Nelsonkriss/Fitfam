@@ -1,3 +1,4 @@
+import 'dart:async'; // For TimeoutException
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
@@ -8,6 +9,7 @@ import 'resource/db_provider.dart';
 import 'resource/firebase_provider.dart';
 import 'package:workout_planner/ui/setting_page.dart';
 import 'package:workout_planner/ui/statistics_page.dart';
+import 'package:workout_planner/ui/progress_charts.dart';
 import 'bloc/routines_bloc.dart';
 import 'resource/shared_prefs_provider.dart';
 
@@ -15,24 +17,44 @@ import 'ui/home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
+  
+  print('Starting Firebase initialization...');
   try {
-    // Initialize Firebase for all platforms
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    if (Firebase.apps.isEmpty) {
+      // Initialize Firebase if no instances exist
+      final app = await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      print('Firebase initialized successfully for ${app.options.projectId}');
+    } else {
+      // Get existing default app instance
+      final app = Firebase.app();
+      print('Using existing Firebase instance: ${app.options.projectId}');
+    }
+  } on FirebaseException catch (e) {
+    if (e.code == 'duplicate-app') {
+      print('Using pre-existing Firebase instance');
+      Firebase.app(); // Explicitly get existing instance
+    } else {
+      print('Firebase error: ${e.message}');
+      rethrow;
+    }
+  } catch (e) {
+    print('Critical initialization error: $e');
+    rethrow;
+  }
     
     // Initialize DB provider
     await dbProvider.initDB();
     
     // Start app
-    runApp(App());
+    try {
+      runApp(App());
     
-    // Fetch routines
-    routinesBloc.fetchAllRoutines();
-    routinesBloc.fetchAllRecRoutines();
-    
-  } catch (e) {
+      // Fetch routines
+      routinesBloc.fetchAllRoutines();
+      routinesBloc.fetchAllRecRoutines();
+    } catch (e) {
     // Show error screen if initialization fails
     runApp(MaterialApp(
       home: Scaffold(
@@ -67,15 +89,7 @@ class App extends StatelessWidget {
       ),
       debugShowCheckedModeBanner: false,
       title: 'Dumbbell',
-      home: FutureBuilder(
-        future: Firebase.initializeApp(),
-        builder: (_, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return Center(child: CircularProgressIndicator());
-          }
-          return MainPage();
-        },
-      ),
+      home: MainPage(),
     );
   }
 }
@@ -90,7 +104,7 @@ class MainPageState extends State<MainPage> {
   final scrollController = ScrollController();
   final scaffoldKey = GlobalKey<ScaffoldState>();
 
-  var tabs = [HomePage(), StatisticsPage(), SettingPage()];
+  var tabs = [HomePage(), StatisticsPage(), ProgressCharts(), SettingPage()];
   int selectedIndex = 0;
 
   @override
@@ -113,7 +127,7 @@ class MainPageState extends State<MainPage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: Text('Dumbbell'),
@@ -123,6 +137,7 @@ class MainPageState extends State<MainPage> {
             tabs: [
               Tab(icon: Icon(Icons.wrap_text)),
               Tab(icon: Icon(Icons.history)),
+              Tab(icon: Icon(Icons.show_chart)),
               Tab(icon: Icon(Icons.settings)),
             ],
           ),
