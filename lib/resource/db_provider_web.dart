@@ -6,7 +6,11 @@ import 'package:workout_planner/models/workout_session.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 import 'package:workout_planner/resource/db_provider.dart';
 
-class DBProviderWeb implements DBProvider {
+class DBProviderWeb implements DBProviderInterface {
+  @override
+  Database get db {
+    throw UnsupportedError('Web platform does not use direct database access');
+  }
   static const String _routinesKey = 'workout_routines';
   static const String _sessionsKey = 'workout_sessions';
   static const String _recRoutinesKey = 'recommended_routines';

@@ -1,7 +1,10 @@
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
+import 'package:sqflite/sqflite.dart';
 
 abstract class DbProviderInterface {
+  Database get db;
+  
   // Routine methods
   Future<int> newRoutine(Routine routine);
   Future<void> updateRoutine(Routine routine);

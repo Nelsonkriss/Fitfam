@@ -20,6 +20,9 @@ class DBProviderIO implements DBProvider {
 
   Database? _database;
 
+  @override
+  Database get db => _database!;
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     _database = await initDB();
