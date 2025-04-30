@@ -1,37 +1,44 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart'; // Required for @immutable
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:dumbbell_new/models/workout_session.dart';
-import 'package:dumbbell_new/models/exercise_set.dart';
-import 'package:dumbbell_new/models/routine.dart'; // Assuming needed for session creation/display
-import 'package:dumbbell_new/models/workout_session.dart'; // Contains ExercisePerformance which replaces WorkoutSessionExercise
-import 'package:dumbbell_new/resource/db_provider.dart'; // Assuming dbProvider is available
+import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:bloc/bloc.dart';
+import 'package:rxdart/rxdart.dart';
+import 'package:workout_planner/resource/db_provider_interface.dart'; // <--- ADD THIS IMPORT
+// Import your CORRECT models (assuming immutable versions)
+import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/models/workout_session.dart';
 
-// --- 1. Define Events ---
+import '../models/exercise_performance.dart';
+import '../models/set_performance.dart';
+// Needed indirectly
 
+// Import DB Provider
+// Make sure path is correct
+
+// --- Define Events (Simplified Set) ---
+
+@immutable
 abstract class WorkoutSessionEvent {}
 
-// Event to initialize the bloc with a new session (typically from a routine)
-class WorkoutSessionStarted extends WorkoutSessionEvent {
-  final WorkoutSession session; // Pass the fully formed initial session
-  WorkoutSessionStarted(this.session);
+// Event to start a new session from a Routine template
+class WorkoutSessionStartNew extends WorkoutSessionEvent {
+  final Routine routine;
+  WorkoutSessionStartNew(this.routine);
 }
 
-// Event to load an existing session (e.g., resuming or viewing history)
-class WorkoutSessionLoadedById extends WorkoutSessionEvent {
+// Event to load an existing session
+class WorkoutSessionLoadExisting extends WorkoutSessionEvent {
   final String sessionId;
-  WorkoutSessionLoadedById(this.sessionId);
+  WorkoutSessionLoadExisting(this.sessionId);
 }
 
-// Event triggered when a set is completed by the user
-class WorkoutSetCompleted extends WorkoutSessionEvent {
+// Event triggered when a set is completed
+class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
   final int exerciseIndex;
   final int setIndex;
   final int actualReps;
   final double actualWeight;
 
-  WorkoutSetCompleted({
+  WorkoutSetMarkedComplete({
     required this.exerciseIndex,
     required this.setIndex,
     required this.actualReps,
@@ -39,97 +46,85 @@ class WorkoutSetCompleted extends WorkoutSessionEvent {
   });
 }
 
-// Event triggered when the user finishes the entire workout
-class WorkoutSessionFinished extends WorkoutSessionEvent {
-  // Optional: Add any final data if needed
-}
+// Event triggered to finish the workout (starts saving process)
+class WorkoutSessionFinishAttempt extends WorkoutSessionEvent {}
 
-// Internal event for timer ticks (main session timer)
+// --- Internal Events ---
 class _SessionTimerTicked extends WorkoutSessionEvent {
-  final Duration duration;
-  _SessionTimerTicked(this.duration);
+  final Duration elapsedDuration;
+  _SessionTimerTicked(this.elapsedDuration);
 }
 
-// Internal event for rest timer ticks
 class _RestTimerTicked extends WorkoutSessionEvent {
-  final Duration duration;
-  _RestTimerTicked(this.duration);
+  final Duration remainingDuration;
+  _RestTimerTicked(this.remainingDuration);
 }
 
-// Internal event when rest period ends
 class _RestPeriodEnded extends WorkoutSessionEvent {}
 
-// --- 2. Define State ---
 
-@immutable // Ensure state is immutable
+// --- Define State (Simplified Structure) ---
+
+@immutable
 class WorkoutSessionState {
-  final WorkoutSession? session;
-  final Duration currentDuration; // Represents overall time OR rest time remaining
-  final bool isResting;
-  final bool isLoading; // For loading/saving operations
-  final bool isFinished; // Indicates if the session is complete (saved, timer stopped)
-  final String? error;
+  final WorkoutSession? session;      // Current session data
+  final Duration displayDuration;   // Duration to show (elapsed time or rest time)
+  final bool isLoading;             // Loading session or saving
+  final bool isResting;             // Is a rest timer active?
+  final bool isFinished;            // Has the session been successfully finished and saved?
+  final String? errorMessage;       // Any error message
 
   const WorkoutSessionState({
     this.session,
-    this.currentDuration = Duration.zero,
-    this.isResting = false,
+    this.displayDuration = Duration.zero,
     this.isLoading = false,
+    this.isResting = false,
     this.isFinished = false,
-    this.error,
+    this.errorMessage,
   });
 
-  // Helper to calculate elapsed time ONLY if session is active and not finished
-  Duration get elapsedSessionTime {
-    if (session != null && !isFinished) {
-      // If resting, elapsed time doesn't change, show overall time from session start
-      if (isResting) {
-        return DateTime.now().difference(session!.startTime);
-      }
-      // If actively working out, use the tracked currentDuration
-      // This assumes currentDuration reflects total time when not resting
-      // Alternatively, calculate based on startTime if _SessionTimerTicked updates based on that
-      return currentDuration; // Or calculate: DateTime.now().difference(session!.startTime);
-    }
-    return currentDuration; // Return stored duration if finished or no session
-  }
-
-
+  // CopyWith helper for immutable state updates
   WorkoutSessionState copyWith({
     WorkoutSession? session,
-    Duration? currentDuration,
-    bool? isResting,
+    Duration? displayDuration,
     bool? isLoading,
+    bool? isResting,
     bool? isFinished,
-    String? error,
-    bool clearError = false, // Helper to easily clear errors
+    String? errorMessage,
+    bool clearError = false, // Helper flag
+    bool clearSession = false, // Helper flag
   }) {
     return WorkoutSessionState(
-      // Use ?? operator carefully. If you want to explicitly set session to null, handle that.
-      session: session ?? this.session,
-      currentDuration: currentDuration ?? this.currentDuration,
-      isResting: isResting ?? this.isResting,
+      session: clearSession ? null : (session ?? this.session),
+      displayDuration: displayDuration ?? this.displayDuration,
       isLoading: isLoading ?? this.isLoading,
+      isResting: isResting ?? this.isResting,
       isFinished: isFinished ?? this.isFinished,
-      error: clearError ? null : error ?? this.error,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 }
 
-// --- 3. Implement the BLoC ---
+
+// --- Implement the BLoC (Simplified Events/State, Correct Logic) ---
 
 class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> {
-  StreamSubscription? _sessionTimerSubscription;
-  StreamSubscription? _restTimerSubscription;
-  // Assume dbProvider is injected or globally available
-  // final DbProvider dbProvider; // Example if injecting
+  Timer? _sessionTimer;
+  Timer? _restTimer;
+  final DbProviderInterface dbProvider;
+  final BehaviorSubject<List<WorkoutSession>> _allSessionsController = BehaviorSubject<List<WorkoutSession>>.seeded([]);
 
-  WorkoutSessionBloc(/* {required this.dbProvider} */) : super(const WorkoutSessionState()) { // Start with initial empty state
-    // Register handlers for each event
-    on<WorkoutSessionStarted>(_onWorkoutSessionStarted);
-    on<WorkoutSessionLoadedById>(_onWorkoutSessionLoadedById);
-    on<WorkoutSetCompleted>(_onWorkoutSetCompleted);
-    on<WorkoutSessionFinished>(_onWorkoutSessionFinished);
+  // Stream of all workout sessions
+  Stream<List<WorkoutSession>> get allSessionsStream => _allSessionsController.stream;
+
+  WorkoutSessionBloc({required this.dbProvider}) : super(const WorkoutSessionState()) {
+    // Initialize with current sessions
+    _loadAllSessions();
+    // Register event handlers
+    on<WorkoutSessionStartNew>(_onWorkoutSessionStartNew);
+    on<WorkoutSessionLoadExisting>(_onWorkoutSessionLoadExisting);
+    on<WorkoutSetMarkedComplete>(_onWorkoutSetMarkedComplete);
+    on<WorkoutSessionFinishAttempt>(_onWorkoutSessionFinishAttempt);
 
     // Internal event handlers
     on<_SessionTimerTicked>(_onSessionTimerTicked);
@@ -137,286 +132,320 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_RestPeriodEnded>(_onRestPeriodEnded);
   }
 
-  // --- Event Handlers ---
 
-  void _onWorkoutSessionStarted(WorkoutSessionStarted event, Emitter<WorkoutSessionState> emit) {
-    print("BLoC: Starting new session for ${event.session.routine.routineName}");
-    // Ensure any previous timers are cancelled if starting fresh
+
+  void _onWorkoutSessionStartNew(WorkoutSessionStartNew event, Emitter<WorkoutSessionState> emit) {
+    debugPrint("BLoC: Starting new session from Routine: ${event.routine.routineName}");
     _cancelTimers();
 
-    emit(state.copyWith(
-      session: event.session,
+    // Create the session using the Routine (WorkoutSession constructor handles defaults)
+      final newSession = WorkoutSession.startNew(
+        routine: event.routine,
+        startTime: DateTime.now(),
+      );
+
+    emit(const WorkoutSessionState().copyWith( // Reset state completely
+      session: newSession,
+      displayDuration: Duration.zero,
       isLoading: false,
-      isFinished: false,
       isResting: false,
-      currentDuration: Duration.zero, // Reset duration
-      error: null,
-      clearError: true,
+      isFinished: false,
     ));
     _startSessionTimer();
   }
 
-  Future<void> _onWorkoutSessionLoadedById(WorkoutSessionLoadedById event, Emitter<WorkoutSessionState> emit) async {
-    print("BLoC: Loading session ID ${event.sessionId}");
-    emit(state.copyWith(isLoading: true, error: null, clearError: true));
-    _cancelTimers(); // Cancel any existing timers
+  Future<void> _onWorkoutSessionLoadExisting(WorkoutSessionLoadExisting event, Emitter<WorkoutSessionState> emit) async {
+    debugPrint("BLoC: Loading session ID ${event.sessionId}");
+    _cancelTimers();
+    // Set loading state, clear previous session/error
+    emit(const WorkoutSessionState().copyWith(isLoading: true));
 
     try {
       final session = await dbProvider.getWorkoutSessionById(event.sessionId);
       if (session != null) {
-        print("BLoC: Session loaded successfully.");
-        bool sessionIsFinished = session.isCompleted; // Assuming isCompleted field exists
-        Duration initialDuration = Duration.zero;
+        debugPrint("BLoC: Session loaded successfully (ID: ${session.id}). Completed: ${session.isCompleted}");
 
-        if (sessionIsFinished || session.endTime != null) {
-          // Calculate final duration if finished
-          initialDuration = session.endTime!.difference(session.startTime);
-          print("BLoC: Loaded session is already finished. Duration: $initialDuration");
-        } else {
-          // Calculate current duration for an ongoing session (if resuming)
-          // initialDuration = DateTime.now().difference(session.startTime);
-          // Decide if timer should start automatically when loading an *ongoing* session
-          // For simplicity here, we'll just load the data. Starting timer might need another event/logic.
-          print("BLoC: Loaded session is ongoing. Start time: ${session.startTime}");
-          // Let's set the initial duration to 0 and not start the timer automatically on load.
-          // The UI might need a "Resume" button that dispatches a new event like 'WorkoutSessionResumed'.
-          initialDuration = Duration.zero; // Or calculate from start time if needed immediately
-        }
-
-        emit(state.copyWith(
-            session: session,
+        if (session.isCompleted && session.endTime != null) {
+          // Session is already finished
+          final finalDuration = session.endTime!.difference(session.startTime);
+          emit(state.copyWith(
             isLoading: false,
-            isFinished: sessionIsFinished,
-            currentDuration: initialDuration, // Set duration based on loaded state
-            isResting: false // Assume not resting when loading
-        ));
-
-        // Optional: Automatically start timer if it was an ongoing session?
-        // if (!sessionIsFinished) {
-        //   _startSessionTimer(); // Start timer if resuming an active session
-        // }
-
-      } else {
-        print("BLoC: Error - Session ID ${event.sessionId} not found.");
-        emit(state.copyWith(isLoading: false, error: "Workout session not found."));
-      }
-    } catch (e) {
-      print("BLoC: Error loading session: $e");
-      emit(state.copyWith(isLoading: false, error: "Failed to load workout session: $e"));
-    }
-  }
-
-
-  void _onWorkoutSetCompleted(WorkoutSetCompleted event, Emitter<WorkoutSessionState> emit) {
-    if (state.session == null || state.isFinished) return; // Ignore if no active session
-
-    print("BLoC: Completing Set: Ex ${event.exerciseIndex}, Set ${event.setIndex}, Reps ${event.actualReps}, Weight ${event.actualWeight}");
-
-    // --- Immutable Update Logic (from reference code) ---
-    try {
-      // 1. Copy the current session
-      var updatedSession = state.session!;
-
-      // 2. Create updated list of exercises
-      final updatedExercises = List<WorkoutSessionExercise>.from(updatedSession.exercises);
-
-      if (event.exerciseIndex < updatedExercises.length) {
-        final exerciseToUpdate = updatedExercises[event.exerciseIndex];
-
-        // 4. Create updated list of sets
-        final updatedSets = List<ExerciseSet>.from(exerciseToUpdate.sets);
-
-        if (event.setIndex < updatedSets.length) {
-          final setToUpdate = updatedSets[event.setIndex];
-
-          // 6. Create the updated set
-          final updatedSet = setToUpdate.copyWith(
-            actualReps: event.actualReps,
-            actualWeight: event.actualWeight,
-            isCompleted: true,
-          );
-
-          // 7. Replace the old set
-          updatedSets[event.setIndex] = updatedSet;
-
-          // 8. Create the updated exercise
-          final updatedExercise = exerciseToUpdate.copyWith(sets: updatedSets);
-
-          // 9. Replace the old exercise
-          updatedExercises[event.exerciseIndex] = updatedExercise;
-
-          // 10. Create the final updated session
-          updatedSession = updatedSession.copyWith(exercises: updatedExercises);
-
-          // 11. Emit the new state with the updated session
-          emit(state.copyWith(session: updatedSession));
-
-          // --- Handle Rest Period ---
-          // Check if there's a rest period defined for this exercise
-          Duration? restDuration = exerciseToUpdate.restPeriod; // Assuming 'restPeriod' exists on WorkoutSessionExercise
-
-          // Check if this is the last set of the exercise (no rest needed after last set)
-          bool isLastSet = event.setIndex == updatedSets.length - 1;
-
-          if (restDuration != null && restDuration.inSeconds > 0 && !isLastSet) {
-            print("BLoC: Starting rest period: $restDuration");
-            _cancelTimers(); // Stop main session timer
-            emit(state.copyWith(isResting: true, currentDuration: restDuration)); // Set state to resting, duration = rest time
-            _startRestTimer(restDuration);
-          } else {
-            // If no rest or last set, ensure main timer is running (it might have been stopped by a previous rest)
-            if (!(_sessionTimerSubscription?.isPaused == false) && !state.isFinished) {
-              _startSessionTimer();
-            }
-          }
-
+            isFinished: true, // Mark as finished
+            session: session,
+            displayDuration: finalDuration,
+          ));
         } else {
-          print("Error: Invalid set index ${event.setIndex}");
-          emit(state.copyWith(error: "Internal error: Invalid set index."));
+          // Session is ongoing (or was stopped abruptly)
+          // Calculate current elapsed time, but don't start timer automatically
+          // UI will need a way to trigger resume (e.g., start timer on interaction)
+          final elapsedDuration = DateTime.now().difference(session.startTime);
+          emit(state.copyWith(
+            isLoading: false,
+            isFinished: false, // Not finished
+            session: session,
+            displayDuration: elapsedDuration, // Show current elapsed time
+          ));
+          // NOTE: Timer is NOT started here. UI should handle resuming.
+          // If you want automatic resume on load, call _startSessionTimer() here.
+          debugPrint("BLoC: Loaded ongoing session. Current elapsed: $elapsedDuration. Timer not started.");
         }
       } else {
-        print("Error: Invalid exercise index ${event.exerciseIndex}");
-        emit(state.copyWith(error: "Internal error: Invalid exercise index."));
+        debugPrint("BLoC: Error - Session ID ${event.sessionId} not found.");
+        emit(state.copyWith(isLoading: false, errorMessage: "Workout session not found."));
       }
-    } catch (e) {
-      print("Error updating set: $e");
-      emit(state.copyWith(error: "Failed to update set: $e"));
+    } catch (e, s) {
+      debugPrint("BLoC: Error loading session: $e\n$s");
+      emit(state.copyWith(isLoading: false, errorMessage: "Failed to load workout session."));
     }
   }
 
-  Future<void> _onWorkoutSessionFinished(WorkoutSessionFinished event, Emitter<WorkoutSessionState> emit) async {
-    if (state.session == null || state.isFinished) return; // Ignore if no active session or already finished
+  void _onWorkoutSetMarkedComplete(WorkoutSetMarkedComplete event, Emitter<WorkoutSessionState> emit) {
+    // Ignore if session doesn't exist or is already finished/saving
+    if (state.session == null || state.isFinished || state.isLoading) return;
 
-    print("BLoC: Finishing session...");
-    _cancelTimers(); // Stop all timers
-    emit(state.copyWith(isLoading: true, isResting: false)); // Show loading, ensure not resting
+    debugPrint("BLoC: Completing Set: Ex ${event.exerciseIndex}, Set ${event.setIndex}, Reps ${event.actualReps}, Weight ${event.actualWeight}");
 
     try {
-      // Ensure end time and completion flag are set
-      // Calculate final duration before saving
-      final finalDuration = DateTime.now().difference(state.session!.startTime);
-      final finishedSession = state.session!.copyWith(
-        endTime: DateTime.now(),
-        isCompleted: true, // Make sure your model supports this field/update
-        // Optionally store the final duration if your model has a field for it
-      );
-
-      print("BLoC: Saving finished session (ID: ${finishedSession.id}). Final Duration: $finalDuration");
-      await dbProvider.saveWorkoutSession(finishedSession);
-      print("BLoC: Session saved successfully.");
-
-      // Emit final state - keep session data for summary screen, mark as finished
-      emit(state.copyWith(
-        session: finishedSession,
-        isLoading: false,
-        isFinished: true,
-        currentDuration: finalDuration, // Store final duration
+      // --- Immutable Update Logic ---
+      final currentSession = state.session!;
+      // Create a new list of ExercisePerformance, deep copying the sets within each
+      final updatedExercises = List<ExercisePerformance>.from(currentSession.exercises.map((exPerf) =>
+          ExercisePerformance(
+            exerciseName: exPerf.exerciseName,
+            sets: List<SetPerformance>.from(exPerf.sets), // Deep copy sets
+            restPeriod: exPerf.restPeriod,
+          )
       ));
 
-    } catch (e) {
-      print("BLoC: Error saving session: $e");
-      emit(state.copyWith(isLoading: false, error: "Failed to save workout session: $e"));
-      // Keep isFinished false if save failed? Or allow user to retry? Depends on desired UX.
-      // Maybe restart timer if save fails? For now, we leave it stopped.
+      // Validate indices
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) {
+        throw Exception("Invalid exercise index: ${event.exerciseIndex}");
+      }
+      final targetExercise = updatedExercises[event.exerciseIndex];
+
+      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) {
+        throw Exception("Invalid set index: ${event.setIndex} for exercise ${targetExercise.exerciseName}");
+      }
+      final originalSet = targetExercise.sets[event.setIndex];
+
+      // Create the *new* updated SetPerformance object
+      final updatedSet = SetPerformance(
+        targetReps: originalSet.targetReps,
+        targetWeight: originalSet.targetWeight,
+        actualReps: event.actualReps,
+        actualWeight: event.actualWeight,
+        isCompleted: true,
+      );
+
+      // Replace the set in the *copied* exercise's *copied* sets list
+      targetExercise.sets[event.setIndex] = updatedSet;
+
+      // Create the new WorkoutSession instance with the updated exercises list
+      final updatedSession = WorkoutSession( // Use constructor like copyWith
+        id: currentSession.id,
+        routine: currentSession.routine,
+        startTime: currentSession.startTime,
+        endTime: currentSession.endTime,
+        isCompleted: currentSession.isCompleted,
+        exercises: updatedExercises,
+      );
+
+      // Emit the updated session state *before* handling rest
+      // Ensure we are not in resting state yet
+      emit(state.copyWith(session: updatedSession, isResting: false, clearError: true));
+
+      // --- Handle Rest Period ---
+      Duration? restDuration = targetExercise.restPeriod;
+      bool isLastSet = event.setIndex == targetExercise.sets.length - 1;
+
+      if (restDuration != null && restDuration.inSeconds > 0 && !isLastSet) {
+        debugPrint("BLoC: Starting rest period: $restDuration");
+        _cancelTimers(); // Stop main session timer
+        emit(state.copyWith(isResting: true, displayDuration: restDuration)); // Set resting flag and duration
+        _startRestTimer(restDuration);
+      } else {
+        debugPrint("BLoC: No rest period or last set completed.");
+        _startSessionTimer(); // Ensure main timer is running (might have been paused)
+      }
+
+    } catch (e, s) {
+      debugPrint("Error updating set: $e\n$s");
+      emit(state.copyWith(isResting: false, errorMessage: "Failed to update set: $e"));
+      _startSessionTimer(); // Try to restart main timer if error occurred during rest logic
+    }
+  }
+
+  Future<void> _onWorkoutSessionFinishAttempt(WorkoutSessionFinishAttempt event, Emitter<WorkoutSessionState> emit) async {
+    // Ignore if session doesn't exist or is already finished/saving
+    if (state.session == null || state.isFinished || state.isLoading) return;
+
+    debugPrint("BLoC: Finishing session...");
+    _cancelTimers();
+    final currentSession = state.session!; // Capture session before emitting loading state
+    final startTime = currentSession.startTime;
+
+    emit(state.copyWith(isLoading: true, isResting: false)); // Indicate saving, ensure not resting
+
+    try {
+      final endTime = DateTime.now();
+      final finalDuration = endTime.difference(startTime);
+
+      // Create the final session state using the constructor
+      final finishedSession = WorkoutSession(
+        id: currentSession.id,
+        routine: currentSession.routine,
+        startTime: currentSession.startTime,
+        exercises: currentSession.exercises, // Keep recorded performance
+        endTime: endTime,
+        isCompleted: true,
+      );
+
+      debugPrint("BLoC: Saving finished session (ID: ${finishedSession.id}). Final Duration: $finalDuration");
+      await dbProvider.saveWorkoutSession(finishedSession);
+      debugPrint("BLoC: Session saved successfully.");
+      
+      // Update all sessions stream
+      _loadAllSessions();
+
+      emit(state.copyWith(
+        isLoading: false,
+        isFinished: true, // Mark as successfully finished
+        session: finishedSession,
+        displayDuration: finalDuration, // Show final duration
+      ));
+
+    } catch (e, s) {
+      debugPrint("BLoC: Error saving session: $e\n$s");
+      // Keep isLoading false, don't mark as finished, show error
+      emit(state.copyWith(
+        isLoading: false,
+        isFinished: false, // Save failed
+        session: currentSession, // Revert to session state before save attempt
+        errorMessage: "Failed to save workout session.",
+        // Recalculate duration based on current time if needed? Or keep stopped time?
+        // Let's keep the duration from before the save attempt.
+        // displayDuration: DateTime.now().difference(startTime)
+      ));
+      // Keep timers stopped. User needs to potentially retry or discard.
     }
   }
 
   // --- Internal Timer Handlers ---
 
   void _onSessionTimerTicked(_SessionTimerTicked event, Emitter<WorkoutSessionState> emit) {
-    // Only update duration if the session is active, not resting, and not finished
-    if (state.session != null && !state.isResting && !state.isFinished) {
-      // Calculate elapsed time from start
+    // Only tick if session exists, is NOT resting, NOT finished, NOT loading
+    if (state.session != null && !state.isResting && !state.isFinished && !state.isLoading) {
+      // Calculate precise elapsed time from start time
       final elapsed = DateTime.now().difference(state.session!.startTime);
-      emit(state.copyWith(currentDuration: elapsed));
+      emit(state.copyWith(displayDuration: elapsed));
     } else {
-      // If state changed unexpectedly, stop the timer
-      _sessionTimerSubscription?.cancel();
+      // Status changed, timer should be stopped
+      _sessionTimer?.cancel();
+      _sessionTimer = null;
     }
   }
 
   void _onRestTimerTicked(_RestTimerTicked event, Emitter<WorkoutSessionState> emit) {
-    // Only update if actually resting
+    // Only tick if IS resting
     if (state.isResting) {
-      emit(state.copyWith(currentDuration: event.duration));
+      emit(state.copyWith(displayDuration: event.remainingDuration));
     } else {
-      // State changed (e.g., workout finished), cancel rest timer
-      _restTimerSubscription?.cancel();
+      _restTimer?.cancel();
+      _restTimer = null;
     }
   }
 
   void _onRestPeriodEnded(_RestPeriodEnded event, Emitter<WorkoutSessionState> emit) {
-    print("BLoC: Rest period ended.");
-    emit(state.copyWith(isResting: false, currentDuration: DateTime.now().difference(state.session!.startTime))); // Reset duration to elapsed time
-    _startSessionTimer(); // Restart the main workout timer
+    // Only process if WAS resting
+    if (state.isResting && state.session != null) {
+      debugPrint("BLoC: Rest period ended.");
+      // Calculate current elapsed time when rest ends
+      final elapsed = DateTime.now().difference(state.session!.startTime);
+      // Switch back to non-resting state, update duration to elapsed time
+      emit(state.copyWith(isResting: false, displayDuration: elapsed));
+      _startSessionTimer(); // Restart the main workout timer
+    }
   }
 
 
   // --- Timer Control ---
 
   void _startSessionTimer() {
-    // Don't start if already running, finished, or session is null
-    if (_sessionTimerSubscription != null || state.isFinished || state.session == null) return;
-
-    print("BLoC: Starting session timer.");
-    // Cancel rest timer just in case
-    _restTimerSubscription?.cancel();
-    _restTimerSubscription = null;
-
-    // Calculate initial duration from start time
-    final initialElapsed = DateTime.now().difference(state.session!.startTime);
-    if(state.currentDuration != initialElapsed && !state.isResting){
-      // Emit correct starting duration if needed (e.g., after rest)
-      emit(state.copyWith(currentDuration: initialElapsed));
+    // Only start if session exists, timer not active, not resting, not finished, not loading
+    if (state.session == null || _sessionTimer?.isActive == true || state.isResting || state.isFinished || state.isLoading) {
+      return;
     }
 
+    debugPrint("BLoC: Starting session timer.");
+    _restTimer?.cancel(); // Ensure rest timer is stopped
+    _restTimer = null;
 
-    _sessionTimerSubscription = Stream.periodic(const Duration(seconds: 1))
-        .listen((_) {
-      // Add internal event instead of directly emitting
-      // Calculate duration within the handler to ensure accuracy
-      add(_SessionTimerTicked(Duration.zero)); // Duration passed here isn't used, calculated in handler
+    // Ensure displayDuration reflects current elapsed time when timer starts
+    final initialElapsed = DateTime.now().difference(state.session!.startTime);
+    if (state.displayDuration.inSeconds != initialElapsed.inSeconds) {
+      emit(state.copyWith(displayDuration: initialElapsed));
+    }
+
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // Add internal event; duration is calculated in the handler
+      add(_SessionTimerTicked(Duration.zero));
     });
   }
 
   void _startRestTimer(Duration restDuration) {
-    // Ensure main timer is stopped and we are actually resting
-    _sessionTimerSubscription?.cancel();
-    _sessionTimerSubscription = null;
-    if (!state.isResting) return; // Should be set before calling this
+    // Only start if session exists and state is currently resting
+    if (state.session == null || !state.isResting) {
+      debugPrint("BLoC: Skipping startRestTimer (Not in resting state)");
+      return;
+    }
 
-    _restTimerSubscription?.cancel(); // Cancel any previous rest timer
+    _sessionTimer?.cancel(); // Ensure session timer is stopped
+    _sessionTimer = null;
+    _restTimer?.cancel(); // Cancel previous rest timer if any
 
     Duration remaining = restDuration;
-    _restTimerSubscription = Stream.periodic(const Duration(seconds: 1))
-        .listen((_) {
-      remaining = remaining - const Duration(seconds: 1);
-      if (remaining.isNegative) remaining = Duration.zero; // Prevent negative duration
+    // Emit initial rest time immediately (already done when setting isResting=true)
+    // emit(state.copyWith(displayDuration: remaining));
 
-      add(_RestTimerTicked(remaining)); // Dispatch tick event
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      remaining = remaining - const Duration(seconds: 1);
+      if (remaining.isNegative) remaining = Duration.zero;
+
+      add(_RestTimerTicked(remaining)); // Send remaining duration
 
       if (remaining.inSeconds <= 0) {
-        _restTimerSubscription?.cancel();
-        _restTimerSubscription = null;
-        add(_RestPeriodEnded()); // Dispatch rest ended event
+        _restTimer?.cancel();
+        _restTimer = null;
+        add(_RestPeriodEnded()); // Signal rest end
       }
     });
   }
 
   void _cancelTimers() {
-    print("BLoC: Cancelling timers.");
-    _sessionTimerSubscription?.cancel();
-    _sessionTimerSubscription = null;
-    _restTimerSubscription?.cancel();
-    _restTimerSubscription = null;
+    _sessionTimer?.cancel();
+    _sessionTimer = null;
+    _restTimer?.cancel();
+    _restTimer = null;
   }
 
   // --- Cleanup ---
 
+  // Load all sessions from DB
+  Future<void> _loadAllSessions() async {
+    try {
+      final sessions = await dbProvider.getWorkoutSessions();
+      _allSessionsController.add(sessions);
+    } catch (e) {
+      debugPrint("Error loading all sessions: $e");
+      _allSessionsController.addError(e);
+    }
+  }
+
   @override
   Future<void> close() {
-    print("BLoC: Closing WorkoutSessionBloc.");
+    debugPrint("BLoC: Closing WorkoutSessionBloc.");
     _cancelTimers();
+    _allSessionsController.close();
     return super.close();
   }
 }

@@ -18,12 +18,12 @@ class PartCard extends StatefulWidget {
   PartCardState createState() => PartCardState();
 
   const PartCard({
-    Key? key,
+    super.key,
     required this.onDelete,
     this.onPartTap,
     this.onTextEdited,
     required this.part
-  }) : super(key: key);
+  });
 }
 
 class PartCardState extends State<PartCard> {
@@ -60,11 +60,11 @@ class PartCardState extends State<PartCard> {
                   ListTile(
                     leading: targetedBodyPartToImageConverter(_part.targetedBodyPart ?? TargetedBodyPart.Arm),
                     title: Text(
-                      _part.setType == null ? 'To be edited' : setTypeToStringConverter(_part.setType!),
+                      _part.setType == null ? 'To be edited' : setTypeToStringConverter(_part.setType),
                       style: const TextStyle(color: Colors.white70, fontSize: 16),
                     ),
                     subtitle: Text(
-                      _part.targetedBodyPart == null ? 'To be edited' : targetedBodyPartToStringConverter(_part.targetedBodyPart!),
+                      _part.targetedBodyPart == null ? 'To be edited' : targetedBodyPartToStringConverter(_part.targetedBodyPart),
                       style: const TextStyle(color: Colors.white54, fontSize: 16),
                     ),
                   ),

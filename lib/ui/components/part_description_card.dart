@@ -5,7 +5,7 @@ import 'package:workout_planner/models/routine.dart';
 class RoutineDescriptionCard extends StatefulWidget {
   final Routine routine;
 
-  const RoutineDescriptionCard({Key? key, required this.routine}) : super(key: key);
+  const RoutineDescriptionCard({super.key, required this.routine});
 
   @override
   RoutineDescriptionCardState createState() => RoutineDescriptionCardState();

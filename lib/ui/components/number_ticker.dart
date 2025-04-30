@@ -1,153 +1,247 @@
 import 'package:flutter/material.dart';
+// For min/max
 
+// --- Controller ---
+/// Controls the numeric value displayed by a NumberTicker.
 class NumberTickerController extends ValueNotifier<double> {
-  NumberTickerController({double initial = 0}) : super(initial);
+  /// The step value used for incrementing/decrementing (if applicable).
+  final double step;
+  /// The minimum value the ticker can display.
+  final double minValue;
+  /// The maximum value the ticker can display (optional).
+  final double? maxValue;
 
+  NumberTickerController({
+    double initial = 0,
+    this.step = 1.0, // Default step
+    this.minValue = 0.0, // Default min value
+    this.maxValue,   // No default max value
+  }) : super(initial.clamp(minValue, maxValue ?? double.infinity)); // Clamp initial value
+
+  /// Gets the current numeric value.
   double get number => value;
-  set number(double num) => value = num >= 0 ? num : 0;
+
+  /// Sets the numeric value, clamping it within minValue and maxValue.
+  set number(double newValue) {
+    value = newValue.clamp(minValue, maxValue ?? double.infinity);
+  }
+
+  /// Increments the number by the step value.
+  void increment() {
+    number += step;
+  }
+
+  /// Decrements the number by the step value.
+  void decrement() {
+    number -= step;
+  }
 }
 
+
+// --- Main Ticker Widget ---
 class NumberTicker extends StatefulWidget {
   final NumberTickerController controller;
   final TextStyle textStyle;
-  final Color backgroundColor;
+  final BoxDecoration? decoration; // Use BoxDecoration for background, border etc.
   final Curve curve;
   final int fractionDigits;
   final Duration duration;
+  final MainAxisAlignment mainAxisAlignment; // Allow alignment control
+  final String? prefix; // Optional text before the number
+  final String? suffix; // Optional text after the number
 
   const NumberTicker({
     required this.controller,
     this.textStyle = const TextStyle(fontSize: 24, color: Colors.black),
-    this.backgroundColor = Colors.transparent,
-    this.curve = Curves.easeOut,
+    this.decoration,
+    this.curve = Curves.linear, // Linear often looks better for number ticks
     this.fractionDigits = 0,
     this.duration = const Duration(milliseconds: 300),
-    Key? key,
-  }) : super(key: key);
+    this.mainAxisAlignment = MainAxisAlignment.center,
+    this.prefix,
+    this.suffix,
+    super.key,
+  });
 
   @override
-  _NumberTickerState createState() => _NumberTickerState();
+  State<NumberTicker> createState() => _NumberTickerState();
 }
 
-class _NumberTickerState extends State<NumberTicker> with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late String _currentValue;
-  late List<_SingleDigitController> _digitControllers;
-  late List<GlobalKey> _digitKeys;
+class _NumberTickerState extends State<NumberTicker> {
+  late double _currentValue; // Store the numeric value
+  late String _currentStringValue; // Store the formatted string
 
   @override
   void initState() {
     super.initState();
-    _currentValue = widget.controller.number.toStringAsFixed(widget.fractionDigits);
-    _digitControllers = _createDigitControllers(_currentValue);
-    _digitKeys = List.generate(_digitControllers.length, (i) => GlobalKey());
-    _animationController = AnimationController(vsync: this, duration: widget.duration);
-    widget.controller.addListener(_updateNumber);
+    _currentValue = widget.controller.number;
+    _currentStringValue = _formatValue(_currentValue);
+    widget.controller.addListener(_onControllerUpdate);
+  }
+
+  @override
+  void didUpdateWidget(covariant NumberTicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If controller changes, remove old listener and add new one
+    if (widget.controller != oldWidget.controller) {
+      oldWidget.controller.removeListener(_onControllerUpdate);
+      _currentValue = widget.controller.number; // Update value from new controller
+      _currentStringValue = _formatValue(_currentValue);
+      widget.controller.addListener(_onControllerUpdate);
+    }
+    // Update formatted string if fractionDigits changes
+    if (widget.fractionDigits != oldWidget.fractionDigits) {
+      _currentStringValue = _formatValue(_currentValue);
+    }
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    widget.controller.removeListener(_updateNumber);
+    widget.controller.removeListener(_onControllerUpdate);
     super.dispose();
   }
 
-  List<_SingleDigitController> _createDigitControllers(String value) {
-    return value.split('').map((char) {
-      return char == '.'
-          ? _SingleDigitController(isDecimal: true)
-          : _SingleDigitController(digit: int.parse(char));
-    }).toList();
+  /// Formats the numeric value to a string based on fractionDigits.
+  String _formatValue(double value) {
+    return value.toStringAsFixed(widget.fractionDigits);
   }
 
-  void _updateNumber() {
-    final newValue = widget.controller.number.toStringAsFixed(widget.fractionDigits);
-    if (newValue == _currentValue) return;
+  /// Called when the controller's value changes.
+  void _onControllerUpdate() {
+    final newValue = widget.controller.number;
+    final newStringValue = _formatValue(newValue);
 
-    final oldDigits = _currentValue.split('');
-    final newDigits = newValue.split('');
-
-    setState(() {
-      _currentValue = newValue;
-      _digitControllers = _createDigitControllers(newValue);
-      _animateDigits(oldDigits, newDigits);
-    });
-  }
-
-  void _animateDigits(List<String> oldDigits, List<String> newDigits) {
-    // Add animation logic here
+    // Only update state if the formatted string value actually changes
+    // This prevents unnecessary rebuilds if clamping keeps the value the same
+    if (newStringValue != _currentStringValue) {
+      setState(() {
+        _currentValue = newValue;
+        _currentStringValue = newStringValue;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_digitControllers.isEmpty || _digitKeys.isEmpty) {
-      return Container(); // Return empty container if no digits
-    }
+    // Determine if the number increased or decreased for animation direction
+    // Note: We compare numeric values here, not strings, for correct direction.
+    final previousValue = widget.controller.value; // Get latest actual value
+    final bool increasing = _currentValue >= previousValue;
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(_digitControllers.length, (index) {
-        if (index >= _digitKeys.length || index >= _digitControllers.length) {
-          return Container(); // Skip invalid indices
-        }
-        return _SingleDigitTicker(
-          key: _digitKeys[index],
-          controller: _digitControllers[index],
-          textStyle: widget.textStyle,
-          backgroundColor: widget.backgroundColor,
-          duration: widget.duration,
-          curve: widget.curve,
-        );
-      }),
+    return Container(
+      decoration: widget.decoration, // Apply background/border decoration
+      child: Row(
+        mainAxisSize: MainAxisSize.min, // Take minimum horizontal space
+        mainAxisAlignment: widget.mainAxisAlignment,
+        children: [
+          // Optional Prefix
+          if (widget.prefix != null && widget.prefix!.isNotEmpty)
+            Text(widget.prefix!, style: widget.textStyle),
+
+          // Animated Digits
+          // Use ClipRect to prevent overflow during animation
+          ClipRect(
+            child: TweenAnimationBuilder(
+              // Use the string value as the key to trigger animation on change
+              key: ValueKey(_currentStringValue),
+              duration: widget.duration,
+              curve: widget.curve,
+              // Tween from previous numeric value to current numeric value
+              tween: Tween<double>(begin: previousValue, end: _currentValue),
+              builder: (context, double animatedValue, child) {
+                // Render the digits based on the *target* string (_currentStringValue)
+                // The animation effect comes from AnimatedSwitcher/SlideTransition inside _SingleDigit
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _buildDigitWidgets(_currentStringValue, increasing),
+                );
+              },
+            ),
+          ),
+
+          // Optional Suffix
+          if (widget.suffix != null && widget.suffix!.isNotEmpty)
+            Padding( // Add padding if both prefix/suffix and number exist
+                padding: EdgeInsets.only(left: (widget.textStyle.fontSize ?? 24) * 0.1),
+                child: Text(widget.suffix!, style: widget.textStyle)
+            ),
+        ],
+      ),
     );
   }
-}
 
-class _SingleDigitController extends ValueNotifier<int> {
-  final bool isDecimal;
-
-  _SingleDigitController({
-    int digit = 0,
-    this.isDecimal = false,
-  }) : super(digit) {
-    assert(digit >= 0 && digit <= 9, 'Digit must be between 0-9');
+  /// Builds the list of individual digit widgets.
+  List<Widget> _buildDigitWidgets(String stringValue, bool increasing) {
+    final List<Widget> widgets = [];
+    for (int i = 0; i < stringValue.length; i++) {
+      final char = stringValue[i];
+      widgets.add(
+        _SingleDigit(
+          key: ValueKey('$char-$i'), // Key helps AnimatedSwitcher
+          character: char,
+          textStyle: widget.textStyle,
+          duration: widget.duration,
+          curve: widget.curve,
+          slideUp: increasing, // Direction of animation
+        ),
+      );
+    }
+    return widgets;
   }
 }
 
-class _SingleDigitTicker extends StatelessWidget {
-  final _SingleDigitController controller;
+
+// --- Single Digit/Character Widget ---
+/// Displays a single character (digit or decimal point) with slide animation.
+class _SingleDigit extends StatelessWidget {
+  final String character;
   final TextStyle textStyle;
-  final Color backgroundColor;
   final Duration duration;
   final Curve curve;
+  final bool slideUp; // True if number increased, false if decreased
 
-  const _SingleDigitTicker({
-    required this.controller,
+  const _SingleDigit({
+    required Key key,
+    required this.character,
     required this.textStyle,
-    required this.backgroundColor,
     required this.duration,
     required this.curve,
-    Key? key,
+    required this.slideUp,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = textStyle.fontSize ?? 24;
-    return Container(
-      width: fontSize * 0.7,
-      height: fontSize * 1.4,
-      color: backgroundColor,
-      child: ListView(
-        physics: const NeverScrollableScrollPhysics(),
-        controller: ScrollController(
-          initialScrollOffset: controller.value * fontSize * 1.4,
-        ),
-        children: List.generate(10, (index) => Center(
-          child: Text(
-            controller.isDecimal ? '.' : '$index',
-            style: textStyle,
-          ),
-        )),
+    // Use AnimatedSwitcher for smooth transition between characters
+    return AnimatedSwitcher(
+      duration: duration,
+      // Define the transition: slide vertically
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final offsetAnimation = Tween<Offset>(
+          begin: Offset(0.0, slideUp ? 1.0 : -1.0), // Slide in from bottom if increasing, top if decreasing
+          end: Offset.zero,
+        ).chain(CurveTween(curve: curve)) // Apply curve here
+            .animate(animation);
+
+        return SlideTransition(
+          position: offsetAnimation,
+          child: child,
+        );
+      },
+      // Define layout behavior during animation (optional)
+      // layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) {
+      //   return Stack(
+      //     alignment: Alignment.center,
+      //     children: <Widget>[
+      //       ...previousChildren,
+      //       if (currentChild != null) currentChild,
+      //     ],
+      //   );
+      // },
+      child: Text(
+        // Use character directly, key on AnimatedSwitcher handles changes
+        character,
+        key: ValueKey(character), // Ensure switcher recognizes change
+        style: textStyle,
       ),
     );
   }

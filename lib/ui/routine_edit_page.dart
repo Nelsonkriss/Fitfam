@@ -1,228 +1,281 @@
 import 'dart:async';
-import 'dart:math';
+// Keep if needed (e.g., by PartEditCard or indirectly)
 
-import 'package:flutter/cupertino.dart';
+// Keep if using Cupertino widgets
 import 'package:flutter/material.dart';
-import 'package:workout_planner/utils/routine_helpers.dart';
+import 'package:provider/provider.dart'; // Import Provider
+
+// Import BLoC, Models, Utils (adjust paths as necessary)
+import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart Bloc
+import 'package:workout_planner/models/main_targeted_body_part.dart';
+// Needed for deep copy
 import 'package:workout_planner/ui/components/part_edit_card.dart';
 import 'package:workout_planner/ui/part_edit_page.dart';
-import 'package:workout_planner/bloc/routines_bloc.dart';
-import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/models/part.dart';
-import 'components/spring_curve.dart';
+import 'package:workout_planner/utils/routine_helpers.dart'; // For AddOrEdit, converters etc.
+// Assuming this custom curve exists
 
 class RoutineEditPage extends StatefulWidget {
-  final AddOrEdit addOrEdit;
-  final MainTargetedBodyPart? mainTargetedBodyPart;
+  final AddOrEdit addOrEdit; // Determines if adding or editing
+  final Routine? initialRoutine; // Pass the routine being edited (nullable for Add)
+  final MainTargetedBodyPart? mainTargetedBodyPart; // Required only for Add mode
 
-  const RoutineEditPage({
-    Key? key,
+  // Private constructor used by factories
+  const RoutineEditPage._({
+    super.key,
     required this.addOrEdit,
+    this.initialRoutine,
     this.mainTargetedBodyPart,
-  }) : super(key: key);
+  });
+
+  // Factory constructor for Adding a new routine
+  factory RoutineEditPage.add({
+    Key? key,
+    required MainTargetedBodyPart mainTargetedBodyPart, // Required for Add
+  }) {
+    return RoutineEditPage._(
+      key: key,
+      addOrEdit: AddOrEdit.add,
+      mainTargetedBodyPart: mainTargetedBodyPart,
+      initialRoutine: null,
+    );
+  }
+
+  // Factory constructor for Editing an existing routine
+  factory RoutineEditPage.edit({
+    Key? key,
+    required Routine routine, // Required for Edit
+  }) {
+    return RoutineEditPage._(
+      key: key,
+      addOrEdit: AddOrEdit.edit,
+      initialRoutine: routine,
+      mainTargetedBodyPart: routine.mainTargetedBodyPart,
+    );
+  }
 
   @override
-  _RoutineEditPageState createState() => _RoutineEditPageState();
+  State<RoutineEditPage> createState() => _RoutineEditPageState();
 }
 
 class _RoutineEditPageState extends State<RoutineEditPage> {
-  final scaffoldKey = GlobalKey<ScaffoldState>();
-  final formKey = GlobalKey<FormState>();
-  final TextEditingController textEditingController = TextEditingController();
-  late ScrollController scrollController;
+  // Keys
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
-  bool _initialized = false;
-  late Routine routineCopy;
-  Routine? routine;
+  // Controllers
+  final TextEditingController _nameEditingController = TextEditingController();
+  late ScrollController _scrollController;
+
+  // State
+  late Routine _routineEditState;
+  bool _isDirty = false;
 
   @override
   void initState() {
     super.initState();
-    scrollController = ScrollController();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scrollController.hasClients) {
-        scrollController.animateTo(
-          scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 500),
-          curve: SpringCurve.underDamped,
-        );
-      }
-    });
+    _scrollController = ScrollController();
+    _initializeRoutineState();
+    _nameEditingController.addListener(_markDirtyOnNameChange);
   }
+
+  void _markDirtyOnNameChange() {
+    if (!_isDirty && _nameEditingController.text != _routineEditState.routineName) {
+      setState(() { _isDirty = true; });
+    }
+  }
+
+  void _initializeRoutineState() {
+    if (widget.addOrEdit == AddOrEdit.edit && widget.initialRoutine != null) {
+      final initial = widget.initialRoutine!;
+      _routineEditState = initial.copyWith(
+        parts: initial.parts.map((p) => p.copyWith(
+          exercises: p.exercises.map((e) => e.copyWith()).toList(),
+        )).toList(),
+      );
+      _nameEditingController.text = _routineEditState.routineName;
+    } else {
+      _routineEditState = Routine(
+        routineName: '',
+        mainTargetedBodyPart: widget.mainTargetedBodyPart!,
+        parts: [],
+        createdDate: DateTime.now(),
+      );
+      _nameEditingController.text = '';
+    }
+    _isDirty = false;
+  }
+
 
   @override
   void dispose() {
-    scrollController.dispose();
+    _scrollController.dispose();
+    _nameEditingController.removeListener(_markDirtyOnNameChange);
+    _nameEditingController.dispose();
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: StreamBuilder<Routine?>(
-        stream: routinesBloc.currentRoutine,
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            routine = snapshot.data;
-
-            if (!_initialized) {
-              routineCopy = Routine.deepCopy(routine!);
-              textEditingController.text = routineCopy.routineName;
-              _initialized = true;
-            }
-
-            return Scaffold(
-              key: scaffoldKey,
-              appBar: AppBar(
-                title: Text(widget.addOrEdit == AddOrEdit.add
-                    ? 'New Routine'
-                    : 'Edit Routine'),
-                actions: [
-                  if (widget.addOrEdit == AddOrEdit.edit)
-                    IconButton(
-                      icon: const Icon(Icons.delete_forever),
-                      onPressed: _showDeleteDialog,
-                    ),
-                  IconButton(
-                    icon: const Icon(Icons.done),
-                    onPressed: onDonePressed,
-                  ),
-                ],
-              ),
-              body: ReorderableListView(
-                scrollController: scrollController,
-                onReorder: onReorder,
-                children: [
-                  _routineDescriptionEditCard(key: ValueKey('description_card')),
-                  ...buildExerciseDetails().map((widget) =>
-                    widget.key != null ? widget : KeyedSubtree(
-                      key: ValueKey('exercise_${widget.hashCode}'),
-                      child: widget
-                    )
-                  ),
-                ],
-                padding: const EdgeInsets.only(bottom: 128),
-              ),
-              floatingActionButton: FloatingActionButton.extended(
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text('ADD', style: TextStyle(color: Colors.white)),
-                backgroundColor: Theme.of(context).primaryColor,
-                onPressed: onAddExercisePressed,
-              ),
-            );
-          }
-          return const Center(child: CircularProgressIndicator());
-        },
-      ),
+  // --- Helper Methods ---
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
-  void onAddExercisePressed() {
-    setState(() {
-      routineCopy.parts.add(Part(
-        setType: SetType.Regular, // Use valid SetType value
-        targetedBodyPart: TargetedBodyPart.Chest, // Provide default value
-        exercises: [],
-      ));
-      _startTimeout(300);
+  void _scrollToEnd() {
+    if (!_scrollController.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo( _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300), curve: Curves.easeOut, );
+      }
     });
   }
 
-  void onDonePressed() {
-    if (widget.addOrEdit == AddOrEdit.add && routineCopy.parts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Routine is empty')),
-      );
-      return;
-    }
+  // --- Event Handlers ---
+  void _onAddPartPressed() async {
+    final newPart = Part(
+      setType: SetType.Regular,
+      targetedBodyPart: TargetedBodyPart.Chest,
+      exercises: [],
+    );
 
-    if (formKey.currentState!.validate()) {
-      formKey.currentState!.save();
-
-      if (widget.addOrEdit == AddOrEdit.add) {
-        routineCopy.mainTargetedBodyPart = widget.mainTargetedBodyPart!;
-        if (routineCopy.id == null) {
-          routinesBloc.addRoutine(routineCopy);
-        } else {
-          routinesBloc.updateRoutine(routineCopy);
-        }
-      } else {
-        if (routineCopy.id != null) {
-          routinesBloc.updateRoutine(routineCopy);
-        } else {
-          // Handle case where we should update but have no ID
-          routinesBloc.addRoutine(routineCopy);
-        }
-      }
-      Navigator.pop(context);
-    }
-  }
-
-  void onReorder(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) newIndex -= 1;
-    final part = routineCopy.parts.removeAt(oldIndex);
-    setState(() => routineCopy.parts.insert(newIndex, part));
-  }
-
-  List<Widget> buildExerciseDetails() {
-    return routineCopy.parts.map((part) => PartEditCard(
-      key: ObjectKey(part),
-      onDelete: () => setState(() => routineCopy.parts.remove(part)),
-      part: part,
-      curRoutine: routineCopy, // Added the required parameter
-    )).toList();
-  }
-
-  Widget _routineDescriptionEditCard({Key? key}) {
-    return Padding(
-      key: key,
-      padding: const EdgeInsets.all(8.0),
-      child: Card(
-        key: ObjectKey(routineCopy.routineName),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-        elevation: 12,
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Form(
-            key: formKey,
-            child: TextFormField(
-              controller: textEditingController,
-              style: const TextStyle(fontSize: 22),
-              decoration: const InputDecoration(
-                labelText: 'Routine Title',
-                border: InputBorder.none,
-              ),
-              validator: (value) => value?.isEmpty ?? true
-                  ? 'Please enter a title'
-                  : null,
-              onSaved: (value) => routineCopy.routineName = value!.isEmpty
-                  ? '${mainTargetedBodyPartToStringConverter(routineCopy.mainTargetedBodyPart)} Workout'
-                  : value,
-            ),
-          ),
+    final Part? editedPart = await Navigator.push<Part?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PartEditPage(
+          addOrEdit: AddOrEdit.add,
+          part: newPart,
+          // *** FIX: Removed curRoutine parameter ***
+          // curRoutine: _routineEditState,
         ),
       ),
     );
+
+    if (editedPart != null && mounted) {
+      setState(() {
+        _routineEditState = _routineEditState.copyWith(
+          parts: [..._routineEditState.parts, editedPart],
+        );
+        _isDirty = true;
+      });
+      _scrollToEnd();
+    } else {
+      debugPrint("Part addition cancelled or returned null.");
+    }
+  }
+
+  void _onDonePressed() {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      _showSnackBar("Please enter a routine title.");
+      return;
+    }
+
+    final finalRoutineName = _nameEditingController.text.trim().isEmpty
+        ? '${mainTargetedBodyPartToStringConverter(_routineEditState.mainTargetedBodyPart)} Workout'
+        : _nameEditingController.text.trim();
+
+    Routine finalRoutineToSave = _routineEditState.copyWith(
+        routineName: finalRoutineName
+    );
+
+    if (finalRoutineToSave.parts.isEmpty) {
+      _showSnackBar('Please add at least one exercise part.');
+      return;
+    }
+
+    for(final part in finalRoutineToSave.parts) {
+      if(!Part.validateExercises(part)) {
+        _showSnackBar('Please complete exercise details in all parts.');
+        return;
+      }
+    }
+
+    final routinesBlocInstance = context.read<RoutinesBloc>();
+
+    try {
+      if (widget.addOrEdit == AddOrEdit.add) {
+        routinesBlocInstance.addRoutine(finalRoutineToSave);
+      } else {
+        if (finalRoutineToSave.id != null) {
+          routinesBlocInstance.updateRoutine(finalRoutineToSave);
+        } else {
+          debugPrint("Error: Editing routine with null ID. Saving as new.");
+          _showSnackBar("Error: Missing ID. Saved as new routine.");
+          routinesBlocInstance.addRoutine(finalRoutineToSave.copyWith(id: null));
+        }
+      }
+      _isDirty = false; // Mark clean before popping
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      debugPrint("Error saving routine via BLoC: $e");
+      _showSnackBar("Failed to save routine: ${e.toString()}");
+    }
+  }
+
+  void _onReorder(int oldIndex, int newIndex) {
+    if (oldIndex == newIndex) return;
+    if (oldIndex < newIndex) newIndex -= 1;
+
+    setState(() {
+      final updatedParts = List<Part>.from(_routineEditState.parts);
+      final part = updatedParts.removeAt(oldIndex);
+      updatedParts.insert(newIndex, part);
+      _routineEditState = _routineEditState.copyWith(parts: updatedParts);
+      _isDirty = true;
+    });
+    _showSnackBar("Parts reordered.");
+  }
+
+  void _onDeletePart(Part partToDelete) {
+    setState(() {
+      _routineEditState = _routineEditState.copyWith(
+          parts: _routineEditState.parts.where((p) => p != partToDelete).toList()
+      );
+      _isDirty = true;
+    });
+    _showSnackBar("Part deleted.");
+  }
+
+  void _onEditPart(Part partToEdit, int partIndex) async {
+    if (partIndex < 0 || partIndex >= _routineEditState.parts.length) return;
+
+    // Assume Part.deepCopy exists for isolating edits
+    final Part partCopyForEditing = Part.deepCopy(partToEdit);
+
+    final Part? editedPart = await Navigator.push<Part?>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PartEditPage(
+          addOrEdit: AddOrEdit.edit,
+          part: partCopyForEditing,
+          // *** FIX: Removed curRoutine parameter ***
+          // curRoutine: _routineEditState,
+        ),
+      ),
+    );
+
+    if (editedPart != null && mounted) {
+      setState(() {
+        final updatedParts = List<Part>.from(_routineEditState.parts);
+        updatedParts[partIndex] = editedPart;
+        _routineEditState = _routineEditState.copyWith(parts: updatedParts);
+        _isDirty = true;
+      });
+    }
   }
 
   Future<bool> _onWillPop() async {
+    if (!_isDirty) return true;
     final shouldPop = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
+      context: context, barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog( /* ... Discard changes dialog ... */
         title: const Text('Discard changes?'),
-        content: const Text('Your edits will not be saved'),
+        content: const Text('Your edits will not be saved.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard', style: TextStyle(color: Colors.red)),
-          ),
+          TextButton( onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel'), ),
+          TextButton( onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Discard', style: TextStyle(color: Colors.red)), ),
         ],
       ),
     );
@@ -230,47 +283,98 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   }
 
   void _showDeleteDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Routine'),
-        content: const Text('This action cannot be undone'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              routinesBloc.deleteRoutine(routine: routineCopy);
-              Navigator.popUntil(context, (route) => route.isFirst);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
+    final routinesBlocInstance = context.read<RoutinesBloc>();
+    final routineIdToDelete = (widget.addOrEdit == AddOrEdit.edit) ? _routineEditState.id : null;
+    if (routineIdToDelete == null) { _showSnackBar("Cannot delete unsaved routine."); return; }
+
+    showDialog( context: context, builder: (dialogContext) => AlertDialog( /* ... Delete routine dialog ... */
+      title: const Text('Delete Routine?'),
+      content: Text('Permanently delete "${_routineEditState.routineName}"?'),
+      actions: [
+        TextButton( onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel'), ),
+        TextButton( style: TextButton.styleFrom(foregroundColor: Colors.red),
+          onPressed: () {
+            Navigator.pop(dialogContext);
+            try { routinesBlocInstance.deleteRoutine(routineIdToDelete); _showSnackBar("Routine deleted."); if (Navigator.canPop(context)) Navigator.pop(context); }
+            catch (e) { _showSnackBar("Failed to delete routine: ${e.toString()}"); }
+          }, child: const Text('Delete'), ),
+      ],
+    ),
+    );
+  }
+
+  // --- Build Methods for UI Components ---
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        key: _scaffoldKey,
+        appBar: AppBar( /* ... AppBar with actions ... */
+          title: Text(widget.addOrEdit == AddOrEdit.add ? 'Create Routine' : 'Edit Routine'),
+          leading: IconButton( icon: const Icon(Icons.arrow_back), tooltip: 'Back', onPressed: () async { if (await _onWillPop()) { if (mounted) Navigator.pop(context); } }, ),
+          actions: [ if (widget.addOrEdit == AddOrEdit.edit && _routineEditState.id != null) IconButton( icon: const Icon(Icons.delete_outline), tooltip: 'Delete Routine', onPressed: _showDeleteDialog, ), IconButton( icon: const Icon(Icons.check), tooltip: 'Save Routine', onPressed: _onDonePressed, ), ],
+        ),
+        body: Column(
+          children: [
+            _buildRoutineNameCard(),
+            Expanded(
+              child: ReorderableListView(
+                scrollController: _scrollController,
+                onReorder: _onReorder,
+                padding: const EdgeInsets.only(bottom: 96),
+                children: _buildPartEditCards(), // Build list of cards
+              ),
+            ),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text('ADD PART', style: TextStyle(color: Colors.white)),
+          onPressed: _onAddPartPressed,
+        ),
       ),
     );
   }
 
-  void _startTimeout([int milliseconds = 300]) {
-    Timer(Duration(milliseconds: milliseconds), () {
-      if (!mounted) return;
-
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PartEditPage(
-            addOrEdit: AddOrEdit.add,
-            part: routineCopy.parts.last,
-            curRoutine: routineCopy,
-          ),
-        ),
-      ).then((value) {
-        if (value != null && mounted) {
-          setState(() => routineCopy.parts.last = value);
-        }
-      });
+  List<Widget> _buildPartEditCards() {
+    if (_routineEditState.parts.isEmpty) {
+      return [ Container( key: const ValueKey('empty_list_placeholder'), /* ... Empty state message ... */ ) ];
+    }
+    return List.generate(_routineEditState.parts.length, (index) {
+      final part = _routineEditState.parts[index];
+      return PartEditCard(
+        key: ObjectKey(part), // Use ObjectKey for stateful parts
+        part: part,
+        curRoutine: _routineEditState, // Pass the *current* state
+        onDelete: () => _onDeletePart(part),
+        onEdit: () => _onEditPart(part, index), // Pass edit handler
+      );
     });
   }
-}
+
+  Widget _buildRoutineNameCard() {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Card(
+        elevation: 4,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Form(
+            key: _formKey,
+            child: TextFormField(
+              controller: _nameEditingController,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w500),
+              decoration: const InputDecoration( labelText: 'Routine Title *', hintText: 'e.g., Push Day', border: InputBorder.none, isDense: true,),
+              validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter a routine title' : null,
+              textInputAction: TextInputAction.done,
+              onChanged: (_) => _markDirtyOnNameChange(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+} // End of _RoutineEditPageState

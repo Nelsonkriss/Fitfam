@@ -1,179 +1,219 @@
+// Keep if history values might need decoding
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; // <-- FIX: Import intl package for DateFormat
 
-import 'package:workout_planner/ui/components/chart.dart';
-import 'package:workout_planner/ui/components/custom_expansion_tile.dart' as custom;
-import 'package:workout_planner/ui/theme.dart';
-
-import 'package:workout_planner/models/routine.dart';
+// Import Models, Utils, Components, Themes (adjust paths)
+import 'package:workout_planner/models/routine.dart'; // Contains Part, Exercise, SetType etc.
+import 'package:workout_planner/models/part.dart';
+import 'package:workout_planner/ui/theme.dart'; // Assuming ThemeRegular etc. are here
+import 'package:workout_planner/ui/components/chart.dart'; // Assuming StackedAreaLineChart is here
+import 'package:workout_planner/ui/components/custom_expansion_tile.dart' as custom; // Your custom tile
 
 class PartHistoryPage extends StatelessWidget {
   final Part part;
 
-  const PartHistoryPage(this.part, {Key? key}) : super(key: key);
+  const PartHistoryPage(this.part, {super.key});
 
   @override
   Widget build(BuildContext context) {
+    final exercisesWithHistory = part.exercises.where((ex) => ex.exHistory.isNotEmpty).toList();
+
+    if (exercisesWithHistory.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text("Exercise History")),
+        body: const Center(child: Text("No history recorded for exercises in this part.")),
+      );
+    }
+
     return DefaultTabController(
-      length: part.exercises.length,
+      length: exercisesWithHistory.length,
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios),
-            onPressed: () {
-              Navigator.pop(context);
-            },
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back',
+            onPressed: () => Navigator.pop(context),
           ),
+          title: const Text("Exercise History"),
           bottom: TabBar(
-            indicator: CircleTabIndicator(color: Colors.grey, radius: 3),
-            indicatorColor: Colors.grey,
+            indicator: CircleTabIndicator(color: Colors.grey.shade400, radius: 3),
+            labelColor: Theme.of(context).colorScheme.onPrimary,
+            unselectedLabelColor: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
             isScrollable: true,
-            tabs: _getTabs(part),
+            tabs: _getTabs(exercisesWithHistory),
           ),
-          title: const Text("History"),
+          // backgroundColor: setTypeToThemeColorConverter(part.setType), // Optional
         ),
         body: TabBarView(
-          children: _getTabChildren(part),
+          children: _getTabChildren(exercisesWithHistory, part.setType),
         ),
       ),
     );
   }
 
-  List<Widget> _getTabs(Part part) {
-    List<Widget> widgets = <Widget>[];
-
-    for (var ex in part.exercises) {
-      widgets.add(Tab(
-        text: ex.name,
-      ));
-    }
-
-    return widgets;
+  List<Widget> _getTabs(List<Exercise> exercises) {
+    return exercises.map((ex) => Tab( text: ex.name.isNotEmpty ? ex.name : 'Unnamed', )).toList();
   }
 
-  List<Widget> _getTabChildren(Part part) {
-    List<Widget> widgets = <Widget>[];
-
-    for (var ex in part.exercises) {
-      widgets.add(TabChild(ex, setTypeToThemeColorConverter(part.setType)));
-    }
-
-    return widgets;
+  List<Widget> _getTabChildren(List<Exercise> exercises, SetType setType) {
+    final Color color = setTypeToThemeColorConverter(setType);
+    return exercises.map((ex) => TabChild(ex, color)).toList();
   }
 
-  ///for reference
   Color setTypeToThemeColorConverter(SetType setType) {
-    switch (setType) {
-      case SetType.Regular:
-        return ThemeRegular.accentColor;
-      case SetType.Drop:
-        return ThemeDrop.accentColor;
-      case SetType.Super:
-        return ThemeSuper.accentColor;
-      case SetType.Tri:
-        return ThemeTri.accentColor;
-      case SetType.Giant:
-        return ThemeGiant.accentColor;
-      default:
-        throw Exception('Inside setTypeToThemeConverter');
+    try {
+      switch (setType) {
+        case SetType.Regular: return ThemeRegular.accentColor;
+        case SetType.Drop: return ThemeDrop.accentColor;
+        case SetType.Super: return ThemeSuper.accentColor;
+        case SetType.Tri: return ThemeTri.accentColor;
+        case SetType.Giant: return ThemeGiant.accentColor;
+      }
+    } catch(e) {
+      debugPrint("Error getting theme color for SetType $setType: $e. Using default.");
+      return Colors.blueGrey; // Fallback color
     }
   }
 }
 
+/// Displays the content for a single exercise tab (Chart + History List).
 class TabChild extends StatelessWidget {
   final Exercise exercise;
-  final Color foregroundColor;
+  final Color foregroundColor; // Used for ExpansionTile theming
 
-  const TabChild(this.exercise, this.foregroundColor, {Key? key}) : super(key: key);
+  const TabChild(this.exercise, this.foregroundColor, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            child: Container(height: 200, child: StackedAreaLineChart(exercise)),
+    return Column(
+      children: <Widget>[
+        // Chart Section
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SizedBox(
+              height: 200,
+              // Ensure StackedAreaLineChart handles potential empty history gracefully
+              child: StackedAreaLineChart(exercise)
           ),
-          Expanded(child: HistoryExpansionTile(exercise.exHistory, Colors.deepOrange)),
-        ],
-      ),
+        ),
+        // History List Section
+        Expanded(
+            child: HistoryExpansionTile(
+              // *** FIX #1: Pass the required positional arguments ***
+                exercise.exHistory, // Pass the exHistory map
+                foregroundColor     // Pass the foregroundColor
+            )
+        ),
+      ],
     );
   }
 }
 
-class Year {
-  final String year;
-  final List<String> dates = <String>[];
+/// Helper class to group history dates by year.
+class _YearGroup {
+  final int year;
+  final List<DateTime> dates = [];
 
-  Year(this.year) : assert(year.length == 4 && year[0] == '2' && year[1] == '0');
+  _YearGroup(this.year);
 }
 
+/// Displays the exercise history grouped by year in expandable tiles.
 class HistoryExpansionTile extends StatelessWidget {
-  final Map<dynamic, dynamic> exHistory;
-  final Color foregroundColor;
+  final Map<String, dynamic> exHistory; // Expects date string keys
+  final Color foregroundColor;          // For potential theming
 
-  const HistoryExpansionTile(this.exHistory, this.foregroundColor, {Key? key})
-      : assert(exHistory != null),
-        super(key: key);
+  // *** FIX #1: Corrected constructor signature ***
+  const HistoryExpansionTile(this.exHistory, this.foregroundColor, {super.key});
 
   @override
   Widget build(BuildContext context) {
-    var years = <Year>[];
-    for (var date in exHistory.keys) {
-      if (years.isEmpty) {
-        years.add(Year(date.toString().split('-').first));
-        years.last.dates.add(date.toString());
-      } else {
-        final dateStr = date.toString();
-        if (dateStr.length > 3 && (dateStr[2] != years.last.year[2] || dateStr[3] != years.last.year[3])) {
-          years.add(Year(dateStr.split('-').first));
-          years.last.dates.add(dateStr);
-        } else {
-          years.last.dates.add(dateStr);
-        }
+    // 1. Parse and Group Dates by Year robustly
+    final List<_YearGroup> yearGroups = [];
+    final List<DateTime> sortedDates = [];
+
+    for (var dateString in exHistory.keys) {
+      try {
+        // Attempt to parse assuming YYYY-MM-DD format
+        final dateTime = DateTime.parse(dateString);
+        sortedDates.add(dateTime);
+      } catch (e) {
+        debugPrint("Error parsing history date string: '$dateString'. Skipping. Error: $e");
       }
     }
 
+    if (sortedDates.isEmpty) {
+      return const Center(child: Text("No valid history entries found."));
+    }
+
+    // Sort dates chronologically (most recent first)
+    sortedDates.sort((a, b) => b.compareTo(a));
+
+    // Group sorted dates by year
+    for (final date in sortedDates) {
+      if (yearGroups.isEmpty || date.year != yearGroups.last.year) {
+        yearGroups.add(_YearGroup(date.year));
+      }
+      yearGroups.last.dates.add(date);
+    }
+
+    // 2. Build ListView with ExpansionTiles
     return ListView.builder(
-        itemCount: years.length + 1,
+        itemCount: yearGroups.length,
         itemBuilder: (context, i) {
-          if (i == years.length) {
-            return const SizedBox(height: 48);
-          }
+          final yearGroup = yearGroups[i];
+          // *** FIX #2: Removed non-existent parameters for custom.ExpansionTile ***
+          // Check your custom_expansion_tile.dart for available parameters like
+          // 'iconColor', 'titleColor', 'backgroundColor', etc. and use those instead if needed.
           return custom.ExpansionTile(
-            foregroundColor: foregroundColor,
-            title: Text(years[i].year),
-            children: _listViewBuilder(years[i].dates, exHistory),
+            // Pass parameters supported by YOUR custom widget
+            title: Text(yearGroup.year.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
+            initiallyExpanded: i == 0, // Expand the first (most recent) year
+            children: _buildHistoryListTiles(yearGroup.dates, exHistory),
+            // Removed unsupported parameters:
+            // foregroundColor: foregroundColor,
+            // iconColor: foregroundColor,
+            // collapsedIconColor: foregroundColor.withOpacity(0.7),
+            // textColor: foregroundColor,
+            // collapsedTextColor: Theme.of(context).textTheme.bodyLarge?.color,
+            // childrenPadding: const EdgeInsets.only(bottom: 8.0),
           );
+          // *** END FIX #2 ***
         });
   }
 
-  List<Widget> _listViewBuilder(List<String> dates, Map<dynamic, dynamic> exHistory) {
+  /// Builds the ListTiles for the dates within a specific year.
+  List<Widget> _buildHistoryListTiles(List<DateTime> dates, Map<String, dynamic> historyMap) {
+    // *** FIX #3: Use imported DateFormat ***
+    final DateFormat dateFormat = DateFormat.yMMMd(); // Example format: Jan 1, 2023
     List<Widget> listTiles = <Widget>[];
-    for (var date in dates) {
+
+    for (int i = 0; i < dates.length; i++) {
+      final date = dates[i];
+      // Convert DateTime back to the String key used in the map
+      final dateStringKey = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+      final historyValue = historyMap[dateStringKey]?.toString() ?? 'N/A';
+
       listTiles.add(ListTile(
-        leading: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.grey[350],
-            ),
-            child: Center(
-              child: Text(
-                (dates.indexOf(date) + 1).toString(),
-                style: const TextStyle(fontSize: 16),
-              ),
-            )),
-        title: Text(date),
-        subtitle: Text(exHistory[date].toString()),
+        dense: true,
+        leading: CircleAvatar(
+          radius: 16,
+          backgroundColor: Colors.grey[300],
+          child: Text( (i + 1).toString(), style: const TextStyle(fontSize: 12, color: Colors.black87),),
+        ),
+        title: Text(dateFormat.format(date)), // Use DateFormat
+        subtitle: Text("Record: $historyValue"),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 0),
       ));
-      listTiles.add(const Divider());
+      if (i < dates.length - 1) {
+        listTiles.add(const Divider(height: 1, indent: 56, endIndent: 16));
+      }
     }
     return listTiles;
   }
 }
 
+
+// --- Custom Tab Indicator --- (Keep as is if it works)
 class CircleTabIndicator extends Decoration {
   final BoxPainter _painter;
 
@@ -194,7 +234,9 @@ class _CirclePainter extends BoxPainter {
 
   @override
   void paint(Canvas canvas, Offset offset, ImageConfiguration cfg) {
-    final Offset circleOffset = offset + Offset(cfg.size!.width / 2, cfg.size!.height - radius - 5);
-    canvas.drawCircle(circleOffset, radius, _paint);
+    if (cfg.size != null) {
+      final Offset circleOffset = offset + Offset(cfg.size!.width / 2, cfg.size!.height - radius - 5);
+      canvas.drawCircle(circleOffset, radius, _paint);
+    }
   }
 }

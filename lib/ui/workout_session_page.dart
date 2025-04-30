@@ -1,194 +1,196 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Required for input formatters
+import 'package:flutter/services.dart'; // For input formatters in dialog
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:dumbbell_new/models/workout_session.dart';
-import 'package:dumbbell_new/models/routine.dart';
+import 'package:workout_planner/models/workout_session.dart'; // Use updated models
+import 'package:workout_planner/models/routine.dart';
+// Needed for models used by WorkoutSession
+// Needed for models used by Routine
 
-abstract class WorkoutSessionEvent {}
+// Import the BLoC files (Events, States, Bloc itself)
+import 'package:workout_planner/bloc/workout_session_bloc.dart';
 
-class WorkoutSessionStarted extends WorkoutSessionEvent {
-  final WorkoutSession session;
-  WorkoutSessionStarted(this.session);
-}
+// Import the global dbProvider instance
+import 'package:workout_planner/resource/db_provider.dart';
 
-class WorkoutSetCompleted extends WorkoutSessionEvent {
-  final int exerciseIndex;
-  final int setIndex;
-  final int actualReps;
-  final double actualWeight;
-  WorkoutSetCompleted({
-    required this.exerciseIndex,
-    required this.setIndex,
-    required this.actualReps,
-    required this.actualWeight,
-  });
-}
-
-class WorkoutSessionFinished extends WorkoutSessionEvent {}
-
-// --- Placeholder BLoC State (Define in your bloc file) ---
-// Make sure this state is immutable
-@immutable // Good practice to mark state as immutable
-class WorkoutSessionState {
-  final WorkoutSession? session;
-  final Duration currentDuration;
-  final bool isResting;
-  final bool isLoading; // Example: Add loading/saving state
-  final String? error;   // Example: Add error state
-
-  const WorkoutSessionState({
-    this.session,
-    this.currentDuration = Duration.zero,
-    this.isResting = false,
-    this.isLoading = false,
-    this.error,
-  });
-
-  // Helper for immutability
-  WorkoutSessionState copyWith({
-    WorkoutSession? session, // Allow nullable to potentially clear session
-    Duration? currentDuration,
-    bool? isResting,
-    bool? isLoading,
-    String? error,
-    bool clearError = false, // Helper to explicitly clear error
-  }) {
-    return WorkoutSessionState(
-      session: session ?? this.session,
-      currentDuration: currentDuration ?? this.currentDuration,
-      isResting: isResting ?? this.isResting,
-      isLoading: isLoading ?? this.isLoading,
-      error: clearError ? null : error ?? this.error,
-    );
-  }
-}
-
-// --- Placeholder BLoC (Define and implement in your bloc file) ---
-class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> {
-  // Constructor requires initial state
-  WorkoutSessionBloc() : super(const WorkoutSessionState()) { // Initial empty state
-    on<WorkoutSessionStarted>(_onWorkoutSessionStarted);
-    on<WorkoutSetCompleted>(_onWorkoutSetCompleted);
+import '../models/exercise_performance.dart';
+import '../models/set_performance.dart'; // Adjust path if needed
 
 class WorkoutSessionPage extends StatelessWidget {
   final Routine routine;
 
-  const WorkoutSessionPage({Key? key, required this.routine}) : super(key: key);
-
-  WorkoutSession _createInitialSession(Routine routine) {
-    return WorkoutSession(
-      routine: routine,
-      startTime: DateTime.now(),
-    );
-  }
-
+  const WorkoutSessionPage({super.key, required this.routine});
 
   @override
   Widget build(BuildContext context) {
-    // Create and provide the BLoC instance for this page
-    return BlocProvider(
-      // Use lazy: false if you need the bloc immediately (e.g., for starting timer)
-      // Otherwise, lazy: true (default) is fine.
-      create: (context) {
-        final bloc = WorkoutSessionBloc();
-        // Create the initial session state object
-        final initialSession = _createInitialSession(routine);
-        // Dispatch the event to initialize the BLoC's state
-        bloc.add(WorkoutSessionStarted(initialSession));
-        return bloc;
-      },
+    return BlocProvider<WorkoutSessionBloc>( // Explicitly type BlocProvider
+      create: (context) => WorkoutSessionBloc(dbProvider: dbProvider) // Pass dbProvider
+        ..add(WorkoutSessionStartNew(routine)), // Instantiate and add correct event
       child: Scaffold(
         appBar: AppBar(
-          title: Text(routine.routineName), // Use routine name passed in
+          title: Text(routine.routineName),
           actions: [
             IconButton(
               icon: const Icon(Icons.close),
-              // Use BlocListener potentially for side-effects like navigation after finish
-              onPressed: () => Navigator.pop(context), // Simple close for now
+              onPressed: () {
+                // Optional: Confirmation Dialog
+                showDialog(
+                    context: context,
+                    builder: (confirmCtx) => AlertDialog(
+                      title: const Text('Cancel Workout?'),
+                      content: const Text('Are you sure you want to cancel this session? Progress will not be saved.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(confirmCtx), child: const Text('Continue Workout')),
+                        TextButton(
+                            onPressed: () {
+                              Navigator.pop(confirmCtx); // Close dialog
+                              Navigator.pop(context); // Close page
+                            },
+                            child: const Text('Cancel Session', style: TextStyle(color: Colors.red))
+                        ),
+                      ],
+                    )
+                );
+              },
             ),
           ],
         ),
-        // Use BlocListener for handling navigation/snackbars based on state changes
-        // e.g., navigating away after WorkoutSessionFinished completes successfully.
-        body: BlocConsumer<WorkoutSessionBloc, WorkoutSessionState>(
+        body: BlocListener<WorkoutSessionBloc, WorkoutSessionState>(
           listener: (context, state) {
-            // Example: Show error messages
-            if (state.error != null) {
+            // Handle non-UI side effects using boolean flags
+            if (state.errorMessage != null) { // Check error message directly
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(state.error!), backgroundColor: Colors.red),
-              );
-              // Optionally clear the error from state after showing it
-              // context.read<WorkoutSessionBloc>().add(ClearErrorEvent());
-            }
-            // Example: Navigate back when session is finished *and* saved
-            // Check for a specific flag like `isSessionCompleteAndSaved` if needed
-          },
-          builder: (context, state) {
-            // Show loading indicator if session data isn't ready yet
-            if (state.session == null || (state.isLoading && state.session == null)) { // Check if initial loading
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            // Optionally show overlay loading indicator during operations like saving
-            return Stack(
-              children: [
-                Column(
-                  children: [
-                    _TimerDisplay(), // Reads from bloc state
-                    Expanded(
-                      child: _ExerciseList(), // Reads from bloc state
-                    ),
-                    _SessionControls(), // Dispatches events to bloc
-                  ],
+                SnackBar(
+                  content: Text(state.errorMessage!),
+                  backgroundColor: Colors.red,
+                  // Action removed for simplicity, maybe add an error clear event/button later
                 ),
-                if (state.isLoading) // Show loading overlay during async ops
-                  Container(
-                    color: Colors.black.withOpacity(0.3),
-                    child: const Center(child: CircularProgressIndicator()),
-                  ),
-              ],
-            );
+              );
+            } else if (state.isFinished) { // Check isFinished flag
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Workout Finished and Saved!'), backgroundColor: Colors.green),
+              );
+              // Consider navigating back after a delay or adding a "Done" button
+              // Future.delayed(const Duration(seconds: 2), () {
+              //   if (Navigator.canPop(context)) {
+              //     Navigator.pop(context);
+              //   }
+              // });
+            }
           },
+          child: BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
+            builder: (context, state) {
+              // Handle initial loading or error state where session is null
+              // Check isLoading AND session is null for the very initial load
+              if (state.isLoading && state.session == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              // If not loading but session is still null, something went wrong
+              if (state.session == null && !state.isLoading) {
+                return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        state.errorMessage ?? 'Failed to load workout session.', // Show specific error if available
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.red[700]),
+                      ),
+                    )
+                );
+              }
+              // If session is not null, proceed to build the main layout
+              if (state.session != null) {
+                return Stack( // Use Stack for overlaying loading indicator during save
+                  children: [
+                    Column(
+                      children: [
+                        _TimerDisplay(), // Reads displayDuration from state
+                        Expanded(
+                          child: _ExerciseList(), // Reads session exercises from state
+                        ),
+                        _SessionControls(), // Reads flags for button state
+                      ],
+                    ),
+                    // Loading overlay during saving (check isLoading flag)
+                    if (state.isLoading) // Check isLoading flag
+                      Container(
+                        color: Colors.black.withOpacity(0.5),
+                        child: const Center(
+                            child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(color: Colors.white),
+                                  SizedBox(height: 10),
+                                  Text("Finishing...", style: TextStyle(color: Colors.white, fontSize: 16)),
+                                ]
+                            )
+                        ),
+                      ),
+                  ],
+                );
+              }
+              // Fallback - should ideally not be reached if logic above is correct
+              return const Center(child: Text('An unexpected error occurred.'));
+            },
+          ),
         ),
       ),
     );
   }
 }
 
+// --- _TimerDisplay (Uses displayDuration) ---
 class _TimerDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Select specific parts of the state to rebuild only when they change
-    final duration = context.select((WorkoutSessionBloc bloc) => bloc.state.currentDuration);
+    // Select only the displayDuration and isResting flag
+    final duration = context.select((WorkoutSessionBloc bloc) => bloc.state.displayDuration);
     final isResting = context.select((WorkoutSessionBloc bloc) => bloc.state.isResting);
 
+    String formatDuration(Duration d) {
+      // Handle potential negative duration during rest timer transition
+      final seconds = d.inSeconds < 0 ? 0 : d.inSeconds;
+      final minutes = seconds ~/ 60;
+      final remainingSeconds = seconds % 60;
+      return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+    }
+
     return Container(
-      padding: const EdgeInsets.all(16),
-      color: isResting ? Colors.blue[100] : Colors.transparent,
-      child: Center(
-        child: Text(
-          '${duration.inMinutes.toString().padLeft(2, '0')}:'
-              '${(duration.inSeconds % 60).toString().padLeft(2, '0')}',
-          style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
-        ),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      color: isResting ? Colors.blue[100] : Colors.transparent, // Indicate resting state
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isResting)
+            const Text("REST", style: TextStyle(fontSize: 16, color: Colors.blue, fontWeight: FontWeight.bold)),
+          if (isResting)
+            const SizedBox(height: 4),
+          Center(
+            child: Text(
+              formatDuration(duration),
+              style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, fontFamily: 'RobotoMono'), // Use monospaced font?
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+// --- _ExerciseList (Reads state flags for button disable) ---
 class _ExerciseList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // No need for BlocBuilder here if the parent (BlocConsumer) handles the main state changes (like session loading)
-    // We only need to read the current session which is guaranteed to be non-null by the builder logic above.
-    final session = context.read<WorkoutSessionBloc>().state.session!;
+    // Use watch to rebuild when state changes (including session updates)
+    final state = context.watch<WorkoutSessionBloc>().state;
+    final session = state.session!; // Guaranteed non-null by parent builder
 
     return ListView.builder(
       itemCount: session.exercises.length,
       itemBuilder: (context, exerciseIndex) {
-        final exercise = session.exercises[exerciseIndex];
+        final ExercisePerformance exercise = session.exercises[exerciseIndex];
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          elevation: 2, // Subtle elevation
           child: Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
@@ -196,37 +198,58 @@ class _ExerciseList extends StatelessWidget {
               children: [
                 Text(
                   exercise.exerciseName,
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 8),
-                // Using ListView.separated for dividers between sets
+                const SizedBox(height: 10),
                 ListView.separated(
-                  shrinkWrap: true, // Important inside another scroll view
-                  physics: const NeverScrollableScrollPhysics(), // Disable scrolling
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   itemCount: exercise.sets.length,
                   itemBuilder: (context, setIndex) {
-                    final set = exercise.sets[setIndex];
+                    final SetPerformance set = exercise.sets[setIndex];
+                    // Determine if button should be disabled based on overall state
+                    final bool isButtonDisabled = state.isLoading || state.isFinished;
+
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       title: Text(
                           'Set ${setIndex + 1}: Target ${set.targetReps} reps x ${set.targetWeight} kg'),
                       trailing: set.isCompleted
-                          ? Text(
-                        '${set.actualReps} x ${set.actualWeight} kg',
-                        style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.bold),
+                          ? Tooltip( // Add tooltip for completed sets
+                        message: "Completed: ${set.actualWeight} kg x ${set.actualReps} reps",
+                        child: Row( // Use Row for icon + text
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${set.actualReps} x ${set.actualWeight} kg',
+                                style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.check_circle, color: Colors.green[800], size: 18),
+                            ]
+                        ),
                       )
                           : ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            backgroundColor: isButtonDisabled ? Colors.grey : null,
+                            textStyle: const TextStyle(fontSize: 13) // Slightly smaller text
                         ),
-                        onPressed: () => _showCompleteSetDialog(
-                            context, exerciseIndex, setIndex, exercise.exerciseName, set),
-                        child: const Text('Complete'),
+                        onPressed: isButtonDisabled
+                            ? null
+                            : () => _showCompleteSetDialog(
+                            context, // Original context
+                            exerciseIndex,
+                            setIndex,
+                            exercise.exerciseName,
+                            set // Pass current set data
+                        ),
+                        child: const Text('Log Set'),
                       ),
                     );
                   },
-                  separatorBuilder: (context, index) => const Divider(height: 1),
+                  separatorBuilder: (context, index) => const Divider(height: 1, thickness: 0.5),
                 ),
               ],
             ),
@@ -236,152 +259,181 @@ class _ExerciseList extends StatelessWidget {
     );
   }
 
-  // --- Improved Dialog Function ---
+  // --- Dialog Function (Improved Disposal) ---
   void _showCompleteSetDialog(
-      BuildContext context, // Original context needed for Bloc access and showing dialog
+      BuildContext providerContext, // Context with access to Bloc
       int exerciseIndex,
       int setIndex,
       String exerciseName,
-      SetPerformance currentSet // Pass the set for default values
-      ) {
-    // Controllers to manage text field state locally within the dialog
+      SetPerformance currentSet) {
+
+    // Initialize with target values as hints or initial values
     final repsController = TextEditingController(text: currentSet.targetReps.toString());
     final weightController = TextEditingController(text: currentSet.targetWeight.toString());
-    final formKey = GlobalKey<FormState>(); // For validation
+    final formKey = GlobalKey<FormState>();
+
+    // Function to dispose controllers safely
+    void disposeControllers() {
+      try {
+        repsController.dispose();
+        weightController.dispose();
+      } catch(e) {
+        debugPrint("Error disposing controllers: $e");
+      }
+    }
 
     showDialog(
-      context: context,
-      // Prevent dismissal by tapping outside
-      barrierDismissible: false,
-      builder: (dialogContext) { // Use a different context name for the dialog
+      context: providerContext, // Use the context that has the BlocProvider
+      barrierDismissible: false, // Prevent accidental dismissal
+      builder: (dialogContext) { // Context specific to the dialog
         return AlertDialog(
-          title: Text('Complete $exerciseName - Set ${setIndex + 1}'),
-          content: StatefulBuilder( // Use StatefulBuilder to manage local state (controllers)
-              builder: (stfContext, stfSetState) {
-                return Form( // Wrap in Form for validation
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextFormField(
-                        controller: repsController,
-                        decoration: const InputDecoration(
-                            labelText: 'Reps Completed',
-                            hintText: 'Enter reps'
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly], // Allow only numbers
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter reps';
-                          }
-                          if (int.tryParse(value) == null) {
-                            return 'Invalid number';
-                          }
-                          return null; // Valid
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      TextFormField(
-                        controller: weightController,
-                        decoration: const InputDecoration(
-                            labelText: 'Weight (kg)',
-                            hintText: 'Enter weight'
-                        ),
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))], // Allow numbers and decimals
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            // Allow zero weight
-                            return null; // Valid (or add specific validation if needed)
-                          }
-                          if (double.tryParse(value) == null) {
-                            return 'Invalid number';
-                          }
-                          return null; // Valid
-                        },
-                      ),
-                    ],
+          title: Text('Log $exerciseName - Set ${setIndex + 1}'),
+          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0.0), // Adjust padding
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Prevent excessive height
+              children: [
+                TextFormField(
+                  controller: repsController,
+                  autofocus: true, // Focus reps field first
+                  decoration: InputDecoration(
+                      labelText: 'Reps Completed',
+                      hintText: 'Target: ${currentSet.targetReps}', // Show target as hint
+                      border: const OutlineInputBorder(),
+                      suffixIcon: const Icon(Icons.repeat)
                   ),
-                );
-              }
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: (value) {
+                    if (value == null || value.isEmpty || int.tryParse(value) == null) {
+                      return 'Enter valid reps';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16), // Increased spacing
+                TextFormField(
+                  controller: weightController,
+                  decoration: InputDecoration(
+                      labelText: 'Weight (kg)', // Add unit
+                      hintText: 'Target: ${currentSet.targetWeight} kg',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: const Icon(Icons.fitness_center)
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))], // Allow decimal
+                  validator: (value) {
+                    if (value != null && value.isNotEmpty && double.tryParse(value) == null) {
+                      return 'Enter valid weight'; // Validate only if not empty
+                    }
+                    return null; // Allow empty (interpreted as 0 or target)
+                  },
+                ),
+                const SizedBox(height: 20), // Space before buttons
+              ],
+            ),
           ),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           actions: [
             TextButton(
               onPressed: () {
-                // Dispose controllers before closing
-                repsController.dispose();
-                weightController.dispose();
                 Navigator.pop(dialogContext); // Close the dialog
+                disposeControllers(); // Dispose on cancel
               },
               child: const Text('Cancel'),
             ),
-            TextButton(
+            ElevatedButton( // Make Save more prominent
               onPressed: () {
                 // Validate the form first
-                if (formKey.currentState!.validate()) {
-                  final actualReps = int.tryParse(repsController.text) ?? 0; // Use 0 or handle error
-                  final actualWeight = double.tryParse(weightController.text) ?? 0.0; // Use 0.0 or handle error
+                if (formKey.currentState?.validate() ?? false) {
+                  // Use tryParse with defaults based on target values
+                  final actualReps = int.tryParse(repsController.text) ?? currentSet.targetReps;
+                  // If empty, default to target weight, otherwise parse or default to 0.0 if parse fails
+                  final actualWeight = weightController.text.isEmpty
+                      ? currentSet.targetWeight
+                      : (double.tryParse(weightController.text) ?? currentSet.targetWeight);
 
-                  // Use the *original* context to find the BLoC
-                  context.read<WorkoutSessionBloc>().add(
-                    WorkoutSetCompleted(
+                  // Use the providerContext to find the BLoC and add the event
+                  providerContext.read<WorkoutSessionBloc>().add(
+                    WorkoutSetMarkedComplete( // Use correct event name
                       exerciseIndex: exerciseIndex,
                       setIndex: setIndex,
                       actualReps: actualReps,
                       actualWeight: actualWeight,
                     ),
                   );
-
-                  // Dispose controllers before closing
-                  repsController.dispose();
-                  weightController.dispose();
-                  Navigator.pop(dialogContext); // Close the dialog only on success
+                  Navigator.pop(dialogContext); // Close the dialog
+                  disposeControllers(); // Dispose on save
                 }
               },
-              child: const Text('Save'),
+              child: const Text('Save Set'),
             ),
           ],
         );
       },
-    ).then((_) {
-      // Ensure controllers are disposed even if dialog is dismissed unexpectedly
-      // Although barrierDismissible=false prevents this case often.
-      // If they weren't disposed in actions, dispose here.
-      // repsController.dispose();
-      // weightController.dispose();
-    });
+    );
+    // No need for .then() if dispose is handled in actions
   }
 }
 
 
+// --- _SessionControls (Uses boolean state flags) ---
 class _SessionControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
+      // Watch the state to rebuild when flags change
       child: BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
-        // Build only when loading state changes to enable/disable button
-        buildWhen: (previous, current) => previous.isLoading != current.isLoading || previous.session?.endTime != current.session?.endTime,
+        // Rebuild only when relevant flags change
+        buildWhen: (prev, current) =>
+        prev.isLoading != current.isLoading || prev.isFinished != current.isFinished,
         builder: (context, state) {
-          final bool isFinished = state.session?.endTime != null;
+          // Use boolean flags directly
+          final bool isFinished = state.isFinished;
+          final bool isLoading = state.isLoading;
+          // Determine if the finish button should be enabled
+          final bool canFinish = !isLoading && !isFinished && state.session != null;
+
           return ElevatedButton(
             style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48), // Make button wider
-              backgroundColor: isFinished ? Colors.grey : Theme.of(context).primaryColor, // Grey out if finished
+              minimumSize: const Size(double.infinity, 48), // Full width
+              backgroundColor: isFinished ? Colors.grey : (isLoading ? Colors.orangeAccent : Theme.of(context).primaryColor),
+              foregroundColor: Colors.white, // Text color
+              textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            // Disable button while loading/saving or if already finished
-            onPressed: (state.isLoading || isFinished) ? null : () {
-              // Dispatch event to finish the session
-              context.read<WorkoutSessionBloc>().add(WorkoutSessionFinished());
-              // Consider showing confirmation dialog before finishing?
-              // Navigation back should ideally be handled by a BlocListener
-              // listening for the successful completion state after saving.
-              // Navigator.pop(context); // Avoid popping immediately here
+            // Disable button if loading or already finished
+            onPressed: !canFinish ? null : () {
+              // Optional: Confirmation Dialog before finishing
+              showDialog(
+                  context: context,
+                  barrierDismissible: false, // Prevent accidental dismissal
+                  builder: (confirmContext) => AlertDialog(
+                    title: const Text('Finish Workout?'),
+                    content: const Text('Are you sure you want to end and save this session?'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(confirmContext),
+                          child: const Text('Cancel')
+                      ),
+                      ElevatedButton( // Make Finish more prominent
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          onPressed: () {
+                            Navigator.pop(confirmContext); // Close dialog
+                            // Dispatch the correct event to finish
+                            context.read<WorkoutSessionBloc>().add(WorkoutSessionFinishAttempt());
+                          },
+                          child: const Text('Finish & Save')
+                      ),
+                    ],
+                  )
+              );
             },
-            child: state.isLoading
-                ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white,))
-                : Text(isFinished ? 'Workout Finished' : 'Finish Workout', style: const TextStyle(fontSize: 18)),
+            child: isLoading
+                ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3,))
+                : Text(isFinished ? 'Workout Finished' : 'Finish Workout'),
           );
         },
       ),

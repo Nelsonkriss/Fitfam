@@ -1,48 +1,24 @@
-import 'package:flutter/foundation.dart';
-import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/workout_session.dart';
+// resource/db_provider.dart
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+// Import the INTERFACE
 import 'db_provider_interface.dart';
+import 'db_provider_io.dart';
+import 'db_provider_web.dart';
 
-// Platform-specific implementations
-import 'db_provider_io.dart' if (dart.library.io) 'db_provider_io.dart';
-import 'db_provider_web.dart' if (dart.library.html) 'db_provider_web.dart';
+// Conditional Export: Exports either DBProviderIO or DBProviderWeb *as* DBProviderImpl
+// This makes the concrete class name consistent regardless of platform.
+export 'db_provider_io.dart' if (dart.library.html) 'db_provider_web.dart' show DBProviderWeb hide DBProviderIO;
+export 'db_provider_io.dart' if (dart.library.io) 'db_provider_io.dart' show DBProviderIO hide DBProviderWeb;
 
-abstract class DBProvider implements DbProviderInterface {
-  factory DBProvider() {
-    if (kIsWeb) {
-      return DBProviderWeb();
-    } else {
-      return DBProviderIO();
-    }
+// Factory function to create the correct implementation
+DbProviderInterface createDbProvider() {
+  if (kIsWeb) {
+    return DBProviderWeb(); // Directly call the web constructor
+  } else {
+    return DBProviderIO(); // Directly call the IO constructor
   }
-
-  // Original routine methods remain unchanged
-  @override
-  Future<void> initDB();
-  @override
-  Future<int> newRoutine(Routine routine);
-  @override
-  Future<void> updateRoutine(Routine routine);
-  @override
-  Future<void> deleteRoutine(Routine routine);
-  @override
-  Future<List<Routine>> getAllRoutines();
-  @override
-  Future<List<Routine>> getAllRecRoutines();
-  @override
-  Future<void> addAllRoutines(List<Routine> routines);
-  @override
-  Future<void> deleteAllRoutines();
-
-  // New workout session methods
-  @override
-  Future<void> saveWorkoutSession(WorkoutSession session);
-  @override
-  Future<List<WorkoutSession>> getWorkoutSessions();
-  @override
-  Future<WorkoutSession?> getWorkoutSessionById(String id);
-  @override
-  Future<void> deleteWorkoutSession(String id);
 }
 
-final dbProvider = DBProvider();
+// Global instance of the correct implementation, typed as the interface
+final DbProviderInterface dbProvider = createDbProvider();

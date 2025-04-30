@@ -1,185 +1,301 @@
+// Keep if needed by other imports/logic
+
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:workout_planner/bloc/routines_bloc.dart';
+// Keep if needed
+import 'package:provider/provider.dart'; // Import Provider
+
+// Import BLoC, Models, Utils, UI (adjust paths)
+import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
+// Routine model likely uses Part
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 import 'package:workout_planner/ui/recommend_page.dart';
 import 'package:workout_planner/ui/routine_edit_page.dart';
-import 'package:workout_planner/utils/routine_helpers.dart';
-
-import 'components/routine_card.dart';
+import 'package:workout_planner/utils/routine_helpers.dart'; // For converters, AddOrEdit enum
+import 'package:workout_planner/ui/components/routine_card.dart'; // RoutineCard component
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key}) : super(key: key);
+  const HomePage({super.key});
 
   @override
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>{
-  final scrollController = ScrollController();
-  bool showShadow = false;
+class _HomePageState extends State<HomePage> {
+  final ScrollController _scrollController = ScrollController(); // Use final
+  bool _showAppBarShadow = false; // Use more descriptive name
 
   @override
   void initState() {
     super.initState();
-
-    scrollController.addListener(() {
-      if (mounted) {
-        if (scrollController.offset <= 0) {
-          setState(() {
-            showShadow = false;
-          });
-        } else if (showShadow == false) {
-          setState(() {
-            showShadow = true;
-          });
-        }
-      }
+    // Fetch routines when the page loads for the first time
+    // Access BLoC via context safely after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Use context.read here as we only need to trigger fetch once
+      context.read<RoutinesBloc>().fetchAllRoutines();
     });
+
+    _scrollController.addListener(_scrollListener);
+  }
+
+  void _scrollListener() {
+    // Check if mounted before accessing state/setState
+    if (!mounted) return;
+    // Determine if shadow should be shown based on scroll offset
+    final shouldShowShadow = _scrollController.offset > 0;
+    // Only call setState if the shadow state actually changes
+    if (shouldShowShadow != _showAppBarShadow) {
+      setState(() {
+        _showAppBarShadow = shouldShowShadow;
+      });
+    }
   }
 
   @override
   void dispose() {
-    scrollController.dispose();
+    _scrollController.removeListener(_scrollListener); // Remove listener
+    _scrollController.dispose();
     super.dispose();
   }
 
+  // --- Build Methods ---
+
   @override
   Widget build(BuildContext context) {
+    // Access BLoC instance here for use in StreamBuilder and FAB
+    final routinesBlocInstance = context.watch<RoutinesBloc>();
+
     return Scaffold(
-      body: SizedBox(
-        height: MediaQuery.of(context).size.height,
-        child: StreamBuilder<List<Routine>>(
-          stream: routinesBloc.allRoutines,
+      // Use NestedScrollView for AppBar shadow effect on scroll
+      body: NestedScrollView(
+        controller: _scrollController, // Attach controller
+        headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
+          return <Widget>[
+            SliverAppBar(
+              title: const Text('Workout Planner'),
+              pinned: true, // Keep AppBar visible
+              floating: true, // Allow AppBar to reappear on upward scroll
+              forceElevated: _showAppBarShadow, // Show shadow based on state
+              // Customize AppBar appearance if needed
+              // backgroundColor: Theme.of(context).primaryColor,
+              // foregroundColor: Colors.white,
+            ),
+          ];
+        },
+        body: StreamBuilder<List<Routine>>(
+          // *** FIX: Use stream from BLoC instance ***
+          stream: routinesBlocInstance.allRoutinesStream,
           builder: (_, AsyncSnapshot<List<Routine>> snapshot) {
             if (snapshot.hasError) {
-              return Center(child: Text('Error: ${snapshot.error}'));
+              // Show error message with retry option?
+              return Center(child: Text('Error loading routines: ${snapshot.error}'));
             }
-            
-            if (snapshot.connectionState == ConnectionState.waiting) {
+
+            // Show loading indicator only on initial wait
+            if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-              return ListView(
-                controller: scrollController,
-                children: buildChildren(snapshot.data!),
-              );
+            // Handle case where data is null or empty after stream emits
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return _buildEmptyState(context, routinesBlocInstance); // Show empty state UI
             }
-            
-            return const Center(child: Text('No routines found'));
+
+            // Data is available, build the list
+            final routines = snapshot.data!;
+            return ListView(
+              // No controller needed here, NestedScrollView handles it
+              padding: EdgeInsets.zero, // Remove default padding if using SliverAppBar
+              children: _buildRoutineListSections(context, routines),
+            );
           },
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Theme.of(context).primaryColor,
+        // backgroundColor: Theme.of(context).colorScheme.secondary, // Use theme color
         child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () {
-          showModalBottomSheet(
-              context: context,
-              builder: (context) {
-                return Column(
-                  children: [
-                    ...MainTargetedBodyPart.values.map((val) {
-                      var title = mainTargetedBodyPartToStringConverter(val);
-                      return ListTile(
-                        title: Text(title),
-                        onTap: () {
-                          Navigator.pop(context);
-                          // Fix: Use DateTime instead of int for createdDate
-                          var tempRoutine =
-                          Routine(
-                              mainTargetedBodyPart: val,
-                              routineName: '',
-                              parts: <Part>[],
-                              createdDate: DateTime.now(), // Fixed: Now passing a DateTime
-                              weekdays: [],
-                              routineHistory: []
-                          );
-                          routinesBloc.setCurrentRoutine(tempRoutine);
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) => RoutineEditPage(
-                                    addOrEdit: AddOrEdit.add,
-                                    mainTargetedBodyPart: val,
-                                  )));
-                        },
-                      );
-                    }).toList(),
-                    ListTile(
-                        title: const Text(
-                          'Template',
-                          style: TextStyle(color: Colors.red),
-                        ),
-                        onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              // Fix: Removed const constructor if RecommendPage isn't const
-                                builder: (context) => RecommendPage()
-                            )
-                        )
-                    )
-                  ],
-                );
-              });
-        },
+        onPressed: () => _showAddRoutineSheet(context, routinesBlocInstance), // Pass BLoC instance
       ),
     );
   }
 
-  List<Widget> buildChildren(List<Routine> routines) {
-    var map = Map<MainTargetedBodyPart, List<Routine>>.fromIterable(
-      MainTargetedBodyPart.values,
-      value: (v) => <Routine>[],
+  /// Builds the UI shown when there are no routines.
+  Widget _buildEmptyState(BuildContext context, RoutinesBloc bloc) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.fitness_center, size: 60, color: Theme.of(context).hintColor),
+            const SizedBox(height: 16),
+            const Text(
+              'No routines yet!',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Tap the '+' button to create your first workout routine.",
+              style: TextStyle(color: Theme.of(context).hintColor),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            // Optional: Button to add templates directly?
+            // ElevatedButton.icon(
+            //   icon: Icon(Icons.list_alt),
+            //   label: Text("Add from Template"),
+            //   onPressed: () => _navigateToAddFromTemplate(context),
+            // )
+          ],
+        ),
+      ),
     );
-    var todayRoutines = <Routine>[];
-    int weekday = DateTime.now().weekday;
-    var children = <Widget>[];
+  }
 
-    const textColor = Colors.black;
-    const todayTextStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 36, color: Colors.orangeAccent);
-    const routineTitleTextStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: textColor);
+  /// Builds the list sections for "Today" and categorized routines.
+  List<Widget> _buildRoutineListSections(BuildContext context, List<Routine> routines) {
+    final Map<MainTargetedBodyPart, List<Routine>> mapByCategory = {};
+    final List<Routine> todayRoutines = [];
+    final int weekday = DateTime.now().weekday; // 1=Monday, 7=Sunday
+    final List<Widget> children = <Widget>[];
 
+    // --- Styles ---
+    // Consider defining these in theme or constants file
+    const todayTextStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 28, color: Colors.orangeAccent);
+    final routineTitleTextStyle = TextStyle(
+        fontWeight: FontWeight.w600,
+        fontSize: 20,
+        color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.8) ?? Colors.black87
+    );
+
+    // 1. Separate today's routines and categorize others
     for (var routine in routines) {
       if (routine.weekdays.contains(weekday)) {
         todayRoutines.add(routine);
       }
+      // Add to map, initializing list if needed
+      (mapByCategory[routine.mainTargetedBodyPart] ??= []).add(routine);
     }
 
-    children.add(Padding(
-        padding: const EdgeInsets.only(left: 16),
-        child: Row(
-          children: <Widget>[
-            Text(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday - 1],
-                style: todayTextStyle),
-          ],
-        )));
-    children.addAll(todayRoutines.map((routine) => RoutineCard(isActive: true, routine: routine)));
-
-    for (var routine in routines) {
-      if (!map.containsKey(routine.mainTargetedBodyPart)) {
-        map[routine.mainTargetedBodyPart] = [];
-      }
-      map[routine.mainTargetedBodyPart]!.add(routine);
+    // 2. Add "Today" Section if applicable
+    if (todayRoutines.isNotEmpty) {
+      children.add(Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), // Adjust padding
+          child: Row( // Keep title and day together
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: <Widget>[
+              Text(
+                  ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday - 1],
+                  style: todayTextStyle
+              ),
+              const SizedBox(width: 8),
+              Text(
+                  "Workout${todayRoutines.length > 1 ? 's' : ''}",
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16)
+              ),
+            ],
+          )));
+      // Add RoutineCards for today's routines
+      children.addAll(todayRoutines.map((routine) => RoutineCard(
+          key: ValueKey('today_${routine.id}'), // Add key for list updates
+          isActive: true, // Mark as active
+          routine: routine
+      )));
+      children.add(const SizedBox(height: 16)); // Spacer after Today section
     }
 
-    // Only show body parts that have routines
-    map.keys.where((bodyPart) => map[bodyPart]!.isNotEmpty).forEach((bodyPart) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            mainTargetedBodyPartToStringConverter(bodyPart),
-            style: routineTitleTextStyle,
+
+    // 3. Add Sections for each Body Part Category
+    // Iterate through enum values to maintain order, filter out empty categories
+    for (final bodyPart in MainTargetedBodyPart.values) {
+      final routinesInCategory = mapByCategory[bodyPart] ?? [];
+      if (routinesInCategory.isNotEmpty) {
+        // Add category header
+        children.add(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              mainTargetedBodyPartToStringConverter(bodyPart), // Use helper
+              style: routineTitleTextStyle,
+            ),
           ),
-        ),
-      );
-      children.addAll(
-        map[bodyPart]!.map((routine) => RoutineCard(routine: routine)),
-      );
-    });
+        );
+        // Add RoutineCards for this category
+        children.addAll(
+          routinesInCategory.map((routine) => RoutineCard(
+              key: ValueKey('cat_${routine.id}'), // Add key
+              routine: routine
+          )),
+        );
+      }
+    }
+
+    // Add some bottom padding
+    children.add(const SizedBox(height: 80));
 
     return children;
   }
-}
+
+  /// Shows the modal bottom sheet for adding a new routine or template.
+  void _showAddRoutineSheet(BuildContext context, RoutinesBloc bloc) {
+    showModalBottomSheet(
+        context: context,
+        // isScrollControlled: true, // Enable if list gets long
+        shape: const RoundedRectangleBorder( // Rounded top corners
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (sheetContext) { // Use a different context name
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Wrap( // Use Wrap for vertical list items
+              children: [
+                // Add a title/header to the sheet
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Text("Create New Routine", style: Theme.of(context).textTheme.titleLarge),
+                ),
+                const Divider(height: 1),
+                // Generate list tiles for each body part
+                ...MainTargetedBodyPart.values.map((val) {
+                  var title = mainTargetedBodyPartToStringConverter(val);
+                  return ListTile(
+                    leading: Icon(Icons.fitness_center, color: Theme.of(context).primaryColor), // Example icon
+                    title: Text("New '$title' Routine"),
+                    onTap: () {
+                      Navigator.pop(sheetContext); // Close the sheet first
+                      // *** FIX: Use correct Factory Constructor ***
+                      Navigator.push(
+                          context, // Use original context for navigation
+                          MaterialPageRoute(
+                              builder: (context) => RoutineEditPage.add( // Use .add factory
+                                mainTargetedBodyPart: val, // Pass the selected body part
+                              )));
+                    },
+                  );
+                }),
+                const Divider(height: 1, indent: 16, endIndent: 16), // Separator
+                // Template Option
+                ListTile(
+                    leading: Icon(Icons.list_alt_outlined, color: Colors.blueGrey.shade700),
+                    title: Text( 'Add from Template', style: TextStyle(color: Colors.blueGrey.shade800), ),
+                    onTap: () {
+                      Navigator.pop(sheetContext); // Close sheet
+                      _navigateToAddFromTemplate(context); // Call helper
+                    }
+                )
+              ],
+            ),
+          );
+        });
+  }
+
+  /// Navigates to the RecommendPage (template page).
+  void _navigateToAddFromTemplate(BuildContext context) {
+    Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const RecommendPage()) // Assume RecommendPage is const
+    );
+  }
+
+} // End of _HomePageState

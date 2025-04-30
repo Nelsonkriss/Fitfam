@@ -1,206 +1,236 @@
+// resource/db_provider_web.dart
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
-import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/resource/db_provider.dart';
+// import 'package:sqflite/sqflite.dart'; // Only if keeping 'db' getter in interface
+import 'db_provider_interface.dart'; // Implement the INTERFACE
 
-class DBProviderWeb implements DBProviderInterface {
-  @override
-  Database get db {
-    throw UnsupportedError('Web platform does not use direct database access');
-  }
-  static const String _routinesKey = 'workout_routines';
-  static const String _sessionsKey = 'workout_sessions';
-  static const String _recRoutinesKey = 'recommended_routines';
+class DBProviderWeb implements DbProviderInterface {
+  // @override // Only if 'db' getter is in the interface
+  // Future<Database> get db async => throw UnsupportedError('Web platform does not use direct database access');
+
+  static const String _routinesKey = 'workout_planner_routines';
+  static const String _sessionsKey = 'workout_planner_sessions';
+  static const String _recRoutinesKey = 'workout_planner_recommended_routines'; // Optional
 
   Future<SharedPreferences> get _prefs async => await SharedPreferences.getInstance();
 
+  // --- Interface Implementation ---
+
   @override
   Future<void> initDB() async {
-    // Initialize any web-specific database setup
+    // SharedPreferences initializes automatically on first use. No-op needed.
+    debugPrint("DBProviderWeb initialized (SharedPreferences)");
   }
+
+  // --- Routine Methods ---
 
   @override
   Future<int> newRoutine(Routine routine) async {
     final prefs = await _prefs;
     final routines = await getAllRoutines();
-    routines.add(routine);
-    await prefs.setString(_routinesKey, jsonEncode(routines.map((r) => r.toMap()).toList()));
-    return routines.length - 1; // Return index as ID
+    // Assign a new unique ID (e.g., timestamp or find max existing ID)
+    int nextId = 1;
+    if (routines.isNotEmpty) {
+      // Ensure IDs are not null before comparing
+      final maxId = routines
+          .map((r) => r.id ?? 0) // Default null IDs to 0 for comparison
+          .reduce((max, current) => current > max ? current : max);
+      nextId = maxId + 1;
+    }
+    // Use copyWith since Routine is likely immutable
+    final routineWithId = routine.copyWith(id: nextId);
+    routines.add(routineWithId);
+    await _saveRoutinesList(prefs, routines);
+    return nextId; // Return the assigned ID
   }
 
   @override
   Future<void> updateRoutine(Routine routine) async {
+    if (routine.id == null) {
+      debugPrint("Cannot update routine without an ID.");
+      return;
+    }
     final prefs = await _prefs;
     final routines = await getAllRoutines();
     final index = routines.indexWhere((r) => r.id == routine.id);
     if (index != -1) {
-      routines[index] = routine;
-      await prefs.setString(_routinesKey, jsonEncode(routines.map((r) => r.toMap()).toList()));
+      routines[index] = routine; // Replace with the updated immutable routine
+      await _saveRoutinesList(prefs, routines);
+    } else {
+      debugPrint("Routine with ID ${routine.id} not found for update.");
     }
   }
 
   @override
-  Future<void> deleteRoutine(Routine routine) async {
+  Future<void> deleteRoutine(Routine routine) async { // Keep parameter type for now
+    if (routine.id == null) {
+      debugPrint("Cannot delete routine without an ID.");
+      return;
+    }
     final prefs = await _prefs;
     final routines = await getAllRoutines();
+    final initialLength = routines.length;
     routines.removeWhere((r) => r.id == routine.id);
-    await prefs.setString(_routinesKey, jsonEncode(routines.map((r) => r.toMap()).toList()));
+    if (routines.length < initialLength) {
+      await _saveRoutinesList(prefs, routines);
+    } else {
+      debugPrint("Routine with ID ${routine.id} not found for deletion.");
+    }
   }
 
   @override
   Future<List<Routine>> getAllRoutines() async {
     final prefs = await _prefs;
     final jsonString = prefs.getString(_routinesKey);
-    if (jsonString == null) return [];
-    final jsonList = jsonDecode(jsonString) as List;
-    return jsonList.map((json) => Routine.fromMap(json)).toList();
+    if (jsonString == null || jsonString.isEmpty) return [];
+    try {
+      final jsonList = jsonDecode(jsonString) as List;
+      return jsonList
+          .map((json) => Routine.fromMap(json as Map<String, dynamic>))
+          .where((r) => r.id != null) // Ensure routines have IDs after parsing
+          .toList();
+    } catch (e, s) {
+      debugPrint("Error decoding routines: $e\n$s");
+      // Consider clearing corrupted data: await prefs.remove(_routinesKey);
+      return []; // Return empty list on error
+    }
   }
 
   @override
   Future<List<Routine>> getAllRecRoutines() async {
+    // Implementation depends on how rec routines are sourced/stored for web
+    // Example using SharedPreferences similar to user routines:
     final prefs = await _prefs;
     final jsonString = prefs.getString(_recRoutinesKey);
-    if (jsonString == null) return [];
-    final jsonList = jsonDecode(jsonString) as List;
-    return jsonList.map((json) => Routine.fromMap(json)).toList();
+    if (jsonString == null || jsonString.isEmpty) return [];
+    try {
+      final jsonList = jsonDecode(jsonString) as List;
+      return jsonList
+          .map((json) => Routine.fromMap(json as Map<String, dynamic>))
+          .toList();
+    } catch (e, s) {
+      debugPrint("Error decoding recommended routines: $e\n$s");
+      return [];
+    }
   }
 
   @override
   Future<void> addAllRoutines(List<Routine> routines) async {
     final prefs = await _prefs;
-    await prefs.setString(_routinesKey, jsonEncode(routines.map((r) => r.toMap()).toList()));
+    // Ensure routines have unique IDs before saving
+    int nextId = 1;
+    final Map<int, Routine> uniqueRoutines = {};
+    for(final r in routines) {
+      int currentId = r.id ?? nextId;
+      while(uniqueRoutines.containsKey(currentId)) {
+        currentId++; // Find next available ID
+      }
+      nextId = currentId + 1;
+      uniqueRoutines[currentId] = r.copyWith(id: currentId);
+    }
+    await _saveRoutinesList(prefs, uniqueRoutines.values.toList());
   }
 
   @override
   Future<void> deleteAllRoutines() async {
     final prefs = await _prefs;
     await prefs.remove(_routinesKey);
+    // Decide if this should also clear recommended routines or sessions
+    // await prefs.remove(_recRoutinesKey);
+    // await prefs.remove(_sessionsKey);
   }
-  // ... (keep existing properties and other methods)
+
+  // --- Workout Session Methods ---
 
   @override
   Future<void> saveWorkoutSession(WorkoutSession session) async {
     final prefs = await _prefs;
     try {
+      // Fetch existing sessions, handle potential decoding errors
+      List<Map<String, dynamic>> sessionsMapList;
+      try {
+        sessionsMapList = (await _getAllSessionMaps(prefs));
+      } catch (e) {
+        debugPrint("Error reading existing sessions, starting fresh: $e");
+        sessionsMapList = []; // Start with empty list if current data is corrupt
+      }
+
+      // Remove old version if exists
+      sessionsMapList.removeWhere((sMap) => sMap['id'] == session.id);
+      // Add new/updated version
+      sessionsMapList.add(session.toMapForDb());
+      // Save the modified list
+      await _saveSessionMaps(prefs, sessionsMapList);
       if (kDebugMode) {
-        print("Saving session: ${session.id}");
-        print("Session data: ${session.toMap()}");
+        print("Session ${session.id} saved. Total sessions: ${sessionsMapList.length}");
       }
-
-      // Verify session data is valid
-      if (session.routine.id == null || session.routine.id == 0) {
-        throw Exception('Cannot save session with invalid routine ID');
-      }
-
-      // Get existing sessions
-      final existing = prefs.getString(_sessionsKey);
-      final sessions = existing != null 
-          ? (jsonDecode(existing) as List).map((e) => e as Map<String,dynamic>).toList()
-          : <Map<String,dynamic>>[];
-
-      // Find and remove any existing session with same ID
-      sessions.removeWhere((s) => s['id'] == session.id);
-
-      // Add new session data
-      sessions.add(session.toMap());
-
-      // Save with error handling
-      final jsonData = jsonEncode(sessions);
-      final success = await prefs.setString(_sessionsKey, jsonData);
-      
-      if (!success) {
-        throw Exception('Failed to save session data');
-      }
-
-      if (kDebugMode) {
-        print("Session saved successfully. Total sessions: ${sessions.length}");
-        // Verify the saved data
-        final saved = prefs.getString(_sessionsKey);
-        if (saved != jsonData) {
-          debugPrint('WARNING: Saved data does not match expected!');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error saving workout session: $e');
-      rethrow;
+    } catch (e, s) {
+      debugPrint('Error saving workout session: $e\n$s');
+      rethrow; // Re-throw to notify caller
     }
   }
 
   @override
   Future<List<WorkoutSession>> getWorkoutSessions() async {
     final prefs = await _prefs;
-    final jsonString = prefs.getString(_sessionsKey);
-    
-    if (jsonString == null || jsonString.isEmpty) {
-      if (kDebugMode) {
-        print("No sessions found in storage");
-      }
+    List<Map<String, dynamic>> sessionsMapList;
+    try {
+      sessionsMapList = await _getAllSessionMaps(prefs);
+    } catch(e) {
+      debugPrint("Failed to get session maps, returning empty: $e");
       return [];
     }
-    
+
+    if (sessionsMapList.isEmpty) return [];
+
     try {
-      final jsonList = jsonDecode(jsonString) as List;
-      final sessions = <WorkoutSession>[];
-      final routines = await getAllRoutines();
-      
-      if (kDebugMode) {
-        print("Found ${jsonList.length} session records");
-        print("Available routines: ${routines.length}");
-      }
-      
-      for (final json in jsonList) {
+      // Load routines ONCE for efficient lookup
+      final Map<int, Routine> routineMap = {
+        for (var r in await getAllRoutines()) if (r.id != null) r.id!: r
+      };
+
+      final List<WorkoutSession> sessions = [];
+      for (final map in sessionsMapList) {
         try {
-          // Handle both string and int routine IDs
-          dynamic routineId = json['routineId'];
+          int? routineId = _parseToInt(map['routineId']);
           if (routineId == null) {
-            debugPrint('Session missing routineId: $json');
+            debugPrint('Session ${map['id']} missing or invalid routineId. Skipping.');
             continue;
           }
-          
-          // Convert to string for comparison
-          final routineIdStr = routineId.toString();
-          
-          final routine = routines.firstWhere(
-            (r) => r.id.toString() == routineIdStr,
-            orElse: () {
-              debugPrint('Routine $routineId not found for session');
-              throw Exception('Routine not found');
-            }
-          );
-          
-          final session = WorkoutSession.fromMap(json, routine);
-          if (kDebugMode) {
-            print("Loaded session: ${session.id}");
-            print("- Routine: ${routine.routineName} (ID: ${routine.id})");
-            print("- Exercises: ${session.exercises.length}");
-            print("- Duration: ${session.duration}");
+
+          final routine = routineMap[routineId];
+          if (routine == null) {
+            debugPrint('Routine $routineId not found for session ${map['id']}. Skipping.');
+            continue; // Skip session if its routine doesn't exist anymore
           }
+
+          // Ensure fromMap handles potential type issues robustly
+          final session = WorkoutSession.fromMap(map, routine);
           sessions.add(session);
-        } catch (e) {
-          debugPrint('Error loading session $json: $e');
-          // Continue with next session instead of failing completely
+        } catch (e, s) {
+          // Log error for specific session but continue with others
+          debugPrint('Error processing individual session ${map['id']}: $e\n$s');
         }
       }
-      
-      if (kDebugMode) {
-        print("Successfully loaded ${sessions.length} sessions");
-      }
       return sessions;
-    } catch (e) {
-      debugPrint('Error decoding sessions: $e');
+    } catch (e, s) {
+      // Error processing the whole list or routines
+      debugPrint('Error processing workout sessions: $e\n$s');
       return [];
     }
   }
 
   @override
   Future<WorkoutSession?> getWorkoutSessionById(String id) async {
+    // This could be optimized by reading maps and filtering before full parsing
     final sessions = await getWorkoutSessions();
     try {
       return sessions.firstWhere((s) => s.id == id);
     } catch (e) {
+      // Throws StateError if not found
       return null;
     }
   }
@@ -208,8 +238,56 @@ class DBProviderWeb implements DBProviderInterface {
   @override
   Future<void> deleteWorkoutSession(String id) async {
     final prefs = await _prefs;
-    final sessions = await getWorkoutSessions();
-    sessions.removeWhere((s) => s.id == id);
-    await prefs.setString(_sessionsKey, jsonEncode(sessions.map((s) => s.toMap()).toList()));
+    try {
+      List<Map<String, dynamic>> sessionsMapList = await _getAllSessionMaps(prefs);
+      final initialLength = sessionsMapList.length;
+      sessionsMapList.removeWhere((sMap) => sMap['id'] == id);
+      if(sessionsMapList.length < initialLength){
+        await _saveSessionMaps(prefs, sessionsMapList);
+      } else {
+        debugPrint("Session with ID $id not found for deletion.");
+      }
+    } catch(e, s) {
+      debugPrint("Error deleting session $id: $e\n$s");
+      rethrow;
+    }
+  }
+
+  // --- Helper Methods ---
+
+  Future<void> _saveRoutinesList(SharedPreferences prefs, List<Routine> routines) async {
+    final listToSave = routines.map((r) => r.toMapForDb()).toList();
+    await prefs.setString(_routinesKey, jsonEncode(listToSave));
+  }
+
+  Future<List<Map<String, dynamic>>> _getAllSessionMaps(SharedPreferences prefs) async {
+    final jsonString = prefs.getString(_sessionsKey);
+    if (jsonString == null || jsonString.isEmpty) return [];
+    try {
+      final decoded = jsonDecode(jsonString);
+      if (decoded is List) {
+        // Ensure all items are maps
+        return decoded.whereType<Map<String, dynamic>>().toList();
+      }
+      debugPrint("Stored sessions data is not a List: $decoded");
+      throw FormatException("Invalid session data format");
+    } catch (e) {
+      debugPrint("Error decoding session maps: $e. Clearing potentially corrupt data.");
+      // Optionally clear corrupted data
+      await prefs.remove(_sessionsKey);
+      throw FormatException("Failed to decode sessions: $e"); // Re-throw specific error
+    }
+  }
+
+  Future<void> _saveSessionMaps(SharedPreferences prefs, List<Map<String, dynamic>> maps) async {
+    await prefs.setString(_sessionsKey, jsonEncode(maps));
+  }
+
+  int? _parseToInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    if (value is double) return value.toInt(); // Handle potential doubles
+    return null;
   }
 }

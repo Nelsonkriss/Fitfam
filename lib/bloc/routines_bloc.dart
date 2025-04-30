@@ -1,285 +1,204 @@
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart'; // Required for kDebugMode or assertions
 import 'package:rxdart/rxdart.dart';
 import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/resource/db_provider.dart';
+// Keep if needed
+
+// Import the INTERFACE and the global instance factory file
+import 'package:workout_planner/resource/db_provider_interface.dart'; // Import the interface
+import 'package:workout_planner/resource/db_provider.dart';      // Import the file with the global 'dbProvider' instance
+
+// Import Firebase Provider (Make sure this path is correct)
 import 'package:workout_planner/resource/firebase_provider.dart';
 
-export 'package:workout_planner/models/routine.dart';
+export 'package:workout_planner/models/routine.dart'; // Keep export if used elsewhere
 
-enum UpdateType { parts }
-
+/// BLoC responsible for managing user routines and recommended routines
+/// using the RxDart pattern (BehaviorSubject).
 class RoutinesBloc {
-  // Stream controllers
-  final BehaviorSubject<List<Routine>> _allRoutinesFetcher = BehaviorSubject<List<Routine>>();
-  final BehaviorSubject<List<Routine>> _allRecRoutinesFetcher = BehaviorSubject<List<Routine>>();
-  final BehaviorSubject<Routine?> _currentRoutineFetcher = BehaviorSubject<Routine?>();
+  // --- Dependencies ---
+  // Use the globally created instance typed as the interface
+  final DbProviderInterface _dbProvider = dbProvider;
 
-  // Data stores
-  List<Routine> _allRoutines = <Routine>[];
-  List<Routine> _allRecRoutines = <Routine>[];
-  Routine? _currentRoutine;
+  // Assume FirebaseProvider is correctly instantiated or provided globally
+  final FirebaseProvider _firebaseProvider = firebaseProvider;
 
-  // Stream getters
-  Stream<Routine?> get currentRoutine => _currentRoutineFetcher.stream;
-  Stream<List<Routine>> get allRoutines => _allRoutinesFetcher.stream;
-  Stream<List<Routine>> get allRecRoutines => _allRecRoutinesFetcher.stream;
-  List<Routine> get routines => _allRoutines;
+  // --- Stream controllers ---
+  // Holds the list of user's routines, seeded with empty list.
+  final BehaviorSubject<List<Routine>> _allRoutinesFetcher = BehaviorSubject<List<Routine>>.seeded([]);
+  // Holds the list of recommended routines, seeded with empty list.
+  final BehaviorSubject<List<Routine>> _allRecRoutinesFetcher = BehaviorSubject<List<Routine>>.seeded([]);
+  // Holds the currently selected routine (for detail view etc.), seeded null.
+  final BehaviorSubject<Routine?> _currentRoutineFetcher = BehaviorSubject<Routine?>.seeded(null);
 
+  // --- Stream getters (for UI consumption) ---
+  Stream<Routine?> get currentRoutineStream => _currentRoutineFetcher.stream;
+  Stream<List<Routine>> get allRoutinesStream => _allRoutinesFetcher.stream;
+  Stream<List<Routine>> get allRecommendedRoutinesStream => _allRecRoutinesFetcher.stream;
+
+  // --- Value getters (for internal BLoC logic) ---
+  /// Gets the latest emitted list of user routines.
+  List<Routine> get currentRoutinesList => _allRoutinesFetcher.value;
+  /// Gets the latest emitted selected routine.
+  Routine? get currentSelectedRoutine => _currentRoutineFetcher.value;
+
+
+  // --- Public Methods (API for UI interaction) ---
+
+  /// Fetches all user routines from the database and updates the stream.
   Future<void> fetchAllRoutines() async {
     try {
-      if (kIsWeb) {
-        _allRoutines = await firebaseProvider.restoreRoutines();
-      } else {
-        _allRoutines = await dbProvider.getAllRoutines();
-      }
-      if (!_allRoutinesFetcher.isClosed) {
-        _allRoutinesFetcher.sink.add(_allRoutines);
-      }
-    } catch (exp) {
-      if (!_allRoutinesFetcher.isClosed) {
-        _allRoutinesFetcher.sink.addError(exp);
-      }
-      rethrow;
+      List<Routine> routines = await _dbProvider.getAllRoutines();
+      _allRoutinesFetcher.sink.add(routines);
+    } catch (e) {
+      debugPrint("RoutinesBloc: Error fetching all routines: $e");
+      _allRoutinesFetcher.sink.addError("Failed to load routines.");
+      // Optionally emit empty list on error? Current behavior keeps last good state or initial seed.
     }
   }
 
-  Future<void> fetchAllRecRoutines() async {
+  /// Fetches recommended routines from the Firebase provider and updates the stream.
+  Future<void> fetchRecommendedRoutines() async {
     try {
-      if (kIsWeb) {
-        // For web, create some default recommended routines
-        print('Creating default recommended routines for web');
-        _allRecRoutines = [
-          Routine(
-            routineName: 'Push Day',
-            mainTargetedBodyPart: MainTargetedBodyPart.Chest,
-            parts: [
-              Part(
-                setType: SetType.Regular,
-                targetedBodyPart: TargetedBodyPart.Chest,
-                exercises: [
-                  Exercise(name: 'Bench Press', sets: 4, reps: '8-12', weight: 0),
-                  Exercise(name: 'Shoulder Press', sets: 3, reps: '10-12', weight: 0),
-                  Exercise(name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', weight: 0),
-                  Exercise(name: 'Triceps Dips', sets: 3, reps: '12-15', weight: 0)
-                ],
-              )
-              
-            ],
-            createdDate: DateTime.now(),
-            weekdays: [],
-            routineHistory: [],
-            lastCompletedDate: DateTime.now(),
-            completionCount: 0,
-          ),
-          Routine(
-            routineName: 'Pull Day',
-            mainTargetedBodyPart: MainTargetedBodyPart.Back,
-            parts: [
-              Part(
-                setType: SetType.Regular,
-                targetedBodyPart: TargetedBodyPart.Back,
-                exercises: [
-                  Exercise(name: 'Pull-ups', sets: 4, reps: '8-12', weight: 0),
-                  Exercise(name: 'Bent Over Rows', sets: 3, reps: '10-12', weight: 0),
-                  Exercise(name: 'Lat Pulldown', sets: 3, reps: '10-12', weight: 0),
-                  Exercise(name: 'Bicep Curls', sets: 3, reps: '12-15', weight: 0)
-                ],
-              )
-            ],
-            createdDate: DateTime.now(),
-            weekdays: [],
-            routineHistory: [],
-            lastCompletedDate: DateTime.now(),
-            completionCount: 0,
-          ),
-          Routine(
-            routineName: 'Leg Day',
-            mainTargetedBodyPart: MainTargetedBodyPart.Leg,
-            parts: [
-              Part(
-                setType: SetType.Regular,
-                targetedBodyPart: TargetedBodyPart.Leg,
-                exercises: [
-                  Exercise(name: 'Squats', sets: 4, reps: '8-12', weight: 0),
-                  Exercise(name: 'Romanian Deadlifts', sets: 3, reps: '8-10', weight: 0),
-                  Exercise(name: 'Lunges', sets: 3, reps: '10-12', weight: 0),
-                  Exercise(name: 'Leg Curls', sets: 3, reps: '12-15', weight: 0)
-                ],
-              )
-            ],
-            createdDate: DateTime.now(),
-            weekdays: [],
-            routineHistory: [],
-            lastCompletedDate: DateTime.now(),
-            completionCount: 0,
-          )
-        ];
+      // *** Requires getRecommendedRoutines() to be defined in FirebaseProvider ***
+      List<Routine> recRoutines = await _firebaseProvider.getRecommendedRoutines();
+      _allRecRoutinesFetcher.sink.add(recRoutines);
+    } catch (e) {
+      if (e is NoSuchMethodError) {
+        // This specific error means the method isn't implemented in FirebaseProvider
+        debugPrint("RoutinesBloc: Error - 'getRecommendedRoutines' method not found in FirebaseProvider. Ensure it's defined.");
+        _allRecRoutinesFetcher.sink.addError("Recommended routines feature not available.");
       } else {
-        print('Fetching recommended routines from database');
-        _allRecRoutines = await dbProvider.getAllRecRoutines();
+        // General error during fetch
+        debugPrint("RoutinesBloc: Error fetching recommended routines: $e");
+        _allRecRoutinesFetcher.sink.addError("Failed to load recommended routines.");
       }
-      
-      print('Loaded ${_allRecRoutines.length} recommended routines');
-      if (!_allRecRoutinesFetcher.isClosed) {
-        _allRecRoutinesFetcher.sink.add(_allRecRoutines);
-      } else {
-        print('Error: allRecRoutinesFetcher is closed');
-      }
-    } catch (exp) {
-      if (!_allRecRoutinesFetcher.isClosed) {
-        _allRecRoutinesFetcher.sink.addError(exp);
-      }
-      rethrow;
+      // Sink empty list on error to clear previous recommendations if desired
+      _allRecRoutinesFetcher.sink.add([]);
     }
   }
 
-  Future<void> addRoutine(Routine routine) async {
+  /// Adds a new routine to the database and updates the stream.
+  Future<void> addRoutine(Routine routineToAdd) async {
     try {
-      // Always create a deep copy to avoid reference sharing
-      final routineToAdd = Routine.deepCopy(routine);
-      
-      print('Adding routine: ${routineToAdd.routineName}');
-      final routineId = await dbProvider.newRoutine(routineToAdd);
-      routineToAdd.id = routineId;
-      print('Routine saved to DB with id: $routineId');
-      
-      // Create new list to preserve existing routines
-      final updatedRoutines = List<Routine>.from(_allRoutines);
-      updatedRoutines.add(routineToAdd);
-      _allRoutines = updatedRoutines;
-      
-      print('Local routines list updated, now has ${_allRoutines.length} routines');
-      
-      if (!_allRoutinesFetcher.isClosed) {
-        _allRoutinesFetcher.sink.add(_allRoutines);
-        print('Routines stream updated');
-      }
-      
-      // Sync to Firebase in background
-      firebaseProvider.uploadRoutines(_allRoutines).then((_) {
-        print('Routines synced to Firebase');
-      }).catchError((e) {
-        print("Firebase upload error: $e");
-      });
-      
-      if (!_currentRoutineFetcher.isClosed) {
-        _currentRoutineFetcher.sink.add(routine);
-        print('Current routine stream updated');
+      // Call DB method which returns the new ID
+      int newId = await _dbProvider.newRoutine(routineToAdd);
+      // Create the final Routine object with the DB-assigned ID
+      // Assumes Routine model has a copyWith method.
+      final routineWithId = routineToAdd.copyWith(id: newId);
+
+      // Create a new list immutably
+      final updatedList = List<Routine>.from(currentRoutinesList)..add(routineWithId);
+      // Update the stream
+      _allRoutinesFetcher.sink.add(updatedList);
+    } catch (e) {
+      debugPrint("RoutinesBloc: Error adding routine: $e");
+      _allRoutinesFetcher.sink.addError("Failed to add routine.");
+    }
+  }
+
+  /// Updates an existing routine in the database and updates the stream.
+  Future<void> updateRoutine(Routine routineToUpdate) async {
+    // Ensure the routine has an ID for updating
+    if (routineToUpdate.id == null) {
+      debugPrint("RoutinesBloc: Error - Cannot update routine without an ID.");
+      _allRoutinesFetcher.sink.addError("Cannot update routine without an ID.");
+      return;
+    }
+    try {
+      // Update in the database
+      await _dbProvider.updateRoutine(routineToUpdate);
+
+      // Create the updated list immutably using map
+      final updatedList = currentRoutinesList.map((routine) {
+        // If ID matches, use the updated routine object, otherwise keep the old one
+        return routine.id == routineToUpdate.id ? routineToUpdate : routine;
+      }).toList(); // Collect results into a new list
+
+      // Update the main routines stream
+      _allRoutinesFetcher.sink.add(updatedList);
+
+      // If the updated routine was the currently selected one, update that stream too
+      if (currentSelectedRoutine?.id == routineToUpdate.id) {
+        _currentRoutineFetcher.sink.add(routineToUpdate);
       }
     } catch (e) {
-      print("Error adding routine: $e");
-      rethrow;
+      debugPrint("RoutinesBloc: Error updating routine ${routineToUpdate.id}: $e");
+      _allRoutinesFetcher.sink.addError("Failed to update routine.");
     }
   }
 
-  Future<void> updateRoutine(Routine routine) async {
+  /// Deletes a routine by its ID from the database and updates the stream.
+  Future<void> deleteRoutine(int routineId) async {
+    Routine? routineToDelete;
     try {
-      debugPrint('Updating routine ${routine.routineName} (ID: ${routine.id})');
-      
-      // First try to find existing routine
-      var index = _allRoutines.indexWhere((r) => r.id == routine.id);
-      
-      // If not found, try to add it
-      if (index == -1) {
-        debugPrint('Routine not found in local list, attempting to add');
-        _allRoutines.add(Routine.deepCopy(routine));
-        index = _allRoutines.length - 1;
-      }
-
-      // Create new list to ensure state update
-      final updatedRoutines = List<Routine>.from(_allRoutines);
-      updatedRoutines[index] = Routine.deepCopy(routine);
-      _allRoutines = updatedRoutines;
-
-      debugPrint('Local routine updated, now saving to database');
-      if (routine.id != null) {
-        await dbProvider.updateRoutine(routine);
-      } else {
-        routine.id = await dbProvider.newRoutine(routine);
-      }
-      debugPrint('Database update complete');
-      
-      debugPrint('Syncing to Firebase');
-      await firebaseProvider.uploadRoutines(_allRoutines);
-      debugPrint('Firebase sync complete');
-
-      if (!_allRoutinesFetcher.isClosed) {
-        debugPrint('Updating routines stream');
-        _allRoutinesFetcher.sink.add(_allRoutines);
-      }
-      
-      if (!_currentRoutineFetcher.isClosed) {
-        debugPrint('Updating current routine stream');
-        _currentRoutineFetcher.sink.add(routine);
-      }
-      
+      // Find the routine object in the current list. Throws StateError if not found.
+      // This is necessary if _dbProvider.deleteRoutine expects the full object.
+      routineToDelete = currentRoutinesList.firstWhere((r) => r.id == routineId);
+    } on StateError {
+      // Catch specific error if routine ID doesn't exist in the current list
+      debugPrint("RoutinesBloc: Routine ID $routineId not found in list for deletion.");
+      _allRoutinesFetcher.sink.addError("Routine to delete was not found.");
+      return; // Stop if not found
     } catch (e) {
-      debugPrint("Error updating routine: $e");
-      rethrow;
+      // Catch other potential errors during the find operation
+      debugPrint("RoutinesBloc: Error finding routine $routineId for deletion: $e");
+      _allRoutinesFetcher.sink.addError("Failed to find routine for deletion.");
+      return;
     }
-  }
 
-  Future<void> deleteRoutine({int? routineId, Routine? routine}) async {
+    // Proceed with deletion from the database
     try {
-      if (routineId == null && routine != null) {
-        _allRoutines.removeWhere((r) => r.id == routine.id);
-      } else if (routineId != null) {
-        _allRoutines.removeWhere((r) => r.id == routineId);
-      }
+      await _dbProvider.deleteRoutine(routineToDelete); // Pass the Routine object
 
-      if (!_allRoutinesFetcher.isClosed) {
-        _allRoutinesFetcher.sink.add(_allRoutines);
-      }
+      // Create the updated list immutably by filtering
+      final updatedList = currentRoutinesList
+          .where((routine) => routine.id != routineId)
+          .toList(); // Collect results into a new list
 
-      final routineToDelete = routine ?? 
-          (routineId != null ? _allRoutines.firstWhere((r) => r.id == routineId) : null);
-      
-      if (routineToDelete != null) {
-        await dbProvider.deleteRoutine(routineToDelete);
-      }
-      
-      await firebaseProvider.uploadRoutines(_allRoutines);
-      
-      if (!_currentRoutineFetcher.isClosed) {
+      // Update the main routines stream
+      _allRoutinesFetcher.sink.add(updatedList);
+
+      // If the deleted routine was the currently selected one, clear selection
+      if (currentSelectedRoutine?.id == routineId) {
         _currentRoutineFetcher.sink.add(null);
       }
     } catch (e) {
-      print("Error deleting routine: $e");
-      rethrow;
+      // Catch errors during the actual DB deletion
+      debugPrint("RoutinesBloc: Error deleting routine $routineId from DB: $e");
+      _allRoutinesFetcher.sink.addError("Failed to delete routine from storage.");
     }
   }
 
-  Future<bool> restoreRoutines() async {
-    try {
-      final routines = await firebaseProvider.restoreRoutines();
-      if (!kIsWeb) {
-        await dbProvider.deleteAllRoutines();
-        await dbProvider.addAllRoutines(routines);
+  /// Updates the currently selected routine stream.
+  void selectRoutine(int? routineId) {
+    if (routineId == null) {
+      // Clear selection
+      _currentRoutineFetcher.sink.add(null);
+    } else {
+      try {
+        // Find the routine in the latest list. Throws StateError if not found.
+        Routine selected = currentRoutinesList.firstWhere((r) => r.id == routineId);
+        // Update the stream with the found routine
+        _currentRoutineFetcher.sink.add(selected);
+      } on StateError {
+        // Handle case where the ID is not found in the current list
+        debugPrint("RoutinesBloc: Warning - Routine ID $routineId not found in current list for selection.");
+        _currentRoutineFetcher.sink.add(null); // Sink null if not found
+      } catch (e) {
+        // Catch any other errors during find/selection
+        debugPrint("RoutinesBloc: Error during selectRoutine for ID $routineId: $e");
+        _currentRoutineFetcher.sink.add(null); // Sink null on other errors
       }
-      _allRoutines = routines;
-      if (!_allRoutinesFetcher.isClosed) {
-        _allRoutinesFetcher.sink.add(_allRoutines);
-      }
-      return true;
-    } catch (e) {
-      if (kDebugMode) print('Error restoring routines: $e');
-      return false;
     }
   }
 
-  void setCurrentRoutine(Routine routine) {
-    _currentRoutine = routine;
-    if (!_currentRoutineFetcher.isClosed) {
-      _currentRoutineFetcher.sink.add(_currentRoutine);
-    }
-  }
 
+  /// Closes all stream controllers. Should be called when the BLoC is no longer needed.
   void dispose() {
+    debugPrint("RoutinesBloc: Disposing streams.");
     _allRoutinesFetcher.close();
     _allRecRoutinesFetcher.close();
     _currentRoutineFetcher.close();
   }
 }
-
-final routinesBloc = RoutinesBloc();

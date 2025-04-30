@@ -1,11 +1,16 @@
+// resource/db_provider_interface.dart
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
-import 'package:sqflite/sqflite.dart';
+// import 'package:sqflite/sqflite.dart'; // Only if keeping the 'db' getter
 
 abstract class DbProviderInterface {
-  Database get db;
-  
-  // Routine methods
+  // Option 1: Keep 'db' getter (Web must throw)
+  // Future<Database> get db;
+
+  // --- Common Methods ---
+  Future<void> initDB();
+
+  // Routine Methods
   Future<int> newRoutine(Routine routine);
   Future<void> updateRoutine(Routine routine);
   Future<void> deleteRoutine(Routine routine);
@@ -14,12 +19,10 @@ abstract class DbProviderInterface {
   Future<void> addAllRoutines(List<Routine> routines);
   Future<void> deleteAllRoutines();
 
-  // Workout session methods
+  // Workout Session Methods
   Future<void> saveWorkoutSession(WorkoutSession session);
   Future<List<WorkoutSession>> getWorkoutSessions();
+  // *** FIX: Remove the empty body {} and use a semicolon ; ***
   Future<WorkoutSession?> getWorkoutSessionById(String id);
   Future<void> deleteWorkoutSession(String id);
-  
-  // Initialization
-  Future<void> initDB();
 }

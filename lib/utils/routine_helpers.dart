@@ -98,7 +98,7 @@ int setTypeToExerciseCountConverter(SetType setType) {
     case SetType.Giant:
       return 4;
     default:
-      throw Exception('setTypeToExerciseCountConverter(), setType is ' + setType.toString());
+      throw Exception('setTypeToExerciseCountConverter(), setType is $setType');
   }
 }
 
@@ -150,9 +150,10 @@ int getTimestampNow() {
 
 class StringHelper {
   static String weightToString(double weight) {
-    if (weight - weight.truncate() != 0)
+    if (weight - weight.truncate() != 0) {
       return weight.toStringAsFixed(1);
-    else
+    } else {
       return weight.toStringAsFixed(0);
+    }
   }
 }

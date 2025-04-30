@@ -1,181 +1,257 @@
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/cupertino.dart'; // Keep if used by helpers/components
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:workout_planner/models/routine.dart';
+import 'package:provider/provider.dart'; // Import Provider
+import 'package:intl/intl.dart'; // For date formatting
+
+// Import Models and BLoC (adjust paths if needed)
+import 'package:workout_planner/models/routine.dart'; // Keep if RoutineCard needs it
 import 'package:workout_planner/models/workout_session.dart';
-import 'package:workout_planner/bloc/workout_session_bloc.dart';
-import 'package:workout_planner/ui/components/routine_card.dart';
-import 'package:workout_planner/utils/date_time_extension.dart';
+import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Your RxDart Bloc
+import 'package:workout_planner/ui/components/routine_card.dart'; // Make sure path is correct
 
-class CalenderPage extends StatefulWidget {
-  final List<Routine> routines;
-
-  const CalenderPage({Key? key, required this.routines}) : super(key: key);
-
-  @override
-  State<StatefulWidget> createState() => CalenderPageState();
+// Extension for date formatting (Keep locally or move to utils)
+extension DateTimeFormatting on DateTime {
+  /// Formats date to 'YYYY-MM-DD' string.
+  String toSimpleString() {
+    return DateFormat('yyyy-MM-dd').format(this);
+  }
 }
 
-class CalenderPageState extends State<CalenderPage> {
-  final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
-  final ScrollController scrollController = ScrollController();
-  late Map<String, Routine> dateToRoutineMap;
-  List<WorkoutSession> _sessions = [];
 
-  @override
-  void initState() {
-    super.initState();
-    if (kDebugMode) {
-      print("Initializing CalenderPage");
-    }
-    dateToRoutineMap = getWorkoutDates(widget.routines);
-  }
-
-  void showBottomSheet(Routine routine) {
-    showCupertinoModalPopup(
-        context: context,
-        builder: (BuildContext context) {
-          return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Container(
-                    color: Colors.transparent,
-                    width: MediaQuery.of(context).size.width,
-                    child: RoutineCard(routine: routine)),
-              ));
-        });
-  }
+/// A widget displaying a yearly calendar heatmap of completed workouts.
+class CalenderPage extends StatelessWidget {
+  const CalenderPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Access the WorkoutSessionBloc instance via Provider
+    final workoutSessionBloc = context.watch<WorkoutSessionBloc>();
+
+    if (kDebugMode) print("Building CalenderPage");
+
     return StreamBuilder<List<WorkoutSession>>(
-      stream: workoutSessionBloc.allSessions,
+      // ACTION REQUIRED: Verify stream name in WorkoutSessionBloc
+      stream: workoutSessionBloc.allSessionsStream, // Listen to session stream
       builder: (context, snapshot) {
-        if (snapshot.hasData) {
-          _sessions = snapshot.data!;
-          if (kDebugMode) {
-            print("Calendar received ${_sessions.length} sessions");
-          }
-          dateToRoutineMap = getWorkoutDates(widget.routines);
+        if (kDebugMode) print("Calendar StreamBuilder state: ${snapshot.connectionState}");
+
+        // --- Handle Stream States ---
+        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+          // Provide a fixed height during loading to prevent layout jumps
+          return const SizedBox( height: 400, child: Center(child: CircularProgressIndicator()));
         }
-        
-        return SliverGrid.count(
-          crossAxisCount: 13,
-          mainAxisSpacing: 4,
-          crossAxisSpacing: 4,
-          children: buildMonthRow(),
-        );
+        if (snapshot.hasError) {
+          return SizedBox( height: 400, child: Center(child: Text('Error loading sessions: ${snapshot.error}')));
+        }
+        // Use empty list if snapshot has no data or it's empty
+        final sessions = snapshot.data ?? [];
+
+        // --- Process Data ---
+        // Only build map if needed (avoids processing empty list unnecessarily)
+        final Map<String, WorkoutSession> workoutDayMap = sessions.isNotEmpty
+            ? _getWorkoutDayMap(sessions)
+            : {}; // Empty map if no sessions
+
+        if (kDebugMode && sessions.isNotEmpty) print("Calendar processed ${workoutDayMap.length} workout days");
+
+        // --- Build UI ---
+        // Show empty state directly if map is empty after processing
+        if (workoutDayMap.isEmpty && sessions.isNotEmpty) {
+          // This case means sessions exist but none were completed with an end date
+          return const SizedBox( height: 400, child: Center(child: Text('No completed workouts found with valid dates.')));
+        }
+        if (sessions.isEmpty) {
+          return const SizedBox( height: 400, child: Center(child: Text('Complete some workouts to see them here!')));
+        }
+
+
+        // Build the Calendar Grid UI if there's data
+        return _buildCalendarGrid(context, workoutDayMap);
       },
     );
   }
 
-  List<Widget> buildMonthRow() {
-    List<Widget> widgets = <Widget>[];
-
-    widgets.add(const Text(' '));
-
-    for (int i = 1; i <= 12; i++) {
-      widgets.add(Center(
-          child: Text(intToMonth(i),
-              style: const TextStyle(fontSize: 10, color: Colors.black))));
-    }
-
-    widgets.addAll(buildDayRows());
-
-    return widgets;
-  }
-
-  List<Widget> buildDayRows() {
-    List<Widget> widgets = <Widget>[];
-
-    for (int i = 1; i <= 31; i++) {
-      widgets.add(Center(
-          child: Text(i.toString(),
-              style: const TextStyle(fontSize: 12, color: Colors.black))));
-      for (int j = 1; j <= 12; j++) {
-        DateTime date = DateTime(DateTime.now().year, j, i);
-        String dateStr = date.toSimpleString();
-        widgets.add(Material(
-          elevation: 4,
-          child: Container(
-            decoration: BoxDecoration(
-                color: isWorkoutDay(j, i) ? Colors.grey : Colors.transparent,
-                shape: BoxShape.rectangle,
-                border: Border.all(color: Colors.grey.shade500, width: 0.3)),
-            child: GestureDetector(onTap: () {
-              if (isWorkoutDay(j, i)) {
-                Routine? routineForDate = dateToRoutineMap[dateStr];
-                if (routineForDate != null) {
-                  showBottomSheet(routineForDate);
-                }
-              }
-            }),
-          ),
-        ));
+  /// Processes the list of sessions to create a map of completed dates.
+  /// Key: 'YYYY-MM-DD' string, Value: The WorkoutSession completed on that day.
+  Map<String, WorkoutSession> _getWorkoutDayMap(List<WorkoutSession> sessions) {
+    final Map<String, WorkoutSession> dates = {};
+    for (var session in sessions) {
+      // Use only completed sessions with a valid end time
+      if (session.isCompleted && session.endTime != null) {
+        try {
+          // Use the date part only, converting to local time zone first
+          final dateStr = session.endTime!.toLocal().toSimpleString();
+          // Store the session (overwrites if multiple on same day - keeps last processed)
+          dates[dateStr] = session;
+        } catch (e) {
+          debugPrint("Error processing session end time for calendar map: ${session.endTime}, Error: $e");
+        }
       }
     }
+    return dates;
+  }
 
-    for (int i = 1; i <= 31; i++) {
-      widgets.add(Container());
-      for (int j = 1; j <= 1; j++) {
-        widgets.add(Container());
-      }
+  /// Builds the GridView for the calendar heatmap.
+  Widget _buildCalendarGrid(BuildContext context, Map<String, WorkoutSession> workoutDayMap) {
+    final currentYear = DateTime.now().year; // Display current year
+    const int columns = 13; // 1 (Day Label) + 12 (Months)
+    final List<Widget> gridChildren = [];
+    final TextTheme textTheme = Theme.of(context).textTheme; // Cache theme
+
+    // --- Header Row (Months) ---
+    gridChildren.add(const SizedBox.shrink()); // Empty top-left cell
+    for (int month = 1; month <= 12; month++) {
+      gridChildren.add(Center(
+          child: Text(_intToMonth(month), // Use helper
+              style: textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold)) // Use theme style
+      ));
     }
 
-    return widgets;
-  }
+    // --- Day Rows (1 to 31) ---
+    for (int day = 1; day <= 31; day++) {
+      // Add Day Label (1st column)
+      gridChildren.add(Center(
+          child: Text(day.toString(),
+              style: textTheme.bodySmall?.copyWith(color: Colors.grey)) // Use theme style
+      ));
+      // Add Cells for each month (Columns 2-13)
+      for (int month = 1; month <= 12; month++) {
+        DateTime? currentDate;
+        // Validate if the date exists (e.g., handle Feb 30th)
+        // DateTime.utc is generally safer for date-only checks
+        if (day <= DateUtils.getDaysInMonth(currentYear, month)) {
+          currentDate = DateTime.utc(currentYear, month, day);
+        }
 
-  bool isWorkoutDay(int month, int day) {
-    DateTime date = DateTime(DateTime.now().year, month, day);
-    String dateStr = date.toString().split(' ').first;
-    return dateToRoutineMap.keys.contains(dateStr);
-  }
+        if (currentDate == null) {
+          // Cell for non-existent dates (e.g., Feb 30/31)
+          gridChildren.add(Container(color: Theme.of(context).scaffoldBackgroundColor)); // Match background
+        } else {
+          final dateStr = currentDate.toSimpleString(); // YYYY-MM-DD format
+          final bool isWorkoutDay = workoutDayMap.containsKey(dateStr);
+          final WorkoutSession? sessionForDay = workoutDayMap[dateStr];
 
-  String intToMonth(int i) {
-    switch (i) {
-      case 1: return 'Jan';
-      case 2: return 'Feb';
-      case 3: return 'Mar';
-      case 4: return 'Apr';
-      case 5: return 'May';
-      case 6: return 'Jun';
-      case 7: return 'Jul';
-      case 8: return 'Aug';
-      case 9: return 'Sep';
-      case 10: return 'Oct';
-      case 11: return 'Nov';
-      case 12: return 'Dec';
-      default: throw Exception('Invalid month');
-    }
-  }
-
-  Map<String, Routine> getWorkoutDates(List<Routine> routines) {
-    Map<String, Routine> dates = {};
-
-    // Add routine history dates
-    for (var routine in routines) {
-      if (routine.routineHistory.isNotEmpty) {
-        for (var timestamp in routine.routineHistory) {
-          var d = DateTime.fromMillisecondsSinceEpoch(timestamp).toLocal();
-          dates[d.toSimpleString()] = routine;
+          gridChildren.add(
+              Tooltip( // Add tooltip for context
+                message: isWorkoutDay
+                    ? "Workout on ${DateFormat.yMMMEd().format(currentDate)}"
+                    : DateFormat.yMMMEd().format(currentDate),
+                child: Material(
+                  color: _getColorForWorkoutDay(isWorkoutDay, currentDate), // Use helper for color
+                  shape: RoundedRectangleBorder( // Add subtle border
+                    side: BorderSide(color: Colors.grey.shade300, width: 0.5),
+                  ),
+                  child: InkWell(
+                    onTap: isWorkoutDay && sessionForDay != null
+                        ? () => _showWorkoutDetailsSheet(context, sessionForDay) // Show details
+                        : null, // Disable tap if not a workout day
+                    // Ensure InkWell has a child (can be empty Container) to show ripple
+                    child: const SizedBox(width: double.infinity, height: double.infinity), // Fill cell
+                  ),
+                ),
+              )
+          );
         }
       }
     }
 
-    // Add workout session dates
-    for (var session in _sessions) {
-      if (session.isCompleted && session.endTime != null) {
-        var routine = routines.firstWhere(
-          (r) => r.id == session.routine.id,
-          orElse: () => session.routine,
-        );
-        dates[session.endTime!.toSimpleString()] = routine;
-      }
-    }
+    // Build the Grid - assumes used within a vertically scrolling parent like ListView/CustomScrollView
+    return GridView.count(
+      crossAxisCount: columns,
+      shrinkWrap: true, // Essential if nested vertically
+      physics: const NeverScrollableScrollPhysics(), // Prevent grid scrolling itself
+      mainAxisSpacing: 1.5, // Fine-tune spacing
+      crossAxisSpacing: 1.5, // Fine-tune spacing
+      children: gridChildren,
+    );
+  }
 
-    if (kDebugMode) {
-      print("Workout dates: $dates");
+  /// Determines the color for a calendar cell based on workout status and date.
+  Color _getColorForWorkoutDay(bool isWorkoutDay, DateTime date) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final cellDate = DateUtils.dateOnly(date); // Ensure comparison uses date only
+
+    // Using Theme colors for consistency
+    final Color workoutColor = Colors.green.shade400; // Or Theme.of(context).colorScheme.primaryContainer
+    final Color todayWorkoutColor = Colors.deepOrangeAccent.shade100; // Or Theme.of(context).colorScheme.tertiaryContainer
+    final Color todayColor = Colors.grey.shade300; // Or Theme.of(context).colorScheme.outlineVariant
+    final Color defaultColor = Colors.grey.shade100; // Or Theme.of(context).colorScheme.surfaceVariant
+
+    if (isWorkoutDay) {
+      return cellDate.isAtSameMomentAs(today) ? todayWorkoutColor : workoutColor;
+    } else {
+      return cellDate.isAtSameMomentAs(today) ? todayColor : defaultColor;
     }
-    return dates;
+  }
+
+
+  /// Shows a modal bottom sheet with details of the selected workout session.
+  void _showWorkoutDetailsSheet(BuildContext context, WorkoutSession session) {
+    showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder( // Rounded top corners
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        isScrollControlled: true, // Allow sheet to take more height if needed
+        builder: (BuildContext sheetContext) {
+          // Use SafeArea to avoid system intrusions (notch, navigation bar)
+          return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20), // Consistent padding
+                child: Wrap( // Use Wrap to allow content height to adapt
+                  children: [
+                    // Header with Date
+                    Text(
+                      "Workout on ${DateFormat.yMMMMEEEEd().format(session.endTime!.toLocal())}", // More detailed date format
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const Divider(height: 24, thickness: 0.5),
+                    // Display RoutineCard (ensure it's reasonably sized)
+                    // Consider creating a SessionSummaryCard if RoutineCard is too complex/large here
+                    RoutineCard(routine: session.routine),
+                    // Add more session details if needed (e.g., Duration)
+                    if (session.endTime != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: Center(child: Text("Duration: ${_formatDuration(session.duration)}")),
+                      ),
+                    const SizedBox(height: 20),
+                    // Close Button
+                    Center(
+                      child: TextButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          child: const Text("Close")
+                      ),
+                    )
+                  ],
+                ),
+              )
+          );
+        });
+  }
+
+  /// Formats Duration to HH:MM:SS or MM:SS format.
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, "0");
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    if (duration.inHours > 0) {
+      return "${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds";
+    } else {
+      return "$twoDigitMinutes:$twoDigitSeconds";
+    }
+  }
+
+  /// Converts month integer (1-12) to short string ('Jan'-'Dec') using intl.
+  String _intToMonth(int month) {
+    try {
+      // Use DateFormat for locale-aware month abbreviations
+      return DateFormat('MMM').format(DateTime(DateTime.now().year, month));
+    } catch (_) {
+      // Fallback for invalid month number
+      const months = ['?', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return (month >= 1 && month <= 12) ? months[month] : '?';
+    }
   }
 }
