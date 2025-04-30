@@ -104,18 +104,22 @@ class Routine {
         try {
           final decoded = jsonDecode(jsonInput);
           if (decoded is List) {
-            // Handle basic types directly
-            if (T == int) return decoded.cast<int>();
-            if (T == String) return decoded.cast<String>();
+            // Handle type casting properly with explicit List<T> return
+            if (T == int) {
+              return decoded.map((item) => item as int).toList() as List<T>;
+            }
+            if (T == String) {
+              return decoded.map((item) => item as String).toList() as List<T>;
+            }
             // Add other simple types if needed
             // For complex types, further mapping is needed after decoding
-            return decoded.whereType<T>().toList(); // General fallback, might fail for complex types
+            return decoded.whereType<T>().toList(); // General fallback for other types
           }
         } catch (e) {
           debugPrint("Error decoding list JSON ('$jsonInput'): $e");
         }
       }
-      return []; // Return empty list on error or invalid input
+      return <T>[]; // Return empty list on error or invalid input
     }
 
     List<Part> _decodePartsList(dynamic jsonInput) {
