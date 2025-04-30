@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831897287544",
+    "project_id": "fitfam-c61fb",
+    "storage_bucket": "fitfam-c61fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831897287544:android:1a20fedd003520907fe68d",
+        "android_client_info": {
+          "package_name": "com.example.dumbbell_new"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbzPAnIXLlmkAzdF3xANLkzJ7B7lr4aL0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
