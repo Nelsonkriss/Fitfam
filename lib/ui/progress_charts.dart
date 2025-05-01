@@ -7,21 +7,30 @@ import 'package:provider/provider.dart'; // Import Provider for BLoC access
 
 // Import Models and the RxDart WorkoutSessionBloc (Adjust paths if needed)
 import 'package:workout_planner/models/workout_session.dart';
-import 'package:workout_planner/models/exercise.dart'; // Needed indirectly via WorkoutSession
-import 'package:workout_planner/models/exercise_performance.dart'; // Needed indirectly via WorkoutSession
-import 'package:workout_planner/models/set_performance.dart'; // Needed indirectly via WorkoutSession
+// Needed indirectly via WorkoutSession
+// Needed indirectly via WorkoutSession
+// Needed indirectly via WorkoutSession
 import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Your RxDart BLoC
 
 /// A StatefulWidget that displays workout progress charts.
 /// It listens to a stream of WorkoutSession data provided by WorkoutSessionBloc.
 class ProgressCharts extends StatefulWidget {
-  const ProgressCharts({Key? key}) : super(key: key);
+  const ProgressCharts({super.key});
 
   @override
   _ProgressChartsState createState() => _ProgressChartsState();
 }
 
 class _ProgressChartsState extends State<ProgressCharts> {
+
+  @override
+  void initState() {
+    super.initState();
+    // Access the WorkoutSessionBloc instance provided via Provider
+    final sessionBloc = Provider.of<WorkoutSessionBloc>(context, listen: false);
+    // Refresh the data when the widget is initialized
+    sessionBloc.refreshData();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,8 +50,12 @@ class _ProgressChartsState extends State<ProgressCharts> {
         builder: (context, snapshot) {
           if (kDebugMode) {
             print("Session StreamBuilder state: ${snapshot.connectionState}");
-            if (snapshot.hasData) print("Received ${snapshot.data!.length} sessions");
-            else if (snapshot.hasError) print("Error in session stream: ${snapshot.error}");
+            if (snapshot.hasData) {
+              print("Received ${snapshot.data!.length} sessions");
+            } else if (snapshot.hasError) print("Error in session stream: ${snapshot.error}");
+          }
+          if (snapshot.hasData) {
+            print("ProgressCharts: Session data: ${snapshot.data}");
           }
 
           // --- Handle Different Stream States ---
@@ -53,7 +66,13 @@ class _ProgressChartsState extends State<ProgressCharts> {
             return Center( child: Padding( padding: const EdgeInsets.all(16.0), child: Text('Error loading workout data:\n${snapshot.error}', style: const TextStyle(color: Colors.red), textAlign: TextAlign.center,),),);
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center( child: Padding( padding: EdgeInsets.all(16.0), child: Text('No workout data available yet.\nComplete some sessions to see your progress!', textAlign: TextAlign.center,),));
+            // Display a basic chart with no data
+            return SizedBox(
+              height: 300,
+              child: Center(
+                child: Text('No workout data available yet.\nComplete some sessions to see your progress!', textAlign: TextAlign.center,),
+              ),
+            );
           }
 
           // --- Data is Available ---
@@ -112,10 +131,9 @@ class _ProgressChartsState extends State<ProgressCharts> {
           }
         }
       }
-      if (sessionVolume > 0) {
-        final dateOnly = DateUtils.dateOnly(session.endTime!);
-        volumeByDate.update(dateOnly, (v) => v + sessionVolume, ifAbsent: () => sessionVolume);
-      }
+      // Add the session to volumeByDate even if sessionVolume is 0
+      final dateOnly = DateUtils.dateOnly(session.endTime!);
+      volumeByDate.update(dateOnly, (v) => v + sessionVolume, ifAbsent: () => sessionVolume);
     }
     final volumeData = volumeByDate.entries
         .map((e) => FlSpot(e.key.millisecondsSinceEpoch.toDouble(), e.value))
@@ -124,7 +142,15 @@ class _ProgressChartsState extends State<ProgressCharts> {
 
     // 2. Handle insufficient data
     if (volumeData.length < 2) {
-      return const SizedBox(height: 300, child: Center(child: Text("Not enough data for volume chart.")));
+      return SizedBox(
+        height: 300,
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          clipBehavior: Clip.antiAlias,
+          child: Center(child: Text("Not enough data for volume chart.")),
+        ),
+      );
     }
 
     // 3. Build the chart widget
@@ -151,7 +177,7 @@ class _ProgressChartsState extends State<ProgressCharts> {
                           return LineTooltipItem(
                               '${spot.y.toStringAsFixed(0)} kg\n', // Volume
                               TextStyle(color: Theme.of(context).colorScheme.onInverseSurface ?? Colors.white, fontWeight: FontWeight.bold),
-                              children: [ TextSpan( text: dateStr, style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontWeight: FontWeight.normal, fontSize: 12), ), ]
+                              children: [ TextSpan( text: dateStr, style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontSize: 12), ), ]
                           );
                         }).toList();
                       }
@@ -268,7 +294,15 @@ class _ProgressChartsState extends State<ProgressCharts> {
 
     // 2. Handle insufficient data
     if (dataPoints.length < 2) {
-      return Container( padding: const EdgeInsets.symmetric(vertical: 8.0), child: Text("$exerciseName: Not enough data points for progress chart.", style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey.shade600)), );
+      return SizedBox(
+        height: 200,
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          clipBehavior: Clip.antiAlias,
+          child: Center(child: Text("$exerciseName: Not enough data points for progress chart.", style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey.shade600))),
+        ),
+      );
     }
 
     // 3. Build the chart widget

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:bloc/bloc.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:workout_planner/resource/db_provider_interface.dart'; // <--- ADD THIS IMPORT
+import 'package:workout_planner/resource/db_provider_io.dart';
 // Import your CORRECT models (assuming immutable versions)
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
@@ -60,7 +61,9 @@ class _RestTimerTicked extends WorkoutSessionEvent {
   _RestTimerTicked(this.remainingDuration);
 }
 
-class _RestPeriodEnded extends WorkoutSessionEvent {}
+class _RestPeriodEnded extends WorkoutSessionEvent {
+  _RestPeriodEnded();
+}
 
 
 // --- Define State (Simplified Structure) ---
@@ -132,7 +135,10 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_RestPeriodEnded>(_onRestPeriodEnded);
   }
 
-
+  // Add this method to refresh the data
+  void refreshData() {
+    _loadAllSessions();
+  }
 
   void _onWorkoutSessionStartNew(WorkoutSessionStartNew event, Emitter<WorkoutSessionState> emit) {
     debugPrint("BLoC: Starting new session from Routine: ${event.routine.routineName}");
@@ -245,9 +251,9 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
         id: currentSession.id,
         routine: currentSession.routine,
         startTime: currentSession.startTime,
+        exercises: updatedExercises,
         endTime: currentSession.endTime,
         isCompleted: currentSession.isCompleted,
-        exercises: updatedExercises,
       );
 
       // Emit the updated session state *before* handling rest
@@ -304,6 +310,27 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       await dbProvider.saveWorkoutSession(finishedSession);
       debugPrint("BLoC: Session saved successfully.");
       
+      // --- Update Routine Completion Count ---
+      final routineId = finishedSession.routine.id;
+      if (routineId != null) {
+        // Access the DBProviderIO implementation to call _getRoutineById
+        if (dbProvider is DBProviderIO) {
+          final routine = await dbProvider.getRoutineById(routineId);
+          if (routine != null) {
+            final updatedRoutine = routine.copyWith(completionCount: (routine.completionCount ?? 0) + 1);
+            await dbProvider.updateRoutine(updatedRoutine);
+            debugPrint("BLoC: Updated completion count for routine ${updatedRoutine.routineName} to ${updatedRoutine.completionCount}");
+          } else {
+            debugPrint("BLoC: Routine with ID $routineId not found.");
+          }
+        } else {
+          debugPrint("BLoC: DBProvider is not DBProviderIO, cannot update completion count.");
+        }
+      } else {
+        debugPrint("BLoC: Routine ID is null, cannot update completion count.");
+      }
+      // --- End Update Routine Completion Count ---
+      
       // Update all sessions stream
       _loadAllSessions();
 
@@ -345,7 +372,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     }
   }
 
-  void _onRestTimerTicked(_RestTimerTicked event, Emitter<WorkoutSessionState> emit) {
+  _onRestTimerTicked(_RestTimerTicked event, Emitter<WorkoutSessionState> emit) {
     // Only tick if IS resting
     if (state.isResting) {
       emit(state.copyWith(displayDuration: event.remainingDuration));
@@ -366,7 +393,6 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       _startSessionTimer(); // Restart the main workout timer
     }
   }
-
 
   // --- Timer Control ---
 
@@ -434,7 +460,9 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
   Future<void> _loadAllSessions() async {
     try {
       final sessions = await dbProvider.getWorkoutSessions();
+      debugPrint("BLoC: Loaded ${sessions.length} sessions from DB");
       _allSessionsController.add(sessions);
+      debugPrint("BLoC: Added sessions to _allSessionsController");
     } catch (e) {
       debugPrint("Error loading all sessions: $e");
       _allSessionsController.addError(e);

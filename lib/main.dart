@@ -1,4 +1,4 @@
-import 'dart:async'; // For Future
+// For Future
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -49,12 +49,6 @@ void main() async {
     print('[MAIN] CRITICAL: Exception caught during Firebase setup: ${e.runtimeType} - $e');
     runApp(ErrorApp(error: 'Firebase setup failed:\n$e'));
     return; // Stop execution if Firebase fails
-  }
-  // Ensure we actually have an app reference before proceeding
-  if (app == null) {
-    print('[MAIN] CRITICAL: Firebase app reference is null after initialization block.');
-    runApp(const ErrorApp(error: 'Failed to obtain Firebase app reference.'));
-    return;
   }
   // --- End Firebase Init ---
 
@@ -173,7 +167,7 @@ class MyApp extends StatelessWidget {
 
 /// The main scaffold holding the different pages via BottomNavigationBar.
 class MainPage extends StatefulWidget {
-  const MainPage({Key? key}) : super(key: key);
+  const MainPage({super.key});
 
   @override
   MainPageState createState() => MainPageState();
@@ -229,7 +223,7 @@ class MainPageState extends State<MainPage> {
 /// A simple widget shown when critical initialization fails.
 class ErrorApp extends StatelessWidget {
   final String error;
-  const ErrorApp({Key? key, required this.error}) : super(key: key);
+  const ErrorApp({super.key, required this.error});
 
   @override
   Widget build(BuildContext context) {

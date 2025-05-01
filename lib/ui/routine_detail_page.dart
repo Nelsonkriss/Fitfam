@@ -238,20 +238,20 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
               ),
               // Show stats only for user's routines
               if (!widget.isRecRoutine) ...[
-                const SizedBox(height: 12),
-                Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildStatColumn("COMPLETED", routine.completionCount.toString()),
-                      _buildStatColumn("CREATED", _formatDate(routine.createdDate)),
-                      // Show Last Done only if it exists
-                      if(routine.lastCompletedDate != null)
-                        _buildStatColumn("LAST DONE", _formatDate(routine.lastCompletedDate!)),
-                      // Add placeholder if lastCompleted is null to maintain layout?
-                      if(routine.lastCompletedDate == null) const Spacer(),
-                    ]
-                ),
-              ],
+              const SizedBox(height: 12),
+              Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildStatColumn("COMPLETED", routine.completionCount.toString()),
+                    _buildStatColumn("CREATED", _formatDate(routine.createdDate)),
+                    // Show Last Done only if it exists
+                    if(routine.lastCompletedDate != null)
+                      _buildStatColumn("LAST DONE", _formatDate(routine.lastCompletedDate!)),
+                    // Add placeholder if lastCompleted is null to maintain layout?
+                    if(routine.lastCompletedDate == null) const Spacer(),
+                  ]
+              ),
+            ],
               const SizedBox(height: 4),
             ],
           ),
@@ -280,16 +280,18 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
 
     showCupertinoModalPopup(
       context: context,
-      builder: (modalContext) => WeekdayModalBottomSheet(
-        // Pass the list positionally as required by constructor
-        currentWeekdays,
-        checkedCallback: (selectedWeekdays) {
-          // Create the updated routine immutably
-          final updatedRoutine = routine.copyWith(weekdays: selectedWeekdays);
-          // Update the routine via the BLoC
-          bloc.updateRoutine(updatedRoutine);
-          // Optional feedback (removed snackbar for less noise on every check)
-        },
+      builder: (modalContext) => Material( // Wrap with Material
+        child: WeekdayModalBottomSheet(
+          // Pass the list positionally as required by constructor
+          currentWeekdays,
+          checkedCallback: (selectedWeekdays) {
+            // Create the updated routine immutably
+            final updatedRoutine = routine.copyWith(weekdays: selectedWeekdays);
+            // Update the routine via the BLoC
+            bloc.updateRoutine(updatedRoutine);
+            // Optional feedback (removed snackbar for less noise on every check)
+          },
+        ),
       ),
     );
   }
@@ -377,7 +379,7 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
       );
 
       // 2. Encode the prepared routine to JSON stri
-          final String routineJson = jsonEncode(routineToShare.toMapForDb());
+      final String routineJson = jsonEncode(routineToShare.toMapForDb());
 
       // 3. Get the unique document ID for this share instance
       final String docId = _shareDataString.replaceFirst("-r", "");
@@ -425,7 +427,6 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
       MaterialPageRoute(builder: (context) => PartHistoryPage(part)),
     );
   }
-
 } // End of _RoutineDetailPageState
 
 
@@ -459,31 +460,43 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
   @override
   Widget build(BuildContext context) {
     // Using CupertinoActionSheet for iOS look, adjust if needed
-    return CupertinoActionSheet(
-      title: const Text('Schedule Routine Days'),
-      actions: List.generate(7, (index) => CupertinoActionSheetAction(
-        // Toggle selection when the action row is pressed
-          onPressed: () => _updateWeekdaySelection(index, !_isCheckedList[index]),
-          child: Row(
-            children: [
-              // Checkbox for visual state (still allows row press)
-              Checkbox(
-                value: _isCheckedList[index],
-                onChanged: (value) => _updateWeekdaySelection(index, value),
-                visualDensity: VisualDensity.compact,
-                activeColor: Theme.of(context).primaryColor,
-              ),
-              const SizedBox(width: 10),
-              Icon(weekDayIcons[index], size: 20, color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.7)),
-              const SizedBox(width: 15),
-              Text(weekDays[index]),
-            ],
-          )
-      )),
-      cancelButton: CupertinoActionSheetAction(
-        isDefaultAction: true,
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Done'),
+    return Material(
+      child: CupertinoActionSheet(
+        title: const Text('Schedule Routine Days'),
+        actions: List.generate(7, (index) => CupertinoActionSheetAction(
+          // Toggle selection when the action row is pressed
+            onPressed: () => _updateWeekdaySelection(index, !_isCheckedList[index]),
+            child: Row(
+              children: [
+                // Checkbox for visual state (still allows row press)
+                Checkbox(
+                  value: _isCheckedList[index],
+                  onChanged: (value) => _updateWeekdaySelection(index, value),
+                  visualDensity: VisualDensity.compact,
+                  activeColor: Theme.of(context).primaryColor,
+                ),
+                const SizedBox(width: 10),
+                Icon(weekDayIcons[index], size: 20, color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.7)),
+                const SizedBox(width: 15),
+                Text(weekDays[index]),
+              ],
+            )
+        )),
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () {
+            // Generate the list of selected integers (1-7)
+            final selectedWeekdays = <int>[];
+            for (int i = 0; i < _isCheckedList.length; i++) {
+              if (_isCheckedList[i]) {
+                selectedWeekdays.add(i + 1);
+              }
+            }
+            widget.checkedCallback?.call(selectedWeekdays);
+            Navigator.pop(context);
+          },
+          child: const Text('Done'),
+        ),
       ),
     );
   }
@@ -495,13 +508,5 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
     setState(() {
       _isCheckedList[index] = value;
     });
-
-    // Generate the list of selected integers (1-7)
-    final selectedWeekdays = <int>[];
-    for (int i = 0; i < _isCheckedList.length; i++) {
-      if (_isCheckedList[i]) selectedWeekdays.add(i + 1);
-    }
-    // Call the callback passed from the parent widget
-    widget.checkedCallback?.call(selectedWeekdays);
   }
-} // End of _WeekdayModalBottomSheetState
+}

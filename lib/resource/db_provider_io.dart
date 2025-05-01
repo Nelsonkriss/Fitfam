@@ -1,6 +1,6 @@
 // resource/db_provider_io.dart
 import 'dart:async';
-import 'dart:convert'; // Keep for debugging, though model should handle encoding/decoding
+// Keep for debugging, though model should handle encoding/decoding
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -166,7 +166,7 @@ class DBProviderIO implements DbProviderInterface {
           debugPrint("[DBProviderIO] Error parsing routine map during getAllRoutines: $e\n$s\nMap: $map");
           return null; // Skip routines that fail to parse
         }
-      }).whereNotNull().toList();
+      }).whereNotNull().where((routine) => routine.id != null).toList(); // Filter out routines with null id
       debugPrint("[DBProviderIO] Fetched ${routines.length} routines.");
       return routines;
     } catch (e, s) {
@@ -215,7 +215,8 @@ class DBProviderIO implements DbProviderInterface {
   }
 
   // Helper to get single routine by ID - relies on Routine.fromMap
-  Future<Routine?> _getRoutineById(int id) async {
+  @override
+  Future<Routine?> getRoutineById(int id) async {
     final dbClient = await db;
     try {
       final List<Map<String, dynamic>> maps = await dbClient.query(
@@ -228,6 +229,7 @@ class DBProviderIO implements DbProviderInterface {
       return null;
     }
   }
+
 
   // --- Workout Session Methods ---
   // ** These assume WorkoutSession.toMap/fromMap are CORRECTLY handling JSON **
@@ -285,12 +287,14 @@ class DBProviderIO implements DbProviderInterface {
   Future<WorkoutSession?> getWorkoutSessionById(String id) async {
     final dbClient = await db;
     try {
-      final List<Map<String, dynamic>> maps = await dbClient.query( 'WorkoutSessions', where: 'id = ?', whereArgs: [id], limit: 1, );
+      final List<Map<String, dynamic>> maps = await dbClient.query(
+        'WorkoutSessions', where: 'id = ?', whereArgs: [id], limit: 1,
+      );
       if (maps.isEmpty) return null;
       final map = maps.first;
       final routineId = map['routineId'] as int?;
       if (routineId == null) { /* ... */ return null; }
-      final routine = await _getRoutineById(routineId);
+      final routine = await getRoutineById(routineId);
       if (routine == null) { /* ... */ return null; }
 
       // ** WorkoutSession.fromMap() MUST jsonDecode 'exercises' field **

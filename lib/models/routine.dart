@@ -23,7 +23,7 @@ class Routine {
   final List<int> routineHistory; // List of integers (e.g., timestamps)
 
   /// Creates an immutable Routine instance.
-  Routine({
+  const Routine({
     this.id,
     required this.routineName,
     required this.mainTargetedBodyPart,
@@ -99,7 +99,7 @@ class Routine {
   /// Decodes JSON strings from TEXT columns back into Dart lists.
   factory Routine.fromMap(Map<String, dynamic> map) {
     // --- Helper Functions for Safe Decoding ---
-    List<T> _decodeJsonList<T>(dynamic jsonInput) {
+    List<T> decodeJsonList<T>(dynamic jsonInput) {
       if (jsonInput is String && jsonInput.isNotEmpty) {
         try {
           final decoded = jsonDecode(jsonInput);
@@ -122,7 +122,7 @@ class Routine {
       return <T>[]; // Return empty list on error or invalid input
     }
 
-    List<Part> _decodePartsList(dynamic jsonInput) {
+    List<Part> decodePartsList(dynamic jsonInput) {
       if (jsonInput is String && jsonInput.isNotEmpty) {
         try {
           final decodedList = jsonDecode(jsonInput) as List?;
@@ -153,7 +153,7 @@ class Routine {
       return []; // Return empty list on error or invalid input
     }
 
-    DateTime? _parseOptionalDate(dynamic value) {
+    DateTime? parseOptionalDate(dynamic value) {
       if (value is String && value.isNotEmpty) {
         return DateTime.tryParse(value);
       }
@@ -178,12 +178,12 @@ class Routine {
       routineName: map['routineName'] as String? ?? 'Unnamed Routine',
       mainTargetedBodyPart: bodyPart,
       // Decode JSON strings back into lists
-      parts: _decodePartsList(map['parts']),
-      createdDate: _parseOptionalDate(map['createdDate']) ?? DateTime.now(), // Default createdDate if parsing fails
-      lastCompletedDate: _parseOptionalDate(map['lastCompletedDate']),
+      parts: decodePartsList(map['parts']),
+      createdDate: parseOptionalDate(map['createdDate']) ?? DateTime.now(), // Default createdDate if parsing fails
+      lastCompletedDate: parseOptionalDate(map['lastCompletedDate']),
       completionCount: map['completionCount'] as int? ?? 0,
-      weekdays: _decodeJsonList<int>(map['weekdays']),
-      routineHistory: _decodeJsonList<int>(map['routineHistory']),
+      weekdays: decodeJsonList<int>(map['weekdays']),
+      routineHistory: decodeJsonList<int>(map['routineHistory']),
     );
   }
 

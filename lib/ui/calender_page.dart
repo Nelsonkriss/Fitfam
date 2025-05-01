@@ -1,11 +1,11 @@
-import 'package:flutter/cupertino.dart'; // Keep if used by helpers/components
+// Keep if used by helpers/components
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:intl/intl.dart'; // For date formatting
 
 // Import Models and BLoC (adjust paths if needed)
-import 'package:workout_planner/models/routine.dart'; // Keep if RoutineCard needs it
+// Keep if RoutineCard needs it
 import 'package:workout_planner/models/workout_session.dart';
 import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Your RxDart Bloc
 import 'package:workout_planner/ui/components/routine_card.dart'; // Make sure path is correct
@@ -80,8 +80,8 @@ class CalenderPage extends StatelessWidget {
       // Use only completed sessions with a valid end time
       if (session.isCompleted && session.endTime != null) {
         try {
-          // Use the date part only, converting to local time zone first
-          final dateStr = session.endTime!.toLocal().toSimpleString();
+          // Use the date part only, using UTC time
+          final dateStr = session.endTime!.toUtc().toSimpleString();
           // Store the session (overwrites if multiple on same day - keeps last processed)
           dates[dateStr] = session;
         } catch (e) {

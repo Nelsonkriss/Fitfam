@@ -61,6 +61,7 @@ dependencies:
 
   collection: any
   path: any
+  meta: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

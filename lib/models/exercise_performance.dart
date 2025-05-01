@@ -1,7 +1,7 @@
 import 'dart:convert'; // <-- Import for jsonEncode/Decode
 import 'package:flutter/foundation.dart'; // For debugPrint, Object.hash
 import 'package:collection/collection.dart'; // For DeepCollectionEquality
-import 'package:meta/meta.dart'; // For @immutable
+// For @immutable
 
 // Assuming these models are correctly defined
 import 'package:workout_planner/models/exercise.dart'; // Import Exercise model
@@ -75,7 +75,7 @@ class ExercisePerformance {
     try {
       encodedSets = jsonEncode(sets.map((s) => s.toMap()).toList());
     } catch (e) {
-      debugPrint("Error encoding sets list to JSON in ExercisePerformance '${exerciseName}': $e");
+      debugPrint("Error encoding sets list to JSON in ExercisePerformance '$exerciseName': $e");
       // Handle error appropriately
     }
     return {
@@ -90,7 +90,7 @@ class ExercisePerformance {
   /// Decodes the 'sets' list from a JSON string.
   factory ExercisePerformance.fromMap(Map<String, dynamic> map) {
     // --- Helper function to safely decode list of Sets ---
-    List<SetPerformance> _decodeSetsList(dynamic jsonInput) {
+    List<SetPerformance> decodeSetsList(dynamic jsonInput) {
       if (jsonInput is String && jsonInput.isNotEmpty) {
         try {
           final decodedList = jsonDecode(jsonInput) as List?;
@@ -119,7 +119,7 @@ class ExercisePerformance {
     return ExercisePerformance(
       exerciseName: map['exerciseName'] as String? ?? 'Unknown Exercise',
       // *** FIX: Decode list from JSON string ***
-      sets: _decodeSetsList(map['sets']),
+      sets: decodeSetsList(map['sets']),
       restPeriod: restSeconds != null && restSeconds >= 0
           ? Duration(seconds: restSeconds)
           : null, // Handle potential null/negative from DB

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For input formatters in dialog
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:workout_planner/models/workout_session.dart'; // Use updated models
+// Use updated models
 import 'package:workout_planner/models/routine.dart';
 // Needed for models used by WorkoutSession
 // Needed for models used by Routine

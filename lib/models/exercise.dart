@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart'; // For debugPrint
-import 'package:collection/collection.dart'; // For potential mapEquals if needed
+// For potential mapEquals if needed
 
 /// Represents the type of workout an exercise belongs to.
 enum WorkoutType { Cardio, Weight }
@@ -49,7 +49,7 @@ class Exercise {
   /// Creates an Exercise instance from a map (e.g., from JSON/database).
   factory Exercise.fromMap(Map<String, dynamic> map) {
     // --- Helper to decode History ---
-    Map<String, dynamic> _decodeHistory(dynamic historyInput) {
+    Map<String, dynamic> decodeHistory(dynamic historyInput) {
       if (historyInput is String && historyInput.isNotEmpty) {
         try {
           final decoded = jsonDecode(historyInput);
@@ -70,7 +70,7 @@ class Exercise {
     // --- End Helper ---
 
     // --- Helper to parse WorkoutType ---
-    WorkoutType _parseWorkoutType(dynamic value, WorkoutType defaultValue) {
+    WorkoutType parseWorkoutType(dynamic value, WorkoutType defaultValue) {
       if (value is String) { try { return WorkoutType.values.byName(value); } catch (_) {} }
       if (value is int) { // Fallback for old integer format
         debugPrint('Warning: workoutType stored as int for ${map["name"]}, migrating to String is recommended.');
@@ -89,9 +89,9 @@ class Exercise {
       sets: int.tryParse(map['sets']?.toString() ?? '0') ?? 0,
       reps: map['reps'] as String? ?? '',
       // Parse workout type using helper
-      workoutType: _parseWorkoutType(map['workoutType'], WorkoutType.Weight),
+      workoutType: parseWorkoutType(map['workoutType'], WorkoutType.Weight),
       // Decode history using helper
-      exHistory: _decodeHistory(map['history']),
+      exHistory: decodeHistory(map['history']),
     );
   }
 

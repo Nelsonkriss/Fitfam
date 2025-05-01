@@ -1,5 +1,5 @@
 import 'dart:async'; // For Future
-import 'dart:math'; // For max() if needed by helpers, used in _getRatio calculation
+// For max() if needed by helpers, used in _getRatio calculation
 
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
@@ -12,10 +12,8 @@ import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For getFirstRunDate
 
 // Import Models and UI Components
-import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/part.dart'; // Included via routine.dart
-import 'package:workout_planner/models/exercise.dart'; // Included via routine.dart
-import 'package:workout_planner/models/main_targeted_body_part.dart';
+// Included via routine.dart
+// Included via routine.dart
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 
@@ -27,7 +25,7 @@ const TextStyle _kCardLargeNumStyle = TextStyle(color: Colors.white, fontWeight:
 
 /// Page displaying user statistics, workout calendar, and charts.
 class StatisticsPage extends StatefulWidget {
-  const StatisticsPage({Key? key}) : super(key: key);
+  const StatisticsPage({super.key});
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -82,7 +80,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
         body: StreamBuilder<List<Routine>>(
           stream: routinesBlocInstance.allRoutinesStream, // Listen to routine data
           builder: (context, routineSnapshot) {
-            if (kDebugMode) print("Statistics Routine StreamBuilder state: ${routineSnapshot.connectionState}");
+            if (kDebugMode) {
+              print("Statistics Routine StreamBuilder state: ${routineSnapshot.connectionState}");
+              if (routineSnapshot.hasData) {
+                print("StatisticsPage: Routine data: ${routineSnapshot.data}");
+              }
+            }
 
             // --- Handle Routine Stream States ---
             if (routineSnapshot.connectionState == ConnectionState.waiting && !routineSnapshot.hasData) {

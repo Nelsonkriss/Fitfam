@@ -162,6 +162,13 @@ class DonutAutoLabelChart extends StatelessWidget {
 
   List<PieChartSectionData> _createSectionsData(BuildContext context) {
     // (Implementation remains the same)
-    final Map<MainTargetedBodyPart, int> countsByBodyPart = {}; int totalCompletions = 0; for (final routine in routines) { if (routine.completionCount > 0) { countsByBodyPart.update( routine.mainTargetedBodyPart, (v) => v + routine.completionCount, ifAbsent: () => routine.completionCount, ); totalCompletions += routine.completionCount; } } if (totalCompletions == 0) return []; final List<Color> colors = [ Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.tertiary ?? Colors.green, Colors.orange.shade600, Colors.red.shade400, Colors.purple.shade400, Colors.teal.shade400, Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400, ]; int colorIndex = 0; final List<PieChartSectionData> sections = []; countsByBodyPart.forEach((bodyPart, count) { final double percentage = (count / totalCompletions) * 100; final Color sectionColor = colors[colorIndex % colors.length]; colorIndex++; sections.add(PieChartSectionData( color: sectionColor, value: count.toDouble(), title: '${percentage.toStringAsFixed(0)}%', radius: 50, titleStyle: const TextStyle( fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, shadows: [ Shadow(color: Colors.black54, blurRadius: 2) ] ), )); }); return sections;
+    final Map<MainTargetedBodyPart, int> countsByBodyPart = {}; int totalCompletions = 0; for (final routine in routines) { if (routine.completionCount > 0) {
+      // Convert the integer to MainTargetedBodyPart enum
+      final bodyPart = MainTargetedBodyPart.values[(routine.mainTargetedBodyPart != null ? routine.mainTargetedBodyPart.index : 0)];
+      countsByBodyPart.update(
+        bodyPart,
+        (v) => v + routine.completionCount,
+        ifAbsent: () => routine.completionCount,
+      ); totalCompletions += routine.completionCount; } } if (totalCompletions == 0) return []; final List<Color> colors = [ Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.tertiary ?? Colors.green, Colors.orange.shade600, Colors.red.shade400, Colors.purple.shade400, Colors.teal.shade400, Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400, ]; int colorIndex = 0; final List<PieChartSectionData> sections = []; countsByBodyPart.forEach((bodyPart, count) { final double percentage = (count / totalCompletions) * 100; final Color sectionColor = colors[colorIndex % colors.length]; colorIndex++; sections.add(PieChartSectionData( color: sectionColor, value: count.toDouble(), title: '${percentage.toStringAsFixed(0)}%', radius: 50, titleStyle: const TextStyle( fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, shadows: [ Shadow(color: Colors.black54, blurRadius: 2) ] ), )); }); return sections;
   }
 } // End DonutAutoLabelChart

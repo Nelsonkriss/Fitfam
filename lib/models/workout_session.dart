@@ -1,15 +1,15 @@
 import 'dart:convert'; // <-- Import for jsonEncode/Decode
 import 'package:collection/collection.dart'; // For potential listEquals if needed
 import 'package:uuid/uuid.dart'; // For generating IDs
-import 'package:meta/meta.dart'; // For @immutable
+// For @immutable
 import 'package:flutter/foundation.dart'; // For debugPrint, Object.hash
 
 // Import corrected models (adjust paths if necessary)
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/exercise_performance.dart'; // Import corrected ExercisePerformance
-import 'package:workout_planner/models/set_performance.dart'; // Needed indirectly by ExercisePerformance
-import 'package:workout_planner/models/exercise.dart'; // Needed by ExercisePerformance.fromExerciseDefinition
-import 'package:workout_planner/models/part.dart'; // Needed indirectly by Routine
+// Needed indirectly by ExercisePerformance
+// Needed by ExercisePerformance.fromExerciseDefinition
+// Needed indirectly by Routine
 
 /// Represents an active or completed workout session based on a Routine.
 @immutable // Mark as immutable where possible (endTime/isCompleted/exercises are mutable state)
@@ -135,7 +135,7 @@ class WorkoutSession {
   /// Decodes the 'exercises' list from a JSON string.
   factory WorkoutSession.fromMap(Map<String, dynamic> map, Routine routine) {
     // --- Helper function to safely decode list of ExercisePerformances ---
-    List<ExercisePerformance> _decodeExercisesList(dynamic jsonInput) {
+    List<ExercisePerformance> decodeExercisesList(dynamic jsonInput) {
       if (jsonInput is String && jsonInput.isNotEmpty) {
         try {
           final decodedList = jsonDecode(jsonInput) as List?;
@@ -161,7 +161,7 @@ class WorkoutSession {
     // --- End Helper ---
 
     // --- Helper for robust DateTime parsing ---
-    DateTime? _tryParseDateTime(dynamic value) {
+    DateTime? tryParseDateTime(dynamic value) {
       if (value is String && value.isNotEmpty) { return DateTime.tryParse(value); }
       return null;
     }
@@ -171,12 +171,12 @@ class WorkoutSession {
       // Use Uuid().v4() only if ID is truly missing/null from DB, otherwise use DB value
       id: map['id'] as String? ?? const Uuid().v4(),
       routine: routine, // Provided externally
-      startTime: _tryParseDateTime(map['startTime']) ?? DateTime.now(), // Default if parse fails
-      endTime: _tryParseDateTime(map['endTime']), // Nullable
+      startTime: tryParseDateTime(map['startTime']) ?? DateTime.now(), // Default if parse fails
+      endTime: tryParseDateTime(map['endTime']), // Nullable
       // Convert INTEGER (0/1) back to boolean
       isCompleted: (map['isCompleted'] as int? ?? 0) == 1,
       // *** FIX: Decode list from JSON string ***
-      exercises: _decodeExercisesList(map['exercises']),
+      exercises: decodeExercisesList(map['exercises']),
     );
   }
 

@@ -93,7 +93,7 @@ class Part {
   /// Handles decoding of the 'exercises' list from a JSON string.
   factory Part.fromMap(Map<String, dynamic> map) {
     // --- Helper function to safely decode the list of Exercises ---
-    List<Exercise> _decodeExercisesList(dynamic jsonInput) {
+    List<Exercise> decodeExercisesList(dynamic jsonInput) {
       if (jsonInput is String && jsonInput.isNotEmpty) {
         try {
           final decodedList = jsonDecode(jsonInput) as List?;
@@ -136,7 +136,7 @@ class Part {
 
 
     // Parse exercises first using the new helper
-    List<Exercise> parsedExercises = _decodeExercisesList(map['exercises']);
+    List<Exercise> parsedExercises = decodeExercisesList(map['exercises']);
 
     SetType setType = _parseSetType(map['setType'], SetType.Regular);
     TargetedBodyPart bodyPart = _parseTargetedBodyPart(map['bodyPart'], TargetedBodyPart.FullBody);
@@ -153,7 +153,7 @@ class Part {
       // Use the parsed exercises list
       exercises: parsedExercises,
       // Determine name based on whether it was parsed or needs default generation
-      partName: useDefault ? _generateDefaultPartName(setType, parsedExercises) : nameFromMap!.trim(),
+      partName: useDefault ? _generateDefaultPartName(setType, parsedExercises) : nameFromMap.trim(),
     );
   }
 
@@ -165,7 +165,7 @@ class Part {
     try {
       encodedExercises = jsonEncode(exercises.map((e) => e.toMap()).toList());
     } catch (e) {
-      debugPrint("Error encoding exercises list to JSON in Part '${partName}': $e");
+      debugPrint("Error encoding exercises list to JSON in Part '$partName': $e");
       // Handle error: save empty string? throw?
     }
 

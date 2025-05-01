@@ -111,6 +111,12 @@ class MockDbProvider implements DbProviderInterface {
   @override Future<List<WorkoutSession>> getWorkoutSessions() async => [];
   @override Future<WorkoutSession?> getWorkoutSessionById(String id) async => null;
   @override Future<void> deleteWorkoutSession(String id) async {}
+
+  @override
+  Future<Routine?> getRoutineById(int id) {
+    // TODO: implement getRoutineById
+    throw UnimplementedError();
+  }
 }
 
 class MockFirebaseProvider implements FirebaseProvider {
@@ -254,7 +260,12 @@ class MockWorkoutSessionBloc extends Mock implements WorkoutSessionBloc {
 
   @override
   // TODO: implement stream
-  Stream<WorkoutSessionState> get stream => throw UnimplementedError(); // Provide default state
+  Stream<WorkoutSessionState> get stream => throw UnimplementedError();
+
+  @override
+  void refreshData() {
+    // TODO: implement refreshData
+  } // Provide default state
 }
 
 class Mock {
@@ -262,7 +273,7 @@ class Mock {
 
 // Helper to easily mock Bloc/Cubit for testing with package:bloc_test or package:mocktail
 class MockBloc<E, S> extends Bloc<E, S> {
-  MockBloc(S initialState) : super(initialState);
+  MockBloc(super.initialState);
   @override
   Future<void> close() async {} // Override close for testing
 }

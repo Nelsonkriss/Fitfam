@@ -290,4 +290,10 @@ class DBProviderWeb implements DbProviderInterface {
     if (value is double) return value.toInt(); // Handle potential doubles
     return null;
   }
+
+  @override
+  Future<Routine?> getRoutineById(int id) {
+    // TODO: implement getRoutineById
+    throw UnimplementedError();
+  }
 }

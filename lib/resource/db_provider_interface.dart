@@ -25,4 +25,7 @@ abstract class DbProviderInterface {
   // *** FIX: Remove the empty body {} and use a semicolon ; ***
   Future<WorkoutSession?> getWorkoutSessionById(String id);
   Future<void> deleteWorkoutSession(String id);
+
+  // Add this method to fetch a routine by ID
+  Future<Routine?> getRoutineById(int id);
 }
