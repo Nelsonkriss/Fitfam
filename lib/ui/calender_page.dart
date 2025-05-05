@@ -28,8 +28,12 @@ class CalenderPage extends StatelessWidget {
     // Access the WorkoutSessionBloc instance via Provider
     final workoutSessionBloc = context.watch<WorkoutSessionBloc>();
 
-    if (kDebugMode) print("Building CalenderPage");
+    if (kDebugMode) {
+      print("Building CalenderPage - start");
+      Stopwatch().start(); // No need to store reference as it's not used later
+    }
 
+    final stopwatch = Stopwatch();
     return StreamBuilder<List<WorkoutSession>>(
       // ACTION REQUIRED: Verify stream name in WorkoutSessionBloc
       stream: workoutSessionBloc.allSessionsStream, // Listen to session stream
@@ -57,17 +61,22 @@ class CalenderPage extends StatelessWidget {
 
         // --- Build UI ---
         // Show empty state directly if map is empty after processing
-        if (workoutDayMap.isEmpty && sessions.isNotEmpty) {
-          // This case means sessions exist but none were completed with an end date
-          return const SizedBox( height: 400, child: Center(child: Text('No completed workouts found with valid dates.')));
-        }
-        if (sessions.isEmpty) {
-          return const SizedBox( height: 400, child: Center(child: Text('Complete some workouts to see them here!')));
-        }
+        // Show empty state directly if map is empty after processing
+        //if (workoutDayMap.isEmpty && sessions.isNotEmpty) {
+        //  // This case means sessions exist but none were completed with an end date
+        //  return const SizedBox( height: 400, child: Center(child: Text('No completed workouts found with valid dates.')));
+        //}
+        //if (sessions.isEmpty) {
+        //  return const SizedBox( height: 400, child: Center(child: Text('Complete some workouts to see them here!')));
+        //}
 
 
         // Build the Calendar Grid UI if there's data
-        return _buildCalendarGrid(context, workoutDayMap);
+        final calendarGrid = _buildCalendarGrid(context, workoutDayMap);
+        if (kDebugMode) {
+          print("Building CalenderPage - end");
+        }
+        return calendarGrid;
       },
     );
   }
@@ -75,6 +84,12 @@ class CalenderPage extends StatelessWidget {
   /// Processes the list of sessions to create a map of completed dates.
   /// Key: 'YYYY-MM-DD' string, Value: The WorkoutSession completed on that day.
   Map<String, WorkoutSession> _getWorkoutDayMap(List<WorkoutSession> sessions) {
+    Stopwatch? stopwatch;
+    if (kDebugMode) {
+      print("Building WorkoutDayMap - start");
+      stopwatch = Stopwatch()..start();
+    }
+
     final Map<String, WorkoutSession> dates = {};
     for (var session in sessions) {
       // Use only completed sessions with a valid end time
@@ -89,6 +104,12 @@ class CalenderPage extends StatelessWidget {
         }
       }
     }
+
+    if (kDebugMode && stopwatch != null) {
+      stopwatch.stop();
+      print("Building WorkoutDayMap - end: ${stopwatch.elapsedMilliseconds}ms");
+    }
+
     return dates;
   }
 

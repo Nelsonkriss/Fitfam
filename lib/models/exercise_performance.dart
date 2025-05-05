@@ -1,21 +1,28 @@
-import 'dart:convert'; // <-- Import for jsonEncode/Decode
-import 'package:flutter/foundation.dart'; // For debugPrint, Object.hash
+// models/exercise_performance.dart
+
+import 'package:flutter/foundation.dart'; // For Object.hash, debugPrint
 import 'package:collection/collection.dart'; // For DeepCollectionEquality
-// For @immutable
+import 'package:meta/meta.dart'; // For @immutable
 
 // Assuming these models are correctly defined
 import 'package:workout_planner/models/exercise.dart'; // Import Exercise model
 import 'package:workout_planner/models/set_performance.dart'; // Import SetPerformance model
 
 /// Tracks the performance details for a single exercise within a WorkoutSession.
-@immutable // Mark as immutable
+/// Corresponds to a record in the 'ExercisePerformances' database table.
+@immutable
 class ExercisePerformance {
+  /// The unique ID from the 'ExercisePerformances' database table (null if not saved yet).
+  final int? id;
   final String exerciseName;
-  final List<SetPerformance> sets; // List of immutable SetPerformance objects
-  final Duration? restPeriod; // Planned rest period (immutable)
+  /// The list of sets performed for this exercise during the session.
+  /// Populated by DBProviderIO after fetching from 'SetPerformances' table.
+  final List<SetPerformance> sets;
+  /// The planned rest period after this exercise (if any).
+  final Duration? restPeriod;
 
-  /// Creates an immutable instance of ExercisePerformance.
-  const ExercisePerformance({ // Make constructor const
+  const ExercisePerformance({
+    this.id, // Nullable ID from DB
     required this.exerciseName,
     required this.sets,
     this.restPeriod,
@@ -23,131 +30,104 @@ class ExercisePerformance {
 
   /// Creates a new ExercisePerformance instance with updated values.
   ExercisePerformance copyWith({
+    int? id,
     String? exerciseName,
     List<SetPerformance>? sets,
-    Duration? restPeriod,
-    bool clearRestPeriod = false, // Flag to explicitly set restPeriod to null
+    // Allow setting restPeriod to null explicitly
+    Object? restPeriod = const _Undefined(),
   }) {
     return ExercisePerformance(
+      id: id ?? this.id,
       exerciseName: exerciseName ?? this.exerciseName,
-      // If sets list is provided, use it; otherwise keep original reference
+      // If sets list is provided, use it; otherwise keep original list reference
       sets: sets ?? this.sets,
-      restPeriod: clearRestPeriod ? null : (restPeriod ?? this.restPeriod),
+      restPeriod: restPeriod is _Undefined
+          ? this.restPeriod
+          : restPeriod as Duration?,
     );
   }
 
-  /// Creates an initial ExercisePerformance based on an Exercise definition.
+  /// Creates an initial ExercisePerformance based on an Exercise definition
+  /// when starting a new workout session.
   factory ExercisePerformance.fromExerciseDefinition(Exercise exercise) {
-    // --- Logic to parse target reps from Exercise.reps string ---
+    // Helper logic to parse target reps from the Exercise.reps string
     int targetReps = 0;
     try {
-      // Handle simple numbers, ranges (use first number), or default
-      final repString = exercise.reps.trim();
-      if (repString.contains('-')) {
+      final repString = exercise.reps.trim().toLowerCase();
+      if (repString == 'amrap') {
+        targetReps = 0; // Or a special value like -1 if needed
+      } else if (repString.contains('-')) {
         targetReps = int.tryParse(repString.split('-').first.trim()) ?? 0;
       } else {
         targetReps = int.tryParse(repString) ?? 0;
       }
-    } catch (_) { /* Ignore parsing errors, keep targetReps = 0 */ }
-    // --- End Reps Parsing ---
+    } catch (_) {
+      /* Ignore parsing errors, keep targetReps = 0 */
+      debugPrint("Could not parse target reps from string: '${exercise.reps}' for exercise '${exercise.name}'");
+    }
+    targetReps = targetReps.clamp(0, 999); // Clamp to reasonable value
+
+    // Helper logic to parse target weight (assuming Exercise model has 'weight' as double)
+    double targetWeight = exercise.weight.clamp(0.0, 9999.0); // Ensure non-negative weight
+
+    // TODO: Get planned restPeriod from Exercise model if it exists
+    Duration? plannedRest = const Duration(seconds: 60); // Default rest period
 
     return ExercisePerformance(
+      // ID is null initially, assigned by DB upon saving
       exerciseName: exercise.name,
       // Create list of SetPerformance based on Exercise plan
       sets: List.generate(
-        exercise.sets.clamp(0, 100), // Ensure non-negative sets (and reasonable max)
-            (i) => SetPerformance( // Create immutable SetPerformance
+        exercise.sets.clamp(1, 100), // Ensure 1 to 100 sets
+            (i) => SetPerformance(
           targetReps: targetReps,
-          targetWeight: exercise.weight.clamp(0.0, 9999.0), // Ensure non-negative weight
-          // Initial actual values are 0/false
+          targetWeight: targetWeight,
+          // Initial actual values are 0 / false
+          actualReps: 0,
+          actualWeight: 0.0,
+          isCompleted: false,
         ),
         growable: false, // List length is fixed based on plan
       ),
-      // TODO: Potentially get planned restPeriod from Exercise model if available
-      restPeriod: const Duration(seconds: 60), // Default rest period
+      restPeriod: plannedRest,
     );
   }
 
-  /// Serializes the ExercisePerformance state to a Map suitable for DB storage.
-  /// Encodes the 'sets' list into a JSON string.
-  Map<String, dynamic> toMapForDb() { // Renamed for clarity
-    String encodedSets = '[]';
-    try {
-      encodedSets = jsonEncode(sets.map((s) => s.toMap()).toList());
-    } catch (e) {
-      debugPrint("Error encoding sets list to JSON in ExercisePerformance '$exerciseName': $e");
-      // Handle error appropriately
-    }
-    return {
-      'exerciseName': exerciseName,
-      // *** FIX: Encode list to JSON string ***
-      'sets': encodedSets,
-      'restPeriodInSeconds': restPeriod?.inSeconds, // Store duration as seconds (INTEGER)
-    };
-  }
-
-  /// Creates an ExercisePerformance instance from a Map (e.g., from database).
-  /// Decodes the 'sets' list from a JSON string.
-  factory ExercisePerformance.fromMap(Map<String, dynamic> map) {
-    // --- Helper function to safely decode list of Sets ---
-    List<SetPerformance> decodeSetsList(dynamic jsonInput) {
-      if (jsonInput is String && jsonInput.isNotEmpty) {
-        try {
-          final decodedList = jsonDecode(jsonInput) as List?;
-          if (decodedList != null) {
-            return decodedList.map((sMap) {
-              try {
-                if (sMap is Map<String, dynamic>) {
-                  return SetPerformance.fromMap(sMap);
-                } else { return null; }
-              } catch (e) {
-                debugPrint("Error decoding single SetPerformance from map: $sMap, Error: $e");
-                return null;
-              }
-            }).whereNotNull().toList();
-          }
-        } catch (e) {
-          debugPrint("Error decoding sets list JSON ('$jsonInput'): $e");
-        }
-      }
-      return []; // Return empty on error
-    }
-    // --- End Helper ---
-
-    int? restSeconds = map['restPeriodInSeconds'] as int?;
-
-    return ExercisePerformance(
-      exerciseName: map['exerciseName'] as String? ?? 'Unknown Exercise',
-      // *** FIX: Decode list from JSON string ***
-      sets: decodeSetsList(map['sets']),
-      restPeriod: restSeconds != null && restSeconds >= 0
-          ? Duration(seconds: restSeconds)
-          : null, // Handle potential null/negative from DB
-    );
-  }
+  /*
+   * NOTE: toMapForDb and fromMap methods are removed because the DBProviderIO
+   * uses a normalized schema. It constructs the map for insertion manually
+   * and reconstructs the ExercisePerformance object manually after fetching
+   * data from multiple tables (ExercisePerformances and SetPerformances).
+   */
 
   @override
   String toString() {
-    return 'ExercisePerformance(name: $exerciseName, sets: ${sets.length})';
+    return 'ExercisePerformance(id: $id, name: $exerciseName, sets: ${sets.length}, rest: $restPeriod)';
   }
 
-  // Equality based on exercise name and deep comparison of set details
+  // Equality comparison
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
-    final listEquals = const DeepCollectionEquality().equals; // Use collection package
+    // Use DeepCollectionEquality for deep comparison of the sets list
+    final listEquals = const DeepCollectionEquality().equals;
 
     return other is ExercisePerformance &&
         runtimeType == other.runtimeType &&
+        id == other.id &&
         exerciseName == other.exerciseName &&
-        listEquals(sets, other.sets) && // Deep list comparison
+        listEquals(sets, other.sets) && // Deep list comparison is important
         restPeriod == other.restPeriod;
   }
 
   @override
   int get hashCode => Object.hash(
+    id,
     exerciseName,
     const DeepCollectionEquality().hash(sets), // Use deep hash for list
     restPeriod,
   );
 }
+
+// Helper class for copyWith differentiation when needing to set null explicitly
+class _Undefined { const _Undefined(); }

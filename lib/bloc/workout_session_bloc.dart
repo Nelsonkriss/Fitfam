@@ -1,38 +1,33 @@
+// bloc/workout_session_bloc.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:bloc/bloc.dart';
-import 'package:rxdart/rxdart.dart';
-import 'package:workout_planner/resource/db_provider_interface.dart'; // <--- ADD THIS IMPORT
-import 'package:workout_planner/resource/db_provider_io.dart';
-// Import your CORRECT models (assuming immutable versions)
+import 'package:rxdart/rxdart.dart'; // For BehaviorSubject
+import 'package:workout_planner/resource/db_provider_interface.dart';
+// Import your correct models (assuming immutable versions with copyWith)
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
+import 'package:workout_planner/models/exercise_performance.dart';
+import 'package:workout_planner/models/set_performance.dart';
 
-import '../models/exercise_performance.dart';
-import '../models/set_performance.dart';
-// Needed indirectly
-
-// Import DB Provider
-// Make sure path is correct
-
-// --- Define Events (Simplified Set) ---
+// --- Events ---
 
 @immutable
 abstract class WorkoutSessionEvent {}
 
-// Event to start a new session from a Routine template
+/// Event to start a new session based on a Routine template.
 class WorkoutSessionStartNew extends WorkoutSessionEvent {
   final Routine routine;
   WorkoutSessionStartNew(this.routine);
 }
 
-// Event to load an existing session
+/// Event to load an existing, possibly ongoing, session.
 class WorkoutSessionLoadExisting extends WorkoutSessionEvent {
   final String sessionId;
   WorkoutSessionLoadExisting(this.sessionId);
 }
 
-// Event triggered when a set is completed
+/// Event triggered when a set is completed during the workout.
 class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
   final int exerciseIndex;
   final int setIndex;
@@ -47,35 +42,28 @@ class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
   });
 }
 
-// Event triggered to finish the workout (starts saving process)
+/// Event triggered to finish the current workout session attempt.
 class WorkoutSessionFinishAttempt extends WorkoutSessionEvent {}
 
-// --- Internal Events ---
-class _SessionTimerTicked extends WorkoutSessionEvent {
-  final Duration elapsedDuration;
-  _SessionTimerTicked(this.elapsedDuration);
-}
-
+// --- Internal Events for Timer Management ---
+class _SessionTimerTicked extends WorkoutSessionEvent {} // No payload needed
 class _RestTimerTicked extends WorkoutSessionEvent {
   final Duration remainingDuration;
   _RestTimerTicked(this.remainingDuration);
 }
-
-class _RestPeriodEnded extends WorkoutSessionEvent {
-  _RestPeriodEnded();
-}
+class _RestPeriodEnded extends WorkoutSessionEvent {}
 
 
-// --- Define State (Simplified Structure) ---
+// --- State ---
 
 @immutable
 class WorkoutSessionState {
-  final WorkoutSession? session;      // Current session data
-  final Duration displayDuration;   // Duration to show (elapsed time or rest time)
-  final bool isLoading;             // Loading session or saving
-  final bool isResting;             // Is a rest timer active?
+  final WorkoutSession? session;      // Current active session data
+  final Duration displayDuration;   // Duration shown on UI (elapsed time or rest time)
+  final bool isLoading;             // Loading session from DB or saving finished session
+  final bool isResting;             // Is a rest timer currently active?
   final bool isFinished;            // Has the session been successfully finished and saved?
-  final String? errorMessage;       // Any error message
+  final String? errorMessage;       // Any error message to display
 
   const WorkoutSessionState({
     this.session,
@@ -88,390 +76,332 @@ class WorkoutSessionState {
 
   // CopyWith helper for immutable state updates
   WorkoutSessionState copyWith({
-    WorkoutSession? session,
+    // Use Object? to differentiate between setting null and not changing
+    Object? session = const _Undefined(),
     Duration? displayDuration,
     bool? isLoading,
     bool? isResting,
     bool? isFinished,
-    String? errorMessage,
-    bool clearError = false, // Helper flag
-    bool clearSession = false, // Helper flag
+    Object? errorMessage = const _Undefined(),
   }) {
     return WorkoutSessionState(
-      session: clearSession ? null : (session ?? this.session),
+      session: session is _Undefined ? this.session : session as WorkoutSession?,
       displayDuration: displayDuration ?? this.displayDuration,
       isLoading: isLoading ?? this.isLoading,
       isResting: isResting ?? this.isResting,
       isFinished: isFinished ?? this.isFinished,
-      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
+      errorMessage: errorMessage is _Undefined ? this.errorMessage : errorMessage as String?,
     );
   }
 }
+// Helper class for copyWith differentiation
+class _Undefined { const _Undefined(); }
 
 
-// --- Implement the BLoC (Simplified Events/State, Correct Logic) ---
+// --- BLoC Implementation ---
 
 class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> {
   Timer? _sessionTimer;
   Timer? _restTimer;
   final DbProviderInterface dbProvider;
-  final BehaviorSubject<List<WorkoutSession>> _allSessionsController = BehaviorSubject<List<WorkoutSession>>.seeded([]);
 
-  // Stream of all workout sessions
-  Stream<List<WorkoutSession>> get allSessionsStream => _allSessionsController.stream;
+  // Controller for ALL historical sessions (used by CalendarPage, potentially history lists)
+  final BehaviorSubject<List<WorkoutSession>> _allSessionsController =
+  BehaviorSubject<List<WorkoutSession>>.seeded([]);
 
-  WorkoutSessionBloc({required this.dbProvider}) : super(const WorkoutSessionState()) {
-    // Initialize with current sessions
-    _loadAllSessions();
+  // Public stream getter for UI (e.g., CalendarPage)
+  Stream<List<WorkoutSession>> get allSessionsStream =>
+      _allSessionsController.stream;
+
+  // Constructor: Initialize BLoC, load initial session list, register handlers.
+  WorkoutSessionBloc({required this.dbProvider})
+      : super(const WorkoutSessionState()) {
+    _loadAllSessions(); // Load initial historical data into the stream on startup
     // Register event handlers
     on<WorkoutSessionStartNew>(_onWorkoutSessionStartNew);
     on<WorkoutSessionLoadExisting>(_onWorkoutSessionLoadExisting);
     on<WorkoutSetMarkedComplete>(_onWorkoutSetMarkedComplete);
     on<WorkoutSessionFinishAttempt>(_onWorkoutSessionFinishAttempt);
-
-    // Internal event handlers
     on<_SessionTimerTicked>(_onSessionTimerTicked);
     on<_RestTimerTicked>(_onRestTimerTicked);
     on<_RestPeriodEnded>(_onRestPeriodEnded);
   }
 
-  // Add this method to refresh the data
-  void refreshData() {
+  /// Allows UI to explicitly trigger a refresh of the historical session list.
+  void refreshAllSessions() {
     _loadAllSessions();
   }
 
-  void _onWorkoutSessionStartNew(WorkoutSessionStartNew event, Emitter<WorkoutSessionState> emit) {
-    debugPrint("BLoC: Starting new session from Routine: ${event.routine.routineName}");
-    _cancelTimers();
+  // --- Event Handlers Implementation ---
 
-    // Create the session using the Routine (WorkoutSession constructor handles defaults)
+  void _onWorkoutSessionStartNew(WorkoutSessionStartNew event, Emitter<WorkoutSessionState> emit) {
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSessionStartNew - Routine: ${event.routine.routineName}");
+    _cancelTimers();
+    try {
       final newSession = WorkoutSession.startNew(
         routine: event.routine,
         startTime: DateTime.now(),
       );
-
-    emit(const WorkoutSessionState().copyWith( // Reset state completely
-      session: newSession,
-      displayDuration: Duration.zero,
-      isLoading: false,
-      isResting: false,
-      isFinished: false,
-    ));
-    _startSessionTimer();
+      emit(const WorkoutSessionState().copyWith( // Reset state
+        session: newSession,
+        displayDuration: Duration.zero,
+        isLoading: false, isResting: false, isFinished: false, errorMessage: null,
+      ));
+      _startSessionTimer();
+      debugPrint("[WorkoutSessionBloc] New session started. State emitted. Timer started.");
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] Error creating new session: $e\n$s");
+      emit(state.copyWith(isLoading: false, errorMessage: "Failed to create new session."));
+    }
   }
 
   Future<void> _onWorkoutSessionLoadExisting(WorkoutSessionLoadExisting event, Emitter<WorkoutSessionState> emit) async {
-    debugPrint("BLoC: Loading session ID ${event.sessionId}");
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSessionLoadExisting - ID: ${event.sessionId}");
     _cancelTimers();
-    // Set loading state, clear previous session/error
-    emit(const WorkoutSessionState().copyWith(isLoading: true));
-
+    emit(const WorkoutSessionState().copyWith(isLoading: true, session: null, errorMessage: null));
     try {
       final session = await dbProvider.getWorkoutSessionById(event.sessionId);
       if (session != null) {
-        debugPrint("BLoC: Session loaded successfully (ID: ${session.id}). Completed: ${session.isCompleted}");
-
+        debugPrint("[WorkoutSessionBloc] Session loaded from DB (ID: ${session.id}). Completed: ${session.isCompleted}");
         if (session.isCompleted && session.endTime != null) {
-          // Session is already finished
           final finalDuration = session.endTime!.difference(session.startTime);
           emit(state.copyWith(
-            isLoading: false,
-            isFinished: true, // Mark as finished
-            session: session,
-            displayDuration: finalDuration,
+            isLoading: false, isFinished: true, session: session, displayDuration: finalDuration,
           ));
+          debugPrint("[WorkoutSessionBloc] Loaded finished session. State emitted.");
         } else {
-          // Session is ongoing (or was stopped abruptly)
-          // Calculate current elapsed time, but don't start timer automatically
-          // UI will need a way to trigger resume (e.g., start timer on interaction)
           final elapsedDuration = DateTime.now().difference(session.startTime);
           emit(state.copyWith(
-            isLoading: false,
-            isFinished: false, // Not finished
-            session: session,
-            displayDuration: elapsedDuration, // Show current elapsed time
+            isLoading: false, isFinished: false, session: session, displayDuration: elapsedDuration,
           ));
-          // NOTE: Timer is NOT started here. UI should handle resuming.
-          // If you want automatic resume on load, call _startSessionTimer() here.
-          debugPrint("BLoC: Loaded ongoing session. Current elapsed: $elapsedDuration. Timer not started.");
+          debugPrint("[WorkoutSessionBloc] Loaded ongoing session. State emitted. Timer NOT started.");
         }
       } else {
-        debugPrint("BLoC: Error - Session ID ${event.sessionId} not found.");
+        debugPrint("[WorkoutSessionBloc] Error - Session ID ${event.sessionId} not found in DB.");
         emit(state.copyWith(isLoading: false, errorMessage: "Workout session not found."));
       }
     } catch (e, s) {
-      debugPrint("BLoC: Error loading session: $e\n$s");
+      debugPrint("[WorkoutSessionBloc] Error loading session from DB: $e\n$s");
       emit(state.copyWith(isLoading: false, errorMessage: "Failed to load workout session."));
     }
   }
 
   void _onWorkoutSetMarkedComplete(WorkoutSetMarkedComplete event, Emitter<WorkoutSessionState> emit) {
-    // Ignore if session doesn't exist or is already finished/saving
-    if (state.session == null || state.isFinished || state.isLoading) return;
-
-    debugPrint("BLoC: Completing Set: Ex ${event.exerciseIndex}, Set ${event.setIndex}, Reps ${event.actualReps}, Weight ${event.actualWeight}");
-
+    if (state.session == null || state.isFinished || state.isLoading) {
+      debugPrint("[WorkoutSessionBloc] Ignoring SetMarkedComplete: Invalid state.");
+      return;
+    }
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSetMarkedComplete - ExIdx: ${event.exerciseIndex}, SetIdx: ${event.setIndex}");
     try {
-      // --- Immutable Update Logic ---
       final currentSession = state.session!;
-      // Create a new list of ExercisePerformance, deep copying the sets within each
-      final updatedExercises = List<ExercisePerformance>.from(currentSession.exercises.map((exPerf) =>
-          ExercisePerformance(
-            exerciseName: exPerf.exerciseName,
-            sets: List<SetPerformance>.from(exPerf.sets), // Deep copy sets
-            restPeriod: exPerf.restPeriod,
-          )
-      ));
-
-      // Validate indices
-      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) {
-        throw Exception("Invalid exercise index: ${event.exerciseIndex}");
-      }
-      final targetExercise = updatedExercises[event.exerciseIndex];
-
-      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) {
-        throw Exception("Invalid set index: ${event.setIndex} for exercise ${targetExercise.exerciseName}");
-      }
-      final originalSet = targetExercise.sets[event.setIndex];
-
-      // Create the *new* updated SetPerformance object
-      final updatedSet = SetPerformance(
-        targetReps: originalSet.targetReps,
-        targetWeight: originalSet.targetWeight,
-        actualReps: event.actualReps,
-        actualWeight: event.actualWeight,
-        isCompleted: true,
+      final updatedExercises = List<ExercisePerformance>.from(
+        currentSession.exercises.map((exPerf) => exPerf.copyWith(
+          sets: List<SetPerformance>.from(exPerf.sets),
+        )),
       );
 
-      // Replace the set in the *copied* exercise's *copied* sets list
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) throw RangeError("Invalid exercise index: ${event.exerciseIndex}");
+      final targetExercise = updatedExercises[event.exerciseIndex];
+      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) throw RangeError("Invalid set index: ${event.setIndex}");
+
+      final originalSet = targetExercise.sets[event.setIndex];
+      final updatedSet = originalSet.copyWith(
+        actualReps: event.actualReps, actualWeight: event.actualWeight, isCompleted: true,
+      );
       targetExercise.sets[event.setIndex] = updatedSet;
 
-      // Create the new WorkoutSession instance with the updated exercises list
-      final updatedSession = WorkoutSession( // Use constructor like copyWith
-        id: currentSession.id,
-        routine: currentSession.routine,
-        startTime: currentSession.startTime,
-        exercises: updatedExercises,
-        endTime: currentSession.endTime,
-        isCompleted: currentSession.isCompleted,
-      );
+      final updatedSession = currentSession.copyWith(exercises: updatedExercises);
+      emit(state.copyWith(session: updatedSession, isResting: false, errorMessage: null));
+      debugPrint("[WorkoutSessionBloc] Session state updated with completed set.");
 
-      // Emit the updated session state *before* handling rest
-      // Ensure we are not in resting state yet
-      emit(state.copyWith(session: updatedSession, isResting: false, clearError: true));
-
-      // --- Handle Rest Period ---
       Duration? restDuration = targetExercise.restPeriod;
-      bool isLastSet = event.setIndex == targetExercise.sets.length - 1;
-
-      if (restDuration != null && restDuration.inSeconds > 0 && !isLastSet) {
-        debugPrint("BLoC: Starting rest period: $restDuration");
-        _cancelTimers(); // Stop main session timer
-        emit(state.copyWith(isResting: true, displayDuration: restDuration)); // Set resting flag and duration
+      bool isLastSetOfExercise = event.setIndex == targetExercise.sets.length - 1;
+      if (restDuration != null && restDuration.inSeconds > 0 && !isLastSetOfExercise) {
+        debugPrint("[WorkoutSessionBloc] Starting rest period: $restDuration");
+        _cancelTimers();
+        emit(state.copyWith(isResting: true, displayDuration: restDuration));
         _startRestTimer(restDuration);
       } else {
-        debugPrint("BLoC: No rest period or last set completed.");
-        _startSessionTimer(); // Ensure main timer is running (might have been paused)
+        debugPrint("[WorkoutSessionBloc] No rest period or last set. Ensuring session timer runs.");
+        _startSessionTimer();
       }
-
     } catch (e, s) {
-      debugPrint("Error updating set: $e\n$s");
+      debugPrint("[WorkoutSessionBloc] Error updating set: $e\n$s");
       emit(state.copyWith(isResting: false, errorMessage: "Failed to update set: $e"));
-      _startSessionTimer(); // Try to restart main timer if error occurred during rest logic
+      _startSessionTimer();
     }
   }
 
+  /// Handles the event to finish the current workout session attempt.
+  /// Saves the session to the database, attempts to update routine stats,
+  /// and updates the BLoC state and the allSessionsStream.
   Future<void> _onWorkoutSessionFinishAttempt(WorkoutSessionFinishAttempt event, Emitter<WorkoutSessionState> emit) async {
-    // Ignore if session doesn't exist or is already finished/saving
-    if (state.session == null || state.isFinished || state.isLoading) return;
-
-    debugPrint("BLoC: Finishing session...");
+    if (state.session == null || state.isFinished || state.isLoading) {
+      debugPrint("[WorkoutSessionBloc] Ignoring FinishAttempt: Invalid state.");
+      return;
+    }
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSessionFinishAttempt received...");
     _cancelTimers();
-    final currentSession = state.session!; // Capture session before emitting loading state
+    final currentSession = state.session!;
     final startTime = currentSession.startTime;
+    bool sessionSaveSucceeded = false;
 
-    emit(state.copyWith(isLoading: true, isResting: false)); // Indicate saving, ensure not resting
+    emit(state.copyWith(isLoading: true, isResting: false));
 
     try {
       final endTime = DateTime.now();
       final finalDuration = endTime.difference(startTime);
+      final finishedSession = currentSession.copyWith(endTime: endTime, isCompleted: true);
 
-      // Create the final session state using the constructor
-      final finishedSession = WorkoutSession(
-        id: currentSession.id,
-        routine: currentSession.routine,
-        startTime: currentSession.startTime,
-        exercises: currentSession.exercises, // Keep recorded performance
-        endTime: endTime,
-        isCompleted: true,
-      );
-
-      debugPrint("BLoC: Saving finished session (ID: ${finishedSession.id}). Final Duration: $finalDuration");
+      // --- 1. Attempt to Save Session to DB ---
+      debugPrint("[WorkoutSessionBloc] Attempting to save finished session to DB (ID: ${finishedSession.id})...");
       await dbProvider.saveWorkoutSession(finishedSession);
-      debugPrint("BLoC: Session saved successfully.");
-      
-      // --- Update Routine Completion Count ---
+      sessionSaveSucceeded = true;
+      debugPrint("[WorkoutSessionBloc] Session saved successfully to DB.");
+
+      // --- 2. Attempt to Update Associated Routine Stats in DB ---
       final routineId = finishedSession.routine.id;
       if (routineId != null) {
-        // Access the DBProviderIO implementation to call _getRoutineById
-        if (dbProvider is DBProviderIO) {
+        debugPrint("[WorkoutSessionBloc] Attempting to update stats for Routine ID: $routineId...");
+        try {
           final routine = await dbProvider.getRoutineById(routineId);
           if (routine != null) {
-            final updatedRoutine = routine.copyWith(completionCount: (routine.completionCount ?? 0) + 1);
+            final newHistory = List<int>.from(routine.routineHistory)..add(endTime.millisecondsSinceEpoch);
+            // *** CORRECTED: Pass DateTime object directly ***
+            final updatedRoutine = routine.copyWith(
+              completionCount: (routine.completionCount) + 1, // Increment count
+              lastCompletedDate: endTime, // Pass DateTime?
+              routineHistory: newHistory,
+            );
+            debugPrint("[WorkoutSessionBloc] Updating routine in DB. New Count: ${updatedRoutine.completionCount}, History Size: ${updatedRoutine.routineHistory.length}");
             await dbProvider.updateRoutine(updatedRoutine);
-            debugPrint("BLoC: Updated completion count for routine ${updatedRoutine.routineName} to ${updatedRoutine.completionCount}");
+            debugPrint("[WorkoutSessionBloc] Routine stats update call finished for DB.");
           } else {
-            debugPrint("BLoC: Routine with ID $routineId not found.");
+            debugPrint("[WorkoutSessionBloc] Warning: Routine ID $routineId not found for stats update. Session *was* saved successfully.");
           }
-        } else {
-          debugPrint("BLoC: DBProvider is not DBProviderIO, cannot update completion count.");
+        } catch (routineError, routineStack) {
+          debugPrint("[WorkoutSessionBloc] Error updating routine stats for ID $routineId (Session *was* saved): $routineError\n$routineStack");
         }
       } else {
-        debugPrint("BLoC: Routine ID is null, cannot update completion count.");
+        debugPrint("[WorkoutSessionBloc] Routine ID is null on the finished session, cannot update stats.");
       }
-      // --- End Update Routine Completion Count ---
-      
-      // Update all sessions stream
-      _loadAllSessions();
+      // --- End Routine Update ---
 
+      // --- 3. Emit Final Success State ---
       emit(state.copyWith(
-        isLoading: false,
-        isFinished: true, // Mark as successfully finished
-        session: finishedSession,
-        displayDuration: finalDuration, // Show final duration
+        isLoading: false, isFinished: true, session: finishedSession,
+        displayDuration: finalDuration, errorMessage: null,
       ));
+      debugPrint("[WorkoutSessionBloc] Finish attempt successful. Final State Emitted.");
 
     } catch (e, s) {
-      debugPrint("BLoC: Error saving session: $e\n$s");
-      // Keep isLoading false, don't mark as finished, show error
+      // Handles errors primarily from dbProvider.saveWorkoutSession
+      debugPrint("[WorkoutSessionBloc] CRITICAL Error during session save process: $e\n$s");
       emit(state.copyWith(
-        isLoading: false,
-        isFinished: false, // Save failed
-        session: currentSession, // Revert to session state before save attempt
-        errorMessage: "Failed to save workout session.",
-        // Recalculate duration based on current time if needed? Or keep stopped time?
-        // Let's keep the duration from before the save attempt.
-        // displayDuration: DateTime.now().difference(startTime)
+        isLoading: false, isFinished: false, session: currentSession,
+        errorMessage: "Failed to save workout session data. Please try again.",
       ));
-      // Keep timers stopped. User needs to potentially retry or discard.
+    } finally {
+      // --- 4. Reload All Sessions (CRITICAL FOR CALENDAR UPDATE) ---
+      debugPrint("[WorkoutSessionBloc] Finally block: Reloading all sessions for stream update...");
+      _loadAllSessions();
     }
-  }
+  } // End _onWorkoutSessionFinishAttempt
 
-  // --- Internal Timer Handlers ---
-
+  // --- Internal Timer Event Handlers ---
   void _onSessionTimerTicked(_SessionTimerTicked event, Emitter<WorkoutSessionState> emit) {
-    // Only tick if session exists, is NOT resting, NOT finished, NOT loading
     if (state.session != null && !state.isResting && !state.isFinished && !state.isLoading) {
-      // Calculate precise elapsed time from start time
       final elapsed = DateTime.now().difference(state.session!.startTime);
-      emit(state.copyWith(displayDuration: elapsed));
+      // Only emit if duration actually changed (avoids unnecessary rebuilds if paused/resumed quickly)
+      if (elapsed.inSeconds != state.displayDuration.inSeconds) {
+        emit(state.copyWith(displayDuration: elapsed));
+      }
     } else {
-      // Status changed, timer should be stopped
-      _sessionTimer?.cancel();
-      _sessionTimer = null;
+      _sessionTimer?.cancel(); _sessionTimer = null; // Stop timer if state is invalid
     }
   }
 
-  _onRestTimerTicked(_RestTimerTicked event, Emitter<WorkoutSessionState> emit) {
-    // Only tick if IS resting
+  void _onRestTimerTicked(_RestTimerTicked event, Emitter<WorkoutSessionState> emit) {
     if (state.isResting) {
       emit(state.copyWith(displayDuration: event.remainingDuration));
     } else {
-      _restTimer?.cancel();
-      _restTimer = null;
+      _restTimer?.cancel(); _restTimer = null; // Stop timer if not resting
     }
   }
 
   void _onRestPeriodEnded(_RestPeriodEnded event, Emitter<WorkoutSessionState> emit) {
-    // Only process if WAS resting
     if (state.isResting && state.session != null) {
-      debugPrint("BLoC: Rest period ended.");
-      // Calculate current elapsed time when rest ends
+      debugPrint("[WorkoutSessionBloc] Rest period ended.");
       final elapsed = DateTime.now().difference(state.session!.startTime);
-      // Switch back to non-resting state, update duration to elapsed time
       emit(state.copyWith(isResting: false, displayDuration: elapsed));
-      _startSessionTimer(); // Restart the main workout timer
+      _startSessionTimer(); // Restart the main timer
     }
   }
 
-  // --- Timer Control ---
-
+  // --- Timer Control Methods ---
   void _startSessionTimer() {
-    // Only start if session exists, timer not active, not resting, not finished, not loading
-    if (state.session == null || _sessionTimer?.isActive == true || state.isResting || state.isFinished || state.isLoading) {
-      return;
-    }
-
-    debugPrint("BLoC: Starting session timer.");
-    _restTimer?.cancel(); // Ensure rest timer is stopped
-    _restTimer = null;
-
-    // Ensure displayDuration reflects current elapsed time when timer starts
+    if (state.session == null || _sessionTimer?.isActive == true || state.isResting || state.isFinished || state.isLoading) return;
+    debugPrint("[WorkoutSessionBloc] Starting session timer.");
+    _restTimer?.cancel(); _restTimer = null;
     final initialElapsed = DateTime.now().difference(state.session!.startTime);
+    // Ensure correct initial time is emitted if needed
     if (state.displayDuration.inSeconds != initialElapsed.inSeconds) {
       emit(state.copyWith(displayDuration: initialElapsed));
     }
-
-    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      // Add internal event; duration is calculated in the handler
-      add(_SessionTimerTicked(Duration.zero));
-    });
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (timer) { add(_SessionTimerTicked()); });
   }
 
   void _startRestTimer(Duration restDuration) {
-    // Only start if session exists and state is currently resting
-    if (state.session == null || !state.isResting) {
-      debugPrint("BLoC: Skipping startRestTimer (Not in resting state)");
-      return;
-    }
-
-    _sessionTimer?.cancel(); // Ensure session timer is stopped
-    _sessionTimer = null;
-    _restTimer?.cancel(); // Cancel previous rest timer if any
-
+    if (state.session == null || !state.isResting) return;
+    debugPrint("[WorkoutSessionBloc] Starting rest timer for $restDuration.");
+    _sessionTimer?.cancel(); _sessionTimer = null;
+    _restTimer?.cancel();
     Duration remaining = restDuration;
-    // Emit initial rest time immediately (already done when setting isResting=true)
-    // emit(state.copyWith(displayDuration: remaining));
-
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!state.isResting) { timer.cancel(); _restTimer = null; return; } // Safety check
       remaining = remaining - const Duration(seconds: 1);
       if (remaining.isNegative) remaining = Duration.zero;
-
-      add(_RestTimerTicked(remaining)); // Send remaining duration
-
+      add(_RestTimerTicked(remaining));
       if (remaining.inSeconds <= 0) {
-        _restTimer?.cancel();
-        _restTimer = null;
-        add(_RestPeriodEnded()); // Signal rest end
+        _restTimer?.cancel(); _restTimer = null;
+        add(_RestPeriodEnded());
       }
     });
   }
 
   void _cancelTimers() {
-    _sessionTimer?.cancel();
-    _sessionTimer = null;
-    _restTimer?.cancel();
-    _restTimer = null;
+    debugPrint("[WorkoutSessionBloc] Cancelling timers.");
+    _sessionTimer?.cancel(); _sessionTimer = null;
+    _restTimer?.cancel(); _restTimer = null;
   }
 
-  // --- Cleanup ---
-
-  // Load all sessions from DB
+  // --- Data Loading for Historical Sessions Stream ---
   Future<void> _loadAllSessions() async {
+    debugPrint("[WorkoutSessionBloc] _loadAllSessions: Fetching all sessions from DB...");
     try {
       final sessions = await dbProvider.getWorkoutSessions();
-      debugPrint("BLoC: Loaded ${sessions.length} sessions from DB");
-      _allSessionsController.add(sessions);
-      debugPrint("BLoC: Added sessions to _allSessionsController");
-    } catch (e) {
-      debugPrint("Error loading all sessions: $e");
-      _allSessionsController.addError(e);
+      debugPrint("[WorkoutSessionBloc] _loadAllSessions: Retrieved ${sessions.length} sessions from DB.");
+      if (!_allSessionsController.isClosed) {
+        _allSessionsController.sink.add(sessions);
+        debugPrint("[WorkoutSessionBloc] _loadAllSessions: Added ${sessions.length} sessions to stream controller.");
+        if (sessions.isNotEmpty) {
+          debugPrint("[WorkoutSessionBloc] Last session in loaded list: ID ${sessions.first.id}, EndTime ${sessions.first.endTime}, Completed ${sessions.first.isCompleted}");
+        }
+      } else {
+        debugPrint("[WorkoutSessionBloc] _loadAllSessions: Stream controller is closed.");
+      }
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] CRITICAL Error loading all sessions: $e\n$s");
+      if (!_allSessionsController.isClosed) {
+        _allSessionsController.sink.addError(e, s);
+      }
     }
   }
 
+  // --- Cleanup ---
   @override
   Future<void> close() {
-    debugPrint("BLoC: Closing WorkoutSessionBloc.");
+    debugPrint("[WorkoutSessionBloc] Closing...");
     _cancelTimers();
     _allSessionsController.close();
     return super.close();

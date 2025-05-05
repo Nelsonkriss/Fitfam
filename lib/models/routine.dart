@@ -1,26 +1,33 @@
+// models/routine.dart
+
 import 'dart:convert'; // Import dart:convert for JSON handling
 import 'package:collection/collection.dart'; // For listEquals and hashAll
-import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:flutter/foundation.dart'; // For debugPrint, @immutable
+import 'package:meta/meta.dart'; // For @immutable
 
 // Assuming these models are defined correctly and handle their own toMap/fromMap
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'part.dart'; // ** ACTION REQUIRED: Ensure Part model handles JSON for 'exercises' list **
+import 'part.dart'; // Assumes Part model handles JSON for 'exercises' list if needed
 
-export 'part.dart'; // Keep export if needed
+// Export Part if needed by other files importing Routine
+export 'part.dart';
 
 /// Represents a workout routine template.
 /// Instances are immutable. Use [copyWith] to create modified versions.
-@immutable // Mark as immutable
+@immutable
 class Routine {
   final int? id;
   final String routineName;
   final MainTargetedBodyPart mainTargetedBodyPart;
+  /// List of parts, each containing exercises for that part of the workout.
   final List<Part> parts; // List of Part objects
   final DateTime createdDate;
   final DateTime? lastCompletedDate;
   final int completionCount;
+  /// Days of the week (1=Mon, 7=Sun) this routine is scheduled for.
   final List<int> weekdays; // List of integers
-  final List<int> routineHistory; // List of integers (e.g., timestamps)
+  /// History of completion timestamps (millisecondsSinceEpoch).
+  final List<int> routineHistory; // List of integers (timestamps)
 
   /// Creates an immutable Routine instance.
   const Routine({
@@ -31,59 +38,71 @@ class Routine {
     required this.createdDate,
     this.lastCompletedDate,
     this.completionCount = 0,
-    List<int>? weekdays,
-    List<int>? routineHistory,
+    List<int>? weekdays, // Nullable list arguments
+    List<int>? routineHistory, // Nullable list arguments
   })  : weekdays = weekdays ?? const [], // Use const empty lists as default
         routineHistory = routineHistory ?? const [];
 
+  /// Derived getter to extract all exercises from all parts.
+  /// Useful for WorkoutSession initialization.
+  List<Exercise> get exercises {
+    try {
+      return parts.expand((part) => part.exercises).toList();
+    } catch(e,s) {
+      debugPrint("Error expanding exercises from parts in Routine '$routineName': $e\n$s");
+      return [];
+    }
+  }
+
+
   /// Creates a new Routine instance with specified fields updated.
-  /// Performs deep copies for lists to maintain immutability.
   Routine copyWith({
     int? id,
     String? routineName,
     MainTargetedBodyPart? mainTargetedBodyPart,
     List<Part>? parts, // If updating parts, pass the new list
     DateTime? createdDate,
-    DateTime? lastCompletedDate,
-    bool clearLastCompletedDate = false, // Flag to explicitly set to null
+    // Use Object? trick to allow setting lastCompletedDate to null
+    Object? lastCompletedDate = const _Undefined(),
     int? completionCount,
     List<int>? weekdays,
     List<int>? routineHistory,
   }) {
     return Routine(
-      // Use ?? operator for optional overrides
       id: id ?? this.id,
       routineName: routineName ?? this.routineName,
       mainTargetedBodyPart: mainTargetedBodyPart ?? this.mainTargetedBodyPart,
-      // If 'parts' is provided, assume it's the complete new list (already copied if needed)
-      // If not provided, keep the existing list reference (it's immutable)
+      // Keep existing list reference if not provided (lists are immutable)
       parts: parts ?? this.parts,
       createdDate: createdDate ?? this.createdDate,
-      lastCompletedDate: clearLastCompletedDate ? null : (lastCompletedDate ?? this.lastCompletedDate),
+      lastCompletedDate: lastCompletedDate is _Undefined
+          ? this.lastCompletedDate
+          : lastCompletedDate as DateTime?,
       completionCount: completionCount ?? this.completionCount,
-      // Create new list instances only if new lists are provided
-      weekdays: weekdays != null ? List<int>.from(weekdays) : this.weekdays,
-      routineHistory: routineHistory != null ? List<int>.from(routineHistory) : this.routineHistory,
+      // Only create new list instances if a new list is actually passed
+      weekdays: weekdays ?? this.weekdays,
+      routineHistory: routineHistory ?? this.routineHistory,
     );
   }
 
   /// Serializes the Routine to a Map suitable for DB insertion (e.g., Sqflite).
   /// Encodes lists (`parts`, `weekdays`, `routineHistory`) into JSON strings for TEXT columns.
-  Map<String, dynamic> toMapForDb() { // Renamed for clarity
-    // ** CRITICAL: Assumes Part.toMap() exists and works correctly **
-    // ** including encoding its own 'exercises' list if necessary **
+  Map<String, dynamic> toMapForDb() {
+    // ** Assumes Part.toMap() exists and works correctly **
     String encodedParts = '[]'; // Default to empty JSON array
     try {
       encodedParts = jsonEncode(parts.map((p) => p.toMap()).toList());
     } catch (e) {
-      debugPrint("Error encoding parts list to JSON: $e");
-      // Decide how to handle error: throw? save empty? save partial?
-      // Saving empty might be safest to avoid DB constraint errors
+      debugPrint("Error encoding parts list to JSON in Routine '$routineName': $e");
     }
 
     return {
-      // ID is usually handled by DB auto-increment, exclude from map for INSERT
-      // 'id': id,
+      // 'id' is handled by DB auto-increment, so it's not included here for inserts.
+      // It *is* included when called by updateRoutine in DBProviderIO via the model passed in.
+      // Keep it consistent with how Sqflite update/insert works. Usually maps don't include ID for insert.
+      // But for UPDATE, the map might include ID if needed by the model layer, though DBProvider uses `where id = ?`.
+      // Let's include it here as DBProvider update logic expects the full map.
+      'id': id,
       'routineName': routineName,
       'mainTargetedBodyPart': mainTargetedBodyPart.index, // Store enum index (INTEGER)
       'parts': encodedParts, // Store JSON string (TEXT)
@@ -104,16 +123,13 @@ class Routine {
         try {
           final decoded = jsonDecode(jsonInput);
           if (decoded is List) {
-            // Handle type casting properly with explicit List<T> return
-            if (T == int) {
-              return decoded.map((item) => item as int).toList() as List<T>;
-            }
-            if (T == String) {
-              return decoded.map((item) => item as String).toList() as List<T>;
-            }
-            // Add other simple types if needed
-            // For complex types, further mapping is needed after decoding
-            return decoded.whereType<T>().toList(); // General fallback for other types
+            // Handle primitive types directly
+            if (T == int) return decoded.whereType<int>().toList() as List<T>;
+            if (T == double) return decoded.whereType<num>().map((n) => n.toDouble()).toList() as List<T>;
+            if (T == String) return decoded.whereType<String>().toList() as List<T>;
+            if (T == bool) return decoded.whereType<bool>().toList() as List<T>;
+            // Fallback for other simple types (less common in this context)
+            return decoded.whereType<T>().toList();
           }
         } catch (e) {
           debugPrint("Error decoding list JSON ('$jsonInput'): $e");
@@ -127,63 +143,48 @@ class Routine {
         try {
           final decodedList = jsonDecode(jsonInput) as List?;
           if (decodedList != null) {
-            // ** CRITICAL: Assumes Part.fromMap exists and handles its nested 'exercises' list **
+            // ** Assumes Part.fromMap exists and works correctly **
             return decodedList
                 .map((p) {
               try {
-                // Ensure the item 'p' is actually a Map before casting
                 if (p is Map<String, dynamic>) {
                   return Part.fromMap(p);
-                } else {
-                  debugPrint("Skipping non-map item in parts list: $p");
-                  return null;
-                }
-              } catch (e) {
-                debugPrint("Error decoding single Part from map: $p, Error: $e");
-                return null;
-              }
+                } else { return null; }
+              } catch (e) { return null; }
             })
-                .whereNotNull() // Filter out nulls from failed parsing
+                .whereNotNull()
                 .toList();
           }
-        } catch (e) {
-          debugPrint("Error decoding parts list JSON ('$jsonInput'): $e");
-        }
+        } catch (e) { debugPrint("Error decoding parts list JSON ('$jsonInput'): $e"); }
       }
       return []; // Return empty list on error or invalid input
     }
 
     DateTime? parseOptionalDate(dynamic value) {
-      if (value is String && value.isNotEmpty) {
-        return DateTime.tryParse(value);
-      }
+      if (value is String && value.isNotEmpty) { return DateTime.tryParse(value); }
       return null;
     }
     // --- End Helper Functions ---
 
-
-    // Parse MainTargetedBodyPart from stored index
-    MainTargetedBodyPart bodyPart = MainTargetedBodyPart.FullBody; // Sensible default
+    // Parse MainTargetedBodyPart safely
+    MainTargetedBodyPart bodyPart = MainTargetedBodyPart.FullBody; // Default
     if (map['mainTargetedBodyPart'] is int) {
       int index = map['mainTargetedBodyPart'];
       if (index >= 0 && index < MainTargetedBodyPart.values.length) {
         bodyPart = MainTargetedBodyPart.values[index];
-      } else { debugPrint("Warning: Invalid index ${map['mainTargetedBodyPart']} for MainTargetedBodyPart."); }
-    } else if (map['mainTargetedBodyPart'] != null) { debugPrint("Warning: Expected integer for mainTargetedBodyPart, got ${map['mainTargetedBodyPart'].runtimeType}."); }
-
+      }
+    }
 
     return Routine(
-      // Safely cast ID
-      id: map['id'] as int?,
+      id: map['id'] as int?, // Get ID from map
       routineName: map['routineName'] as String? ?? 'Unnamed Routine',
       mainTargetedBodyPart: bodyPart,
-      // Decode JSON strings back into lists
-      parts: decodePartsList(map['parts']),
-      createdDate: parseOptionalDate(map['createdDate']) ?? DateTime.now(), // Default createdDate if parsing fails
+      parts: decodePartsList(map['parts']), // Decode parts list
+      createdDate: parseOptionalDate(map['createdDate']) ?? DateTime.now(), // Default if parsing fails
       lastCompletedDate: parseOptionalDate(map['lastCompletedDate']),
       completionCount: map['completionCount'] as int? ?? 0,
-      weekdays: decodeJsonList<int>(map['weekdays']),
-      routineHistory: decodeJsonList<int>(map['routineHistory']),
+      weekdays: decodeJsonList<int>(map['weekdays']), // Decode int list
+      routineHistory: decodeJsonList<int>(map['routineHistory']), // Decode int list
     );
   }
 
@@ -226,3 +227,6 @@ class Routine {
     const DeepCollectionEquality().hash(routineHistory), // Hash for int list
   );
 }
+
+// Helper class for copyWith differentiation when needing to set null explicitly
+class _Undefined { const _Undefined(); }

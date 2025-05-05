@@ -1,22 +1,22 @@
+// models/set_performance.dart
+
 import 'package:meta/meta.dart'; // For @immutable
 import 'package:flutter/foundation.dart'; // For Object.hash
 
-// --- No dart:convert needed here ---
-
 /// Tracks the performance details for a single set within an ExercisePerformance.
-@immutable // Make the class immutable where possible, though some fields are mutable for tracking
+@immutable
 class SetPerformance {
-  // Fields representing the *actual* performance are mutable during a session
+  // Fields representing the *actual* performance
   final int actualReps;
   final double actualWeight;
   final bool isCompleted;
 
-  // Fields representing the *target* are typically fixed for the session
+  // Fields representing the *target*
   final int targetReps;
   final double targetWeight;
 
   /// Creates an instance of SetPerformance.
-  const SetPerformance({ // Make constructor const
+  const SetPerformance({
     this.actualReps = 0,
     this.actualWeight = 0.0,
     required this.targetReps,
@@ -25,7 +25,6 @@ class SetPerformance {
   });
 
   /// Creates a new SetPerformance instance with updated values.
-  /// Needed because some fields track mutable state during a workout.
   SetPerformance copyWith({
     int? actualReps,
     double? actualWeight,
@@ -42,20 +41,21 @@ class SetPerformance {
     );
   }
 
-
-  /// Serializes the SetPerformance state to a Map suitable for JSON encoding.
-  /// All values are primitive types compatible with JSON.
+  /*
+   * NOTE: toMap and fromMap are not strictly needed for the normalized DB schema
+   * where SetPerformance data is directly inserted/retrieved field by field
+   * by DBProviderIO. They are kept here for potential other uses (e.g., debugging).
+   */
   Map<String, dynamic> toMap() {
     return {
       'actualReps': actualReps,
       'actualWeight': actualWeight,
       'targetReps': targetReps,
       'targetWeight': targetWeight,
-      'isCompleted': isCompleted, // Booleans are valid JSON types
+      'isCompleted': isCompleted,
     };
   }
 
-  /// Creates a SetPerformance instance from a Map (typically after JSON decoding).
   factory SetPerformance.fromMap(Map<String, dynamic> map) {
     return SetPerformance(
       actualReps: map['actualReps'] as int? ?? 0,
@@ -71,7 +71,6 @@ class SetPerformance {
     return 'Set(target: ${targetWeight}kg x $targetReps, actual: ${actualWeight}kg x $actualReps, completed: $isCompleted)';
   }
 
-  // Equality based on all fields
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;

@@ -165,6 +165,9 @@ class RoutineOverview extends StatelessWidget {
         return 'assets/icons/fullbody-96.png'; // Example different icon
     // Remove default case or handle explicitly if new enums are added
     // default: return 'assets/icons/default-96.png'; // Fallback icon
+      case MainTargetedBodyPart.Other:
+        // TODO: Handle this case.
+        throw UnimplementedError();
     }
   }
 

@@ -1,7 +1,10 @@
 import 'dart:math'; // For max() function used in chart data processing
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:workout_planner/bloc/workout_session_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart'; // Needed for Date parsing and formatting
+import 'dart:async';
 
 // Import Models (Adjust paths if necessary)
 import 'package:workout_planner/models/routine.dart';
@@ -120,13 +123,36 @@ class StackedAreaLineChart extends StatelessWidget {
 
   // --- Data Parsing and Helper Methods ---
   List<FlSpot> _createDataPointsFromHistory() {
-    // (Implementation remains the same)
-    List<FlSpot> dataPoints = []; List<MapEntry<DateTime, double>> datedMaxWeights = [];
+    final List<FlSpot> dataPoints = [];
+    final List<MapEntry<DateTime, double>> datedMaxWeights = [];
+
     exercise.exHistory.forEach((dateString, weightsHistoryValue) {
-      try { /* ... parse date and weights ... */ } catch (e) { /* ... handle error ... */ }
+      try {
+        final date = DateTime.parse(dateString);
+        if (weightsHistoryValue.isNotEmpty) {
+          final maxWeight = weightsHistoryValue
+              .map((entry) => entry.weight)
+              .reduce((a, b) => a > b ? a : b);
+          datedMaxWeights.add(MapEntry(date, maxWeight));
+        }
+      } catch (e) {
+        debugPrint('Error parsing history entry $dateString: $e');
+      }
     });
-    // ... sort and map ...
-    return dataPoints; // Placeholder return
+
+    // Sort entries by date ascending
+    datedMaxWeights.sort((a, b) => a.key.compareTo(b.key));
+
+    // Convert to FlSpot format with days since first entry as X-axis
+    if (datedMaxWeights.isNotEmpty) {
+      final firstDate = datedMaxWeights.first.key;
+      dataPoints.addAll(datedMaxWeights.map((entry) {
+        final xValue = entry.key.difference(firstDate).inDays.toDouble();
+        return FlSpot(xValue, entry.value);
+      }));
+    }
+
+    return dataPoints;
   }
   double _getMaxWeightFromString(String weightsStr) {
     // (Implementation remains the same)
@@ -147,11 +173,32 @@ class StackedAreaLineChart extends StatelessWidget {
 // =========================================================================
 // DonutAutoLabelChart remains the same as the previous corrected version
 // =========================================================================
-class DonutAutoLabelChart extends StatelessWidget {
+class DonutAutoLabelChart extends StatefulWidget {
   final List<Routine> routines;
   final bool animate;
 
   const DonutAutoLabelChart(this.routines, {this.animate = false, super.key});
+
+  @override
+  State<DonutAutoLabelChart> createState() => _DonutAutoLabelChartState();
+}
+
+class _DonutAutoLabelChartState extends State<DonutAutoLabelChart> {
+  late StreamSubscription _sessionsSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionsSub = context.read<WorkoutSessionBloc>().allSessionsStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _sessionsSub.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -162,13 +209,16 @@ class DonutAutoLabelChart extends StatelessWidget {
 
   List<PieChartSectionData> _createSectionsData(BuildContext context) {
     // (Implementation remains the same)
-    final Map<MainTargetedBodyPart, int> countsByBodyPart = {}; int totalCompletions = 0; for (final routine in routines) { if (routine.completionCount > 0) {
-      // Convert the integer to MainTargetedBodyPart enum
-      final bodyPart = MainTargetedBodyPart.values[(routine.mainTargetedBodyPart != null ? routine.mainTargetedBodyPart.index : 0)];
+    final Map<MainTargetedBodyPart, int> countsByBodyPart = {}; int totalCompletions = 0; for (final routine in widget.routines) { if (routine.completionCount > 0) {
+      // Safely convert to MainTargetedBodyPart with bounds checking
+      final index = routine.mainTargetedBodyPart?.index ?? 0;
+      final bodyPart = index < MainTargetedBodyPart.values.length
+          ? MainTargetedBodyPart.values[index]
+          : MainTargetedBodyPart.Other;
       countsByBodyPart.update(
         bodyPart,
-        (v) => v + routine.completionCount,
-        ifAbsent: () => routine.completionCount,
-      ); totalCompletions += routine.completionCount; } } if (totalCompletions == 0) return []; final List<Color> colors = [ Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.tertiary ?? Colors.green, Colors.orange.shade600, Colors.red.shade400, Colors.purple.shade400, Colors.teal.shade400, Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400, ]; int colorIndex = 0; final List<PieChartSectionData> sections = []; countsByBodyPart.forEach((bodyPart, count) { final double percentage = (count / totalCompletions) * 100; final Color sectionColor = colors[colorIndex % colors.length]; colorIndex++; sections.add(PieChartSectionData( color: sectionColor, value: count.toDouble(), title: '${percentage.toStringAsFixed(0)}%', radius: 50, titleStyle: const TextStyle( fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, shadows: [ Shadow(color: Colors.black54, blurRadius: 2) ] ), )); }); return sections;
+        (v) => v + routine.completionCount.toInt(),
+        ifAbsent: () => routine.completionCount.toInt(),
+      ); totalCompletions += routine.completionCount.toInt(); } } if (totalCompletions == 0) return []; final List<Color> colors = [ Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.tertiary ?? Colors.green, Colors.orange.shade600, Colors.red.shade400, Colors.purple.shade400, Colors.teal.shade400, Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400, ]; int colorIndex = 0; final List<PieChartSectionData> sections = []; countsByBodyPart.forEach((bodyPart, count) { final double percentage = (count / totalCompletions) * 100; final Color sectionColor = colors[colorIndex % colors.length]; colorIndex++; sections.add(PieChartSectionData( color: sectionColor, value: count.toDouble(), title: '${percentage.toStringAsFixed(0)}%', radius: 50, titleStyle: const TextStyle( fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, shadows: [ Shadow(color: Colors.black54, blurRadius: 2) ] ), )); }); return sections;
   }
 } // End DonutAutoLabelChart

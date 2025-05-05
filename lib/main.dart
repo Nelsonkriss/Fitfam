@@ -22,72 +22,127 @@ import 'package:workout_planner/ui/setting_page.dart';
 // Global provider instances are created in their respective files
 // (e.g., final dbProvider = createDbProvider(); in db_provider.dart)
 
-void main() async {
+void main() {
   // 1. Ensure Flutter framework is ready
   WidgetsFlutterBinding.ensureInitialized();
   print('[MAIN] Flutter Binding Initialized.');
 
-  // 2. Initialize Firebase (essential service)
-  print('[MAIN] Starting Firebase initialization block...');
-  FirebaseApp? app; // Reference to the initialized app
-  try {
-    // Check if already initialized (important for hot restarts)
-    if (Firebase.apps.isEmpty) {
-      print('[MAIN] No Firebase apps found. Calling Firebase.initializeApp...');
-      app = await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-      print('[MAIN] Firebase.initializeApp completed successfully. App name: ${app.name}');
-    } else {
-      print('[MAIN] Firebase default app already exists. Getting instance...');
-      app = Firebase.app(); // Get the existing default app instance
-      print('[MAIN] Using existing Firebase app: ${app.name}');
+  // 2. Run the app with an initialization loader
+  runApp(const InitializationLoader());
+}
+
+/// A widget that handles asynchronous initialization and shows a loading screen.
+class InitializationLoader extends StatefulWidget {
+  const InitializationLoader({super.key});
+
+  @override
+  _InitializationLoaderState createState() => _InitializationLoaderState();
+}
+
+class _InitializationLoaderState extends State<InitializationLoader> {
+  bool _isInitialized = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      // 2. Initialize Firebase (essential service)
+      print('[MAIN] Starting Firebase initialization block...');
+      FirebaseApp? app; // Reference to the initialized app
+      try {
+        // Check if already initialized (important for hot restarts)
+        if (Firebase.apps.isEmpty) {
+          print('[MAIN] No Firebase apps found. Calling Firebase.initializeApp...');
+          app = await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          );
+          print('[MAIN] Firebase.initializeApp completed successfully. App name: ${app.name}');
+        } else {
+          print('[MAIN] Firebase default app already exists. Getting instance...');
+          app = Firebase.app(); // Get the existing default app instance
+          print('[MAIN] Using existing Firebase app: ${app.name}');
+        }
+        print('[MAIN] Firebase setup check completed successfully.');
+      } catch (e) {
+        // Catch critical Firebase init errors
+        print('[MAIN] CRITICAL: Exception caught during Firebase setup: ${e.runtimeType} - $e');
+        setState(() {
+          _errorMessage = 'Firebase setup failed:\n$e';
+        });
+        return; // Stop execution if Firebase fails
+      }
+      // --- End Firebase Init ---
+
+      // 3. Initialize Local Database (essential service)
+      print('[MAIN] Starting DB initialization...');
+      try {
+        // Assumes dbProvider is a global instance created in db_provider.dart
+        await dbProvider.initDB();
+        print('[MAIN] DB initialized successfully.');
+      } catch (e) {
+        print('[MAIN] CRITICAL: Database initialization failed: $e');
+        setState(() {
+          _errorMessage = 'Database initialization failed:\n$e';
+        });
+        return; // Stop execution if DB fails
+      }
+      // --- End DB Init ---
+
+      // 4. Perform Non-Critical One-Time App Setup (e.g., SharedPreferences)
+      print('[MAIN] Performing initial app setup...');
+      try {
+        // Assumes sharedPrefsProvider is a global instance
+        await sharedPrefsProvider.checkAndPrepareOnAppStart();
+        // Attempt silent sign-in in the background (non-blocking)
+        firebaseProvider.signInSilently().then((user) {
+          if (kDebugMode) print("[MAIN] Silent sign-in attempt completed. User: ${user?.uid ?? 'None'}");
+        }).catchError((e) {
+          if (kDebugMode) print("[MAIN] Error during silent sign-in attempt: $e");
+        });
+        print('[MAIN] Initial app setup complete.');
+      } catch (e) {
+        // Log warning but allow app to continue if non-essential setup fails
+        print('[MAIN] Warning: Error during initial app setup: $e');
+      }
+      // --- End App Setup ---
+
+      setState(() {
+        _isInitialized = true;
+      });
+    } catch (e) {
+      // Catch any other unexpected errors during initialization
+      print('[MAIN] CRITICAL: Unexpected error during initialization: $e');
+      setState(() {
+        _errorMessage = 'An unexpected error occurred during initialization:\n$e';
+      });
     }
-    print('[MAIN] Firebase setup check completed successfully.');
-  } catch (e) {
-    // Catch critical Firebase init errors
-    print('[MAIN] CRITICAL: Exception caught during Firebase setup: ${e.runtimeType} - $e');
-    runApp(ErrorApp(error: 'Firebase setup failed:\n$e'));
-    return; // Stop execution if Firebase fails
   }
-  // --- End Firebase Init ---
 
-  // 3. Initialize Local Database (essential service)
-  print('[MAIN] Starting DB initialization...');
-  try {
-    // Assumes dbProvider is a global instance created in db_provider.dart
-    await dbProvider.initDB();
-    print('[MAIN] DB initialized successfully.');
-  } catch (e) {
-    print('[MAIN] CRITICAL: Database initialization failed: $e');
-    runApp(ErrorApp(error: 'Database initialization failed: $e'));
-    return; // Stop execution if DB fails
-  }
-  // --- End DB Init ---
+  @override
+  Widget build(BuildContext context) {
+    if (_errorMessage != null) {
+      return ErrorApp(error: _errorMessage!);
+    }
 
-  // 4. Perform Non-Critical One-Time App Setup (e.g., SharedPreferences)
-  print('[MAIN] Performing initial app setup...');
-  try {
-    // Assumes sharedPrefsProvider is a global instance
-    await sharedPrefsProvider.checkAndPrepareOnAppStart();
-    // Attempt silent sign-in in the background (non-blocking)
-    firebaseProvider.signInSilently().then((user) {
-      if (kDebugMode) print("[MAIN] Silent sign-in attempt completed. User: ${user?.uid ?? 'None'}");
-    }).catchError((e) {
-      if (kDebugMode) print("[MAIN] Error during silent sign-in attempt: $e");
-    });
-    print('[MAIN] Initial app setup complete.');
-  } catch (e) {
-    // Log warning but allow app to continue if non-essential setup fails
-    print('[MAIN] Warning: Error during initial app setup: $e');
-  }
-  // --- End App Setup ---
+    if (!_isInitialized) {
+      // Show a loading indicator while initializing
+      return const MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        ),
+      );
+    }
 
-
-  // 5. Run the App with Necessary Providers
-  print('[MAIN] Running App with MultiProvider...');
-  runApp(
-    MultiProvider(
+    // Once initialized, show the main app
+    print('[MAIN] Running App with MultiProvider...');
+    return MultiProvider(
       providers: [
         // Provide global singleton instances using .value constructor
         // Ensures only one instance exists and is shared.
@@ -127,8 +182,8 @@ void main() async {
         ),
       ],
       child: const MyApp(), // Your root App widget
-    ),
-  );
+    );
+  }
 }
 
 /// The root application widget. Sets up MaterialApp.
@@ -218,7 +273,6 @@ class MainPageState extends State<MainPage> {
     );
   }
 }
-
 
 /// A simple widget shown when critical initialization fails.
 class ErrorApp extends StatelessWidget {

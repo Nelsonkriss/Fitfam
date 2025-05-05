@@ -5,5 +5,6 @@ enum MainTargetedBodyPart {
   Chest, 
   Leg, 
   Shoulder, 
-  FullBody 
+  FullBody,
+  Other,
 }

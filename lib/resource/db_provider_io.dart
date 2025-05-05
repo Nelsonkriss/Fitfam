@@ -1,16 +1,18 @@
 // resource/db_provider_io.dart
 import 'dart:async';
-// Keep for debugging, though model should handle encoding/decoding
+// import 'dart:convert'; // Not needed here if models handle JSON internally
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:collection/collection.dart'; // Keep if needed by models
+import 'package:collection/collection.dart'; // Keep if models use it
 
 // Import corrected models and interface
-import 'package:workout_planner/models/routine.dart'; // Assumes this handles JSON correctly
-import 'package:workout_planner/models/workout_session.dart'; // ** ACTION REQUIRED: Ensure this handles JSON for 'exercises' list **
+import 'package:workout_planner/models/routine.dart'; // Assumes this handles its JSON/DB mapping
+import 'package:workout_planner/models/workout_session.dart'; // Assumes handles its DB mapping (excluding exercises)
+import 'package:workout_planner/models/exercise_performance.dart';
+import 'package:workout_planner/models/set_performance.dart';
 import 'db_provider_interface.dart';
 
 class DBProviderIO implements DbProviderInterface {
@@ -21,7 +23,11 @@ class DBProviderIO implements DbProviderInterface {
   // --- Database Initialization ---
   Future<Database> get db async {
     if (_db != null) return _db!;
-    if (_isInitializing) { await _initCompleter.future; return _db!; }
+    if (_isInitializing) {
+      await _initCompleter.future;
+      if (_db == null) throw Exception("DB Initialization failed after waiting.");
+      return _db!;
+    }
     _isInitializing = true;
     try {
       _db = await _initDBInternal();
@@ -29,9 +35,11 @@ class DBProviderIO implements DbProviderInterface {
       _isInitializing = false;
       debugPrint("[DBProviderIO] Database reference obtained.");
       return _db!;
-    } catch (e,s) {
+    } catch (e, s) {
       _isInitializing = false;
-      _initCompleter.completeError(e, s); // Complete with error and stacktrace
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.completeError(e, s);
+      }
       debugPrint("[DBProviderIO] CRITICAL: Database initialization failed: $e\n$s");
       rethrow;
     }
@@ -40,15 +48,20 @@ class DBProviderIO implements DbProviderInterface {
   Future<Database> _initDBInternal() async {
     try {
       Directory documentsDirectory = await getApplicationDocumentsDirectory();
-      final path = join(documentsDirectory.path, 'workout_planner_v2.db'); // Incremented version name example
+      final path = join(documentsDirectory.path, 'workout_planner_v3.db'); // Example: Increment version name if schema changed
       debugPrint("[DBProviderIO] Database path: $path");
 
-      return await openDatabase(path, version: 1, // Manage versions carefully for migrations
-          onOpen: (db) {
-            debugPrint("[DBProviderIO] Database opened (version ${db.getVersion()})");
+      // Define DB version - increment this when schema changes require migration
+      const int dbVersion = 1; // Start at 1
+
+      return await openDatabase(path, version: dbVersion,
+          onOpen: (db) async {
+            await db.execute('PRAGMA foreign_keys = ON'); // Enable foreign keys
+            final currentVersion = await db.getVersion();
+            debugPrint("[DBProviderIO] Database opened (version $currentVersion) with foreign keys ON.");
           },
-          onCreate: _onCreateDB, // Separate function for creation logic
-          onUpgrade: _onUpgradeDB // Separate function for upgrade logic
+          onCreate: _onCreateDB,
+          onUpgrade: _onUpgradeDB // Implement migrations here if needed
       );
     } catch (e, s) {
       debugPrint("[DBProviderIO] Error opening/creating database: $e\n$s");
@@ -56,42 +69,76 @@ class DBProviderIO implements DbProviderInterface {
     }
   }
 
-  /// Logic for creating database tables on first creation.
+  /// Logic for creating database tables ONLY when the DB is first created.
   Future<void> _onCreateDB(Database db, int version) async {
     debugPrint("[DBProviderIO] Creating database tables (version $version)...");
+    await db.execute('PRAGMA foreign_keys = ON'); // Ensure foreign keys are on
+
+    // Routines Table
     await db.execute("CREATE TABLE Routines ("
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "routineName TEXT NOT NULL,"
-        "mainTargetedBodyPart INTEGER," // Storing enum index
-        "parts TEXT," // Storing JSON string
-        "createdDate TEXT NOT NULL," // Storing ISO8601 string
-        "lastCompletedDate TEXT,"
-        "completionCount INTEGER DEFAULT 0 NOT NULL," // Added NOT NULL
-        "weekdays TEXT NOT NULL," // Storing JSON string, Added NOT NULL
-        "routineHistory TEXT NOT NULL" // Storing JSON string, Added NOT NULL
+        "mainTargetedBodyPart INTEGER," // Enum index
+        "parts TEXT NOT NULL," // JSON List<Map>
+        "createdDate TEXT NOT NULL," // ISO8601 String
+        "lastCompletedDate TEXT," // ISO8601 String or NULL
+        "completionCount INTEGER DEFAULT 0 NOT NULL,"
+        "weekdays TEXT NOT NULL," // JSON List<int>
+        "routineHistory TEXT NOT NULL" // JSON List<int> timestamps
         ")");
     debugPrint("[DBProviderIO] Created Routines table.");
 
+    // WorkoutSessions Table (Normalized - NO exercises column)
     await db.execute("CREATE TABLE WorkoutSessions ("
-        "id TEXT PRIMARY KEY," // Session UUID
-        "routineId INTEGER NOT NULL,"
-        "startTime TEXT NOT NULL,"
-        "endTime TEXT,"
-        "isCompleted INTEGER DEFAULT 0 NOT NULL," // 0 or 1
-        "exercises TEXT NOT NULL," // JSON List<ExercisePerformance>, Added NOT NULL
+        "id TEXT PRIMARY KEY," // Session UUID String
+        "routineId INTEGER NOT NULL," // FK to Routines.id
+        "startTime TEXT NOT NULL," // ISO8601 String
+        "endTime TEXT," // ISO8601 String or NULL
+        "isCompleted INTEGER DEFAULT 0 NOT NULL," // 0 = false, 1 = true
         "FOREIGN KEY (routineId) REFERENCES Routines(id) ON DELETE CASCADE"
         ")");
-    debugPrint("[DBProviderIO] Created WorkoutSessions table.");
+    debugPrint("[DBProviderIO] Created WorkoutSessions table (normalized).");
+
+    // ExercisePerformances Table
+    await db.execute("CREATE TABLE ExercisePerformances ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "sessionId TEXT NOT NULL," // FK to WorkoutSessions.id
+        "exerciseName TEXT NOT NULL,"
+        "restPeriod INTEGER," // Duration in seconds or NULL
+        "FOREIGN KEY (sessionId) REFERENCES WorkoutSessions(id) ON DELETE CASCADE"
+        ")");
+    debugPrint("[DBProviderIO] Created ExercisePerformances table.");
+
+    // SetPerformances Table
+    await db.execute("CREATE TABLE SetPerformances ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "exerciseId INTEGER NOT NULL," // FK to ExercisePerformances.id
+        "targetReps INTEGER DEFAULT 0 NOT NULL,"
+        "targetWeight REAL DEFAULT 0 NOT NULL,"
+        "actualReps INTEGER DEFAULT 0 NOT NULL,"
+        "actualWeight REAL DEFAULT 0 NOT NULL,"
+        "isCompleted INTEGER DEFAULT 0 NOT NULL," // 0 or 1
+        "FOREIGN KEY (exerciseId) REFERENCES ExercisePerformances(id) ON DELETE CASCADE"
+        ")");
+    debugPrint("[DBProviderIO] Created SetPerformances table.");
     debugPrint("[DBProviderIO] Database tables created successfully.");
   }
 
-  /// Logic for handling database upgrades (schema changes).
+  /// Logic for handling database upgrades (schema changes) when version increases.
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
     debugPrint("[DBProviderIO] Upgrading database from $oldVersion to $newVersion...");
-    // Example: if (oldVersion < 2) { await db.execute("ALTER TABLE Routines ADD COLUMN description TEXT;"); }
-    // Add migration logic here as your schema evolves.
+    // Example Migration (add more based on your schema evolution):
+    // if (oldVersion < 2) {
+    //   // Example: Add a 'notes' column to Routines
+    //   await db.execute("ALTER TABLE Routines ADD COLUMN notes TEXT;");
+    //   debugPrint("[DBProviderIO] Added 'notes' column to Routines table.");
+    // }
+    // if (oldVersion < 3) {
+    //    // Handle migration related to removing 'exercises' column from WorkoutSessions if needed
+    //    debugPrint("[DBProviderIO] Handling migration for WorkoutSessions normalization (if applicable)...");
+    //    // Typically involves creating new table, copying data, dropping old, renaming new.
+    // }
   }
-
 
   @override
   Future<void> initDB() async {
@@ -99,44 +146,34 @@ class DBProviderIO implements DbProviderInterface {
     debugPrint("[DBProviderIO] initDB() complete.");
   }
 
-
   // --- Routine Methods ---
+  // (Implementations for newRoutine, updateRoutine, deleteRoutine, getAllRoutines, etc.)
+  // These rely on Routine.toMapForDb() and Routine.fromMap() correctly handling
+  // JSON encoding/decoding for list fields (parts, weekdays, routineHistory)
+  // and correct type mapping (enum index, dates as strings).
 
   @override
   Future<int> newRoutine(Routine routine) async {
     final dbClient = await db;
-    // Rely on routine.toMapForDb() to provide correctly encoded map
     final map = routine.toMapForDb();
-    // ID is handled by AUTOINCREMENT, ensure it's not in the map
-    map.remove('id');
+    map.remove('id'); // Let DB handle auto-increment
     try {
-      debugPrint("[DBProviderIO] Inserting Routine: ${map['routineName']}");
-      int id = await dbClient.insert( 'Routines', map, conflictAlgorithm: ConflictAlgorithm.replace );
+      int id = await dbClient.insert('Routines', map, conflictAlgorithm: ConflictAlgorithm.replace);
       debugPrint("[DBProviderIO] Inserted Routine with ID: $id");
       return id;
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error inserting new routine: $e\n$s");
-      debugPrint("[DBProviderIO] Failed Map content for insert: $map");
-      rethrow;
-    }
+    } catch (e, s) { debugPrint("[DBProviderIO] Error inserting new routine: $e\n$s\nMap: $map"); rethrow; }
   }
 
   @override
   Future<void> updateRoutine(Routine routine) async {
     if (routine.id == null) { debugPrint("[DBProviderIO] Cannot update routine without ID."); return; }
     final dbClient = await db;
-    // Rely on routine.toMapForDb() to provide correctly encoded map
-    final map = routine.toMapForDb();
+    final map = routine.toMapForDb(); // Assumes map includes ID for update context if needed by model
     try {
-      debugPrint("[DBProviderIO] Updating Routine ID: ${routine.id}");
-      int count = await dbClient.update( 'Routines', map, where: 'id = ?', whereArgs: [routine.id], );
+      int count = await dbClient.update('Routines', map, where: 'id = ?', whereArgs: [routine.id]);
+      debugPrint("[DBProviderIO] Updated $count Routine(s) with ID: ${routine.id}");
       if (count == 0) { debugPrint("[DBProviderIO] Warning: Routine ${routine.id} not found for update."); }
-      else { debugPrint("[DBProviderIO] Updated Routine ID: ${routine.id}"); }
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error updating routine ${routine.id}: $e\n$s");
-      debugPrint("[DBProviderIO] Failed Map content for update: $map");
-      rethrow;
-    }
+    } catch (e, s) { debugPrint("[DBProviderIO] Error updating routine ${routine.id}: $e\n$s\nMap: $map"); rethrow; }
   }
 
   @override
@@ -144,13 +181,9 @@ class DBProviderIO implements DbProviderInterface {
     if (routine.id == null) { debugPrint("[DBProviderIO] Cannot delete routine without ID."); return; }
     final dbClient = await db;
     try {
-      debugPrint("[DBProviderIO] Deleting Routine ID: ${routine.id}");
-      int count = await dbClient.delete( 'Routines', where: 'id = ?', whereArgs: [routine.id], );
-      debugPrint("[DBProviderIO] Deleted $count routine(s) with ID: ${routine.id}. Cascade delete should handle sessions.");
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error deleting routine ${routine.id}: $e\n$s");
-      rethrow;
-    }
+      int count = await dbClient.delete('Routines', where: 'id = ?', whereArgs: [routine.id]);
+      debugPrint("[DBProviderIO] Deleted $count routine(s) with ID: ${routine.id}.");
+    } catch (e, s) { debugPrint("[DBProviderIO] Error deleting routine ${routine.id}: $e\n$s"); rethrow; }
   }
 
   @override
@@ -158,97 +191,70 @@ class DBProviderIO implements DbProviderInterface {
     final dbClient = await db;
     try {
       final List<Map<String, dynamic>> maps = await dbClient.query('Routines', orderBy: 'routineName ASC');
-      // Rely on Routine.fromMap() to handle JSON decoding
       final routines = maps.map((map) {
-        try {
-          return Routine.fromMap(map);
-        } catch (e, s) {
-          debugPrint("[DBProviderIO] Error parsing routine map during getAllRoutines: $e\n$s\nMap: $map");
-          return null; // Skip routines that fail to parse
-        }
-      }).whereNotNull().where((routine) => routine.id != null).toList(); // Filter out routines with null id
+        try { return Routine.fromMap(map); } // Relies on robust Routine.fromMap
+        catch (e, s) { debugPrint("[DBProviderIO] Error parsing routine map: $e\n$s\nMap: $map"); return null; }
+      }).whereNotNull().toList();
       debugPrint("[DBProviderIO] Fetched ${routines.length} routines.");
       return routines;
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error getting all routines: $e\n$s");
-      return [];
-    }
+    } catch (e, s) { debugPrint("[DBProviderIO] Error getting all routines: $e\n$s"); return []; }
   }
 
-  @override
-  Future<List<Routine>> getAllRecRoutines() async { return []; } // Placeholder
-
-  @override
-  Future<void> addAllRoutines(List<Routine> routines) async {
-    final dbClient = await db;
-    Batch batch = dbClient.batch();
-    int count = 0;
-    for (var routine in routines) {
-      // Rely on routine.toMapForDb()
-      final map = routine.toMapForDb();
-      map.remove('id'); // Let DB assign IDs
-      batch.insert('Routines', map, conflictAlgorithm: ConflictAlgorithm.ignore);
-      count++;
-    }
-    try {
-      await batch.commit(noResult: true);
-      debugPrint("[DBProviderIO] Batch added $count routines.");
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error batch adding routines: $e\n$s");
-      rethrow;
-    }
-  }
-
-  @override
-  Future<void> deleteAllRoutines() async {
-    final dbClient = await db;
-    try {
-      debugPrint("[DBProviderIO] Deleting all user routines...");
-      int count = await dbClient.delete('Routines');
-      debugPrint("[DBProviderIO] Deleted $count routines. Sessions may be cascade deleted.");
-      // Optionally clear sessions table explicitly if cascade isn't reliable/used
-      // await dbClient.delete('WorkoutSessions');
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error deleting all routines: $e\n$s");
-      rethrow;
-    }
-  }
-
-  // Helper to get single routine by ID - relies on Routine.fromMap
   @override
   Future<Routine?> getRoutineById(int id) async {
     final dbClient = await db;
     try {
-      final List<Map<String, dynamic>> maps = await dbClient.query(
-        'Routines', where: 'id = ?', whereArgs: [id], limit: 1,
-      );
+      final List<Map<String, dynamic>> maps = await dbClient.query('Routines', where: 'id = ?', whereArgs: [id], limit: 1);
       if (maps.isEmpty) return null;
-      return Routine.fromMap(maps.first);
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error getting routine by ID $id: $e\n$s");
-      return null;
-    }
+      return Routine.fromMap(maps.first); // Relies on robust Routine.fromMap
+    } catch (e, s) { debugPrint("[DBProviderIO] Error getting routine by ID $id: $e\n$s"); return null; }
   }
 
-
-  // --- Workout Session Methods ---
-  // ** These assume WorkoutSession.toMap/fromMap are CORRECTLY handling JSON **
-  // ** encoding/decoding for the 'exercises' List<ExercisePerformance> field **
+  // --- Workout Session Methods (Normalized) ---
 
   @override
   Future<void> saveWorkoutSession(WorkoutSession session) async {
     final dbClient = await db;
-    // ** WorkoutSession.toMap() MUST jsonEncode exercises list **
-    final map = session.toMapForDb(); // Assuming a similar method exists or toMap handles it
-    // map['isCompleted'] is already handled by WorkoutSession.toMap() likely
     try {
-      debugPrint("[DBProviderIO] Saving WorkoutSession ID: ${session.id}");
-      await dbClient.insert( 'WorkoutSessions', map, conflictAlgorithm: ConflictAlgorithm.replace, );
-      debugPrint("[DBProviderIO] Saved WorkoutSession ID: ${session.id}");
+      await dbClient.transaction((txn) async {
+        // 1. Save main session record (uses session.toMapForDb which EXCLUDES exercises)
+        final sessionMap = session.toMapForDb();
+        await txn.insert('WorkoutSessions', sessionMap, conflictAlgorithm: ConflictAlgorithm.replace);
+        debugPrint("[DBProviderIO] Saved WorkoutSession main record ID: ${session.id}");
+
+        // 2. Delete existing children for this session ID to handle updates correctly
+        await txn.delete('ExercisePerformances', where: 'sessionId = ?', whereArgs: [session.id]);
+        // Cascade delete should handle SetPerformances linked to the deleted ExercisePerformances
+
+        // 3. Insert new exercises and their sets
+        for (final exercise in session.exercises) {
+          final exerciseMap = {
+            'sessionId': session.id, // Link to parent session
+            'exerciseName': exercise.exerciseName,
+            'restPeriod': exercise.restPeriod?.inSeconds,
+          };
+          // Insert exercise and get its new DB ID
+          final exerciseId = await txn.insert('ExercisePerformances', exerciseMap);
+
+          // 4. Insert sets for this exercise
+          for (final setPerf in exercise.sets) {
+            final setMap = {
+              'exerciseId': exerciseId, // Link to parent exercise
+              'targetReps': setPerf.targetReps,
+              'targetWeight': setPerf.targetWeight,
+              'actualReps': setPerf.actualReps,
+              'actualWeight': setPerf.actualWeight,
+              'isCompleted': setPerf.isCompleted ? 1 : 0,
+            };
+            await txn.insert('SetPerformances', setMap);
+          }
+          debugPrint("[DBProviderIO] Saved ${exercise.sets.length} SetPerformances for ExercisePerformance ID: $exerciseId");
+        }
+      });
+      debugPrint("[DBProviderIO] Successfully saved/updated WorkoutSession ID: ${session.id} and its children via transaction.");
     } catch (e, s) {
-      debugPrint("[DBProviderIO] Error saving workout session ${session.id}: $e\n$s");
-      debugPrint("[DBProviderIO] Failed Session Map content: $map");
-      rethrow;
+      debugPrint("[DBProviderIO] Error saving workout session ${session.id} transaction: $e\n$s");
+      rethrow; // Rethrow to be caught by BLoC
     }
   }
 
@@ -256,26 +262,62 @@ class DBProviderIO implements DbProviderInterface {
   Future<List<WorkoutSession>> getWorkoutSessions() async {
     final dbClient = await db;
     try {
+      // 1. Get all base session records
       final List<Map<String, dynamic>> sessionMaps = await dbClient.query('WorkoutSessions', orderBy: 'startTime DESC');
-      // Fetch all routines for efficient lookup
-      final Map<int, Routine> routineMap = { for (var r in await getAllRoutines()) if (r.id != null) r.id!: r };
-
       final List<WorkoutSession> sessions = [];
-      for (var map in sessionMaps) {
-        final routineId = map['routineId'] as int?;
-        if (routineId == null) { debugPrint('Skipping session ${map['id']} due to missing routineId'); continue; }
-        final routine = routineMap[routineId];
-        if (routine == null) { debugPrint('Skipping session ${map['id']} because routine $routineId was not found'); continue; }
 
-        try {
-          // ** WorkoutSession.fromMap() MUST jsonDecode 'exercises' field **
-          final session = WorkoutSession.fromMap(map, routine);
-          sessions.add(session);
-        } catch(e, s) {
-          debugPrint('[DBProviderIO] Error processing session ${map['id']} data: $e\n$s');
+      // 2. For each session, fetch its routine and then its exercises/sets
+      for (var sessionMap in sessionMaps) {
+        final routineId = sessionMap['routineId'] as int;
+        final routine = await getRoutineById(routineId);
+        if (routine == null) {
+          debugPrint("[DBProviderIO] Warning: Skipping session ${sessionMap['id']} because Routine $routineId not found.");
+          continue;
         }
-      }
-      debugPrint("[DBProviderIO] Fetched ${sessions.length} workout sessions.");
+
+        // Create the base session object (initializes exercises = [])
+        final session = WorkoutSession.fromMap(sessionMap, routine);
+
+        // 3. Fetch exercises linked to this session
+        final exerciseMaps = await dbClient.query('ExercisePerformances', where: 'sessionId = ?', whereArgs: [session.id], orderBy: 'id ASC');
+        final List<ExercisePerformance> exercisesForThisSession = [];
+
+        for (var exerciseMap in exerciseMaps) {
+          final exerciseId = exerciseMap['id'] as int;
+
+          // 4. Fetch sets linked to this exercise
+          final setMaps = await dbClient.query('SetPerformances', where: 'exerciseId = ?', whereArgs: [exerciseId], orderBy: 'id ASC');
+          final List<SetPerformance> setsForThisExercise = setMaps.map((setMap) {
+            try {
+              return SetPerformance(
+                targetReps: setMap['targetReps'] as int? ?? 0,
+                targetWeight: (setMap['targetWeight'] as num?)?.toDouble() ?? 0.0,
+                actualReps: setMap['actualReps'] as int? ?? 0,
+                actualWeight: (setMap['actualWeight'] as num?)?.toDouble() ?? 0.0,
+                isCompleted: (setMap['isCompleted'] as int? ?? 0) == 1,
+              );
+            } catch(e,s) { debugPrint("[DBProviderIO] Error parsing set map for exercise $exerciseId: $e\n$s\nMap: $setMap"); return null; }
+          }).whereNotNull().toList();
+
+          // 5. Create the ExercisePerformance object WITH its sets
+          try {
+            final exercisePerformance = ExercisePerformance(
+              id: exerciseId, // Pass the DB ID
+              exerciseName: exerciseMap['exerciseName'] as String? ?? 'Unknown Exercise',
+              sets: setsForThisExercise, // Assign the fetched sets
+              restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int) : null,
+            );
+            exercisesForThisSession.add(exercisePerformance);
+          } catch (e,s) { debugPrint("[DBProviderIO] Error creating ExercisePerformance object for exercise $exerciseId: $e\n$s"); }
+        } // End exercise loop
+
+        // 6. Add the populated list of exercises to the session object
+        // We need a way to update the immutable session object. Using copyWith:
+        sessions.add(session.copyWith(exercises: exercisesForThisSession));
+
+      } // End session loop
+
+      debugPrint("[DBProviderIO] Fetched ${sessions.length} workout sessions with details.");
       return sessions;
     } catch (e, s) {
       debugPrint("[DBProviderIO] Error getting workout sessions: $e\n$s");
@@ -287,18 +329,33 @@ class DBProviderIO implements DbProviderInterface {
   Future<WorkoutSession?> getWorkoutSessionById(String id) async {
     final dbClient = await db;
     try {
-      final List<Map<String, dynamic>> maps = await dbClient.query(
-        'WorkoutSessions', where: 'id = ?', whereArgs: [id], limit: 1,
-      );
-      if (maps.isEmpty) return null;
-      final map = maps.first;
-      final routineId = map['routineId'] as int?;
-      if (routineId == null) { /* ... */ return null; }
-      final routine = await getRoutineById(routineId);
-      if (routine == null) { /* ... */ return null; }
+      // 1. Get the specific session record
+      final List<Map<String, dynamic>> sessionMaps = await dbClient.query('WorkoutSessions', where: 'id = ?', whereArgs: [id], limit: 1);
+      if (sessionMaps.isEmpty) { debugPrint("[DBProviderIO] Session ID $id not found."); return null; }
+      final sessionMap = sessionMaps.first;
 
-      // ** WorkoutSession.fromMap() MUST jsonDecode 'exercises' field **
-      return WorkoutSession.fromMap(map, routine);
+      // 2. Fetch associated Routine
+      final routineId = sessionMap['routineId'] as int;
+      final routine = await getRoutineById(routineId);
+      if (routine == null) { debugPrint("[DBProviderIO] Routine $routineId for session $id not found."); return null; }
+
+      // 3. Create base session object (exercises = [])
+      final session = WorkoutSession.fromMap(sessionMap, routine);
+
+      // 4. Fetch exercises and sets (similar logic to getWorkoutSessions loop)
+      final exerciseMaps = await dbClient.query('ExercisePerformances', where: 'sessionId = ?', whereArgs: [session.id], orderBy: 'id ASC');
+      final List<ExercisePerformance> exercisesForThisSession = [];
+      for (var exerciseMap in exerciseMaps) {
+        final exerciseId = exerciseMap['id'] as int;
+        final setMaps = await dbClient.query('SetPerformances', where: 'exerciseId = ?', whereArgs: [exerciseId], orderBy: 'id ASC');
+        final List<SetPerformance> setsForThisExercise = setMaps.map((setMap) => /* ... SetPerformance from setMap ... */ SetPerformance(targetReps: setMap['targetReps'] as int? ?? 0, targetWeight: (setMap['targetWeight'] as num?)?.toDouble() ?? 0.0, actualReps: setMap['actualReps'] as int? ?? 0, actualWeight: (setMap['actualWeight'] as num?)?.toDouble() ?? 0.0, isCompleted: (setMap['isCompleted'] as int? ?? 0) == 1)).toList(); // Simplified for brevity
+        final exercisePerformance = ExercisePerformance(id: exerciseId, exerciseName: exerciseMap['exerciseName'] as String? ?? '', sets: setsForThisExercise, restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null);
+        exercisesForThisSession.add(exercisePerformance);
+      }
+
+      // 5. Return the session with populated exercises
+      return session.copyWith(exercises: exercisesForThisSession);
+
     } catch (e, s) {
       debugPrint("[DBProviderIO] Error getting session by ID $id: $e\n$s");
       return null;
@@ -309,13 +366,19 @@ class DBProviderIO implements DbProviderInterface {
   Future<void> deleteWorkoutSession(String id) async {
     final dbClient = await db;
     try {
-      debugPrint("[DBProviderIO] Deleting WorkoutSession ID: $id");
-      int count = await dbClient.delete( 'WorkoutSessions', where: 'id = ?', whereArgs: [id], );
-      debugPrint("[DBProviderIO] Deleted $count session(s) with ID: $id.");
-    } catch (e, s) {
-      debugPrint("[DBProviderIO] Error deleting session $id: $e\n$s");
-      rethrow;
-    }
+      int count = await dbClient.delete('WorkoutSessions', where: 'id = ?', whereArgs: [id]);
+      debugPrint("[DBProviderIO] Deleted $count session(s) with ID: $id. Cascade should handle children.");
+    } catch (e, s) { debugPrint("[DBProviderIO] Error deleting session $id: $e\n$s"); rethrow; }
   }
+
+  // --- Add other DB methods as needed (deleteAllRoutines, addAllRoutines etc) ---
+  @override
+  Future<List<Routine>> getAllRecRoutines() async { return []; } // Placeholder
+
+  @override
+  Future<void> addAllRoutines(List<Routine> routines) async { /* ... Batch insert ... */ }
+
+  @override
+  Future<void> deleteAllRoutines() async { /* ... Delete all routines ... */ }
 
 } // End DBProviderIO

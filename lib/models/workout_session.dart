@@ -1,197 +1,212 @@
-import 'dart:convert'; // <-- Import for jsonEncode/Decode
-import 'package:collection/collection.dart'; // For potential listEquals if needed
-import 'package:uuid/uuid.dart'; // For generating IDs
-// For @immutable
-import 'package:flutter/foundation.dart'; // For debugPrint, Object.hash
+// models/workout_session.dart
 
-// Import corrected models (adjust paths if necessary)
-import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/exercise_performance.dart'; // Import corrected ExercisePerformance
-// Needed indirectly by ExercisePerformance
-// Needed by ExercisePerformance.fromExerciseDefinition
-// Needed indirectly by Routine
+import 'package:flutter/foundation.dart'; // For diagnostics, Object.hash
+import 'package:uuid/uuid.dart'; // For generating unique IDs
+import 'package:meta/meta.dart'; // For @immutable
+import 'package:collection/collection.dart'; // For DeepCollectionEquality
 
-/// Represents an active or completed workout session based on a Routine.
-@immutable // Mark as immutable where possible (endTime/isCompleted/exercises are mutable state)
+// Import related models
+import 'routine.dart'; // Includes Part definition indirectly if exported
+import 'exercise_performance.dart';
+import 'set_performance.dart'; // Needed by ExercisePerformance
+// import 'part.dart'; // No longer needed directly if Routine exports Part
+import 'exercise.dart'; // Needed by ExercisePerformance.fromExerciseDefinition
+
+@immutable
 class WorkoutSession {
+  /// Unique identifier for the session (e.g., UUID String).
   final String id;
-  final Routine routine; // Assumes Routine is immutable
+  /// The routine template this session is based on. Contains routineId.
+  final Routine routine; // Assumes Routine is immutable and implements ==/hashCode
+  /// The exact time the session was started.
   final DateTime startTime;
-
-  // State that changes during/after the session
+  /// The exact time the session was finished (null if ongoing or aborted).
   final DateTime? endTime;
+  /// Flag indicating if the session was successfully completed.
   final bool isCompleted;
+  /// List tracking the performance of each exercise in the session.
+  /// NOTE: In the normalized DB schema, this list is populated separately
+  /// by DBProviderIO after the main session object is created.
   final List<ExercisePerformance> exercises; // List of immutable ExercisePerformance
 
-  /// Creates an instance representing a workout session state.
-  /// Use copyWith to represent changes during the session.
-  const WorkoutSession({ // Make constructor const
+  // Private constructor - use factories or copyWith for instance creation
+  const WorkoutSession._internal({
     required this.id,
     required this.routine,
     required this.startTime,
-    required this.exercises, // Require exercises list
+    required this.exercises,
     this.endTime,
     this.isCompleted = false,
   });
 
   /// Factory to create a *new* workout session instance when starting.
-  /// Generates UUID and initial exercise performance list.
+  /// Generates UUID and initial exercise performance list based on the routine.
   factory WorkoutSession.startNew({
     required Routine routine,
     DateTime? startTime, // Allow specifying start time, default to now
   }) {
     final actualStartTime = startTime ?? DateTime.now();
     final newId = const Uuid().v4(); // Generate unique ID
-    final initialExercises = _createDefaultPerformances(routine); // Create initial state
 
-    return WorkoutSession(
+    // Create the initial list of ExercisePerformance objects based on the routine plan
+    // *** FIX: Pass the routine to the corrected helper method ***
+    final initialExercises = _createDefaultPerformances(routine);
+
+    return WorkoutSession._internal(
       id: newId,
       routine: routine,
       startTime: actualStartTime,
-      exercises: initialExercises,
+      exercises: initialExercises, // Start with planned exercises/sets
       endTime: null, // Not ended yet
       isCompleted: false, // Not completed yet
     );
   }
 
-  /// Creates a new WorkoutSession instance representing an updated state.
+  /// Factory to reconstruct a WorkoutSession *base object* from a database map.
+  /// This map corresponds ONLY to the columns in the `WorkoutSessions` table.
+  /// The 'exercises' list MUST be populated separately by the caller (e.g., DBProviderIO)
+  /// after fetching data from the related normalized tables.
+  factory WorkoutSession.fromMap(Map<String, dynamic> map, Routine routine) {
+    // Helper for robust DateTime parsing
+    DateTime? tryParseDateTime(dynamic value) {
+      if (value is String && value.isNotEmpty) { return DateTime.tryParse(value); }
+      return null;
+    }
+
+    // Validate required fields from map
+    final String sessionId = map['id'] as String? ?? const Uuid().v4(); // Generate fallback ID if missing (should not happen)
+    final DateTime sessionStartTime = tryParseDateTime(map['startTime']) ?? DateTime.now(); // Default if parse fails
+    final bool sessionIsCompleted = (map['isCompleted'] as int? ?? 0) == 1; // Convert DB int (0/1) to bool
+    final DateTime? sessionEndTime = tryParseDateTime(map['endTime']); // Nullable
+
+    return WorkoutSession._internal(
+      id: sessionId,
+      routine: routine, // Routine is fetched and passed in separately
+      startTime: sessionStartTime,
+      endTime: sessionEndTime,
+      isCompleted: sessionIsCompleted,
+      // *** CRITICAL: Initialize exercises as empty list here. ***
+      // The caller (DBProviderIO) is responsible for fetching data from
+      // ExercisePerformances/SetPerformances tables and populating this list later.
+      exercises: [],
+    );
+  }
+
+  /// Serializes the **top-level** WorkoutSession fields into a Map suitable
+  /// for inserting/updating the 'WorkoutSessions' database table.
+  /// **It DOES NOT include the 'exercises' list.** The DBProviderIO handles
+  /// saving the nested exercises/sets into their separate normalized tables.
+  Map<String, dynamic> toMapForDb() {
+    // Ensure the routine has an ID, as it's a foreign key
+    if (routine.id == null) {
+      throw StateError('Cannot map WorkoutSession to DB: Associated Routine is missing an ID.');
+    }
+
+    return {
+      'id': id, // PRIMARY KEY (TEXT)
+      'routineId': routine.id, // FOREIGN KEY (INTEGER)
+      'startTime': startTime.toIso8601String(), // TEXT (ISO8601 String)
+      'endTime': endTime?.toIso8601String(), // TEXT (ISO8601 String or NULL)
+      'isCompleted': isCompleted ? 1 : 0, // INTEGER (0 or 1)
+      // 'exercises' field is intentionally OMITTED here.
+    };
+  }
+
+
+  /// Creates a copy of this WorkoutSession but with the given fields replaced.
+  /// Use this for immutable state updates within the BLoC.
   WorkoutSession copyWith({
     String? id,
     Routine? routine,
     DateTime? startTime,
-    List<ExercisePerformance>? exercises,
-    DateTime? endTime,
+    List<ExercisePerformance>? exercises, // Allow replacing the exercises list
+    // Use Object? to allow setting endTime to null explicitly via copyWith(endTime: null)
+    Object? endTime = const _Undefined(),
     bool? isCompleted,
-    bool clearEndTime = false, // Flag to set endTime to null
   }) {
-    return WorkoutSession(
+    return WorkoutSession._internal(
       id: id ?? this.id,
       routine: routine ?? this.routine,
       startTime: startTime ?? this.startTime,
-      // Assume exercises list passed is the complete new state
-      exercises: exercises ?? this.exercises,
-      endTime: clearEndTime ? null : (endTime ?? this.endTime),
+      exercises: exercises ?? this.exercises, // Use provided list or keep original
+      endTime: endTime is _Undefined ? this.endTime : endTime as DateTime?,
       isCompleted: isCompleted ?? this.isCompleted,
     );
   }
 
-  /// Helper to create initial performance trackers based on the routine plan.
+  /// **CORRECTED** Helper method used by `startNew` factory to create initial performance trackers.
+  /// Iterates through the routine's parts and the exercises within each part.
   static List<ExercisePerformance> _createDefaultPerformances(Routine routine) {
+    final List<ExercisePerformance> defaultPerformances = [];
     try {
-      return routine.parts
-          .expand((part) => part.exercises.map(
-        // Use factory from ExercisePerformance
-              (exercise) => ExercisePerformance.fromExerciseDefinition(exercise))
-      )
-          .toList();
-    } catch (e) {
-      debugPrint("Error creating default performances: $e");
+      // Iterate through each Part defined in the Routine
+      for (final part in routine.parts) {
+        // Iterate through each Exercise defined within the Part
+        for (final exerciseDefinition in part.exercises) {
+          // Use the factory from ExercisePerformance to create the initial state
+          // for this specific exercise based on its definition (sets, reps, weight)
+          defaultPerformances.add(
+              ExercisePerformance.fromExerciseDefinition(exerciseDefinition));
+        }
+      }
+      if (defaultPerformances.isEmpty) {
+        debugPrint("Warning: No exercises found within the parts of routine '${routine.routineName}'.");
+      }
+      return defaultPerformances;
+    } catch (e, s) {
+      debugPrint("Error creating default ExercisePerformances for routine '${routine.routineName}': $e\n$s");
       return []; // Return empty list on error
     }
   }
 
   /// Calculates the duration of the workout session.
+  /// Returns Duration.zero if ongoing or if data is inconsistent.
   Duration get duration {
-    if (endTime != null) {
-      return endTime!.difference(startTime).isNegative
-          ? Duration.zero // Handle potential clock skew issues
-          : endTime!.difference(startTime);
-    } else if (!isCompleted) {
-      // Ongoing session duration (up to now)
-      return DateTime.now().difference(startTime).isNegative
-          ? Duration.zero
-          : DateTime.now().difference(startTime);
+    final et = endTime; // Cache endTime
+    if (et != null) {
+      final diff = et.difference(startTime);
+      // Return zero if duration is negative (clock issues)
+      return diff.isNegative ? Duration.zero : diff;
     } else {
-      // Completed but somehow endTime is null? Return zero duration.
+      // Not finished or inconsistent state
       return Duration.zero;
     }
-  }
-
-  /// Serializes the WorkoutSession state to a Map suitable for DB storage.
-  /// Encodes the 'exercises' list into a JSON string.
-  Map<String, dynamic> toMapForDb() { // Renamed for clarity
-    String encodedExercises = '[]';
-    try {
-      // ExercisePerformance.toMapForDb() handles encoding its own 'sets' list
-      encodedExercises = jsonEncode(exercises.map((e) => e.toMapForDb()).toList());
-    } catch (e) {
-      debugPrint("Error encoding exercises list to JSON in WorkoutSession '$id': $e");
-      // Handle error
-    }
-
-    return {
-      'id': id,
-      'routineId': routine.id, // Foreign key reference
-      'startTime': startTime.toIso8601String(),
-      'endTime': endTime?.toIso8601String(), // Store as ISO string or NULL
-      'isCompleted': isCompleted ? 1 : 0, // Store boolean as INTEGER (0 or 1)
-      // *** FIX: Store exercises as JSON encoded string ***
-      'exercises': encodedExercises, // Store as TEXT
-    };
-  }
-
-  /// Creates a WorkoutSession instance from a Map (e.g., from database).
-  /// Requires the corresponding [Routine] object to be passed in.
-  /// Decodes the 'exercises' list from a JSON string.
-  factory WorkoutSession.fromMap(Map<String, dynamic> map, Routine routine) {
-    // --- Helper function to safely decode list of ExercisePerformances ---
-    List<ExercisePerformance> decodeExercisesList(dynamic jsonInput) {
-      if (jsonInput is String && jsonInput.isNotEmpty) {
-        try {
-          final decodedList = jsonDecode(jsonInput) as List?;
-          if (decodedList != null) {
-            // ** CRITICAL: Assumes ExercisePerformance.fromMap exists and handles its nested 'sets' list **
-            return decodedList.map((exMap) {
-              try {
-                if (exMap is Map<String, dynamic>) {
-                  return ExercisePerformance.fromMap(exMap);
-                } else { return null; }
-              } catch (e) {
-                debugPrint("Error decoding single ExercisePerformance from map: $exMap, Error: $e");
-                return null;
-              }
-            }).whereNotNull().toList();
-          }
-        } catch (e) {
-          debugPrint("Error decoding exercises list JSON ('$jsonInput'): $e");
-        }
-      }
-      return []; // Return empty on error
-    }
-    // --- End Helper ---
-
-    // --- Helper for robust DateTime parsing ---
-    DateTime? tryParseDateTime(dynamic value) {
-      if (value is String && value.isNotEmpty) { return DateTime.tryParse(value); }
-      return null;
-    }
-    // --- End Helper ---
-
-    return WorkoutSession(
-      // Use Uuid().v4() only if ID is truly missing/null from DB, otherwise use DB value
-      id: map['id'] as String? ?? const Uuid().v4(),
-      routine: routine, // Provided externally
-      startTime: tryParseDateTime(map['startTime']) ?? DateTime.now(), // Default if parse fails
-      endTime: tryParseDateTime(map['endTime']), // Nullable
-      // Convert INTEGER (0/1) back to boolean
-      isCompleted: (map['isCompleted'] as int? ?? 0) == 1,
-      // *** FIX: Decode list from JSON string ***
-      exercises: decodeExercisesList(map['exercises']),
-    );
   }
 
 
   @override
   String toString() {
-    return 'WorkoutSession(id: $id, routine: ${routine.routineName}, startTime: $startTime, completed: $isCompleted)';
+    return 'WorkoutSession(id: $id, routine: ${routine.routineName}, startTime: $startTime, completed: $isCompleted, exercises_count: ${exercises.length})';
   }
 
-  // Equality based on ID for identifying specific session instances
+  // Equality comparison: Primarily based on ID for identity, but includes other
+  // fields for value comparison if needed (e.g., in tests or collections).
+  // Using DeepCollectionEquality for the exercises list is crucial for value comparison.
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-          other is WorkoutSession && runtimeType == other.runtimeType && id == other.id;
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    final listEquals = const DeepCollectionEquality().equals;
+
+    return other is WorkoutSession &&
+        runtimeType == other.runtimeType &&
+        id == other.id &&
+        routine == other.routine && // Assumes Routine implements == correctly
+        startTime == other.startTime &&
+        endTime == other.endTime &&
+        isCompleted == other.isCompleted &&
+        listEquals(exercises, other.exercises); // Deep list comparison
+  }
 
   @override
-  int get hashCode => id.hashCode;
+  int get hashCode => Object.hash(
+    id,
+    routine, // Assumes Routine implements hashCode correctly
+    startTime,
+    endTime,
+    isCompleted,
+    const DeepCollectionEquality().hash(exercises), // Use deep hash for list
+  );
 }
+
+// Helper class for copyWith differentiation when needing to set null explicitly
+class _Undefined { const _Undefined(); }
