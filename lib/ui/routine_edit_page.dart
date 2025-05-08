@@ -69,6 +69,8 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   // State
   late Routine _routineEditState;
   bool _isDirty = false;
+  // For weekday selection UI: index 0 = Monday, ..., 6 = Sunday
+  late List<bool> _selectedWeekdaysBool;
 
   @override
   void initState() {
@@ -91,6 +93,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         parts: initial.parts.map((p) => p.copyWith(
           exercises: p.exercises.map((e) => e.copyWith()).toList(),
         )).toList(),
+        // Ensure weekdays and routineHistory are also part of the deep copy if not handled by default
+        weekdays: List<int>.from(initial.weekdays),
+        routineHistory: List<int>.from(initial.routineHistory),
       );
       _nameEditingController.text = _routineEditState.routineName;
     } else {
@@ -99,12 +104,29 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         mainTargetedBodyPart: widget.mainTargetedBodyPart!,
         parts: [],
         createdDate: DateTime.now(),
+        weekdays: [], // Initialize with empty list
+        routineHistory: [], // Initialize with empty list
       );
       _nameEditingController.text = '';
     }
+    // Initialize _selectedWeekdaysBool based on _routineEditState.weekdays
+    _selectedWeekdaysBool = List.generate(7, (index) => _routineEditState.weekdays.contains(index + 1));
     _isDirty = false;
   }
 
+  void _onWeekdaySelected(int dayIndex) { // dayIndex 0 for Monday, 6 for Sunday
+    setState(() {
+      _selectedWeekdaysBool[dayIndex] = !_selectedWeekdaysBool[dayIndex];
+      final List<int> updatedWeekdays = [];
+      for (int i = 0; i < _selectedWeekdaysBool.length; i++) {
+        if (_selectedWeekdaysBool[i]) {
+          updatedWeekdays.add(i + 1); // Convert UI index (0-6) to weekday int (1-7)
+        }
+      }
+      _routineEditState = _routineEditState.copyWith(weekdays: updatedWeekdays);
+      _isDirty = true;
+    });
+  }
 
   @override
   void dispose() {
@@ -319,6 +341,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         body: Column(
           children: [
             _buildRoutineNameCard(),
+            _buildWeekdaySelectorCard(), // Add weekday selector UI
             Expanded(
               child: ReorderableListView(
                 scrollController: _scrollController,
@@ -371,6 +394,58 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
               textInputAction: TextInputAction.done,
               onChanged: (_) => _markDirtyOnNameChange(),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeekdaySelectorCard() {
+    final List<String> dayAbbreviations = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      child: Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Schedule (Optional)',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6.0, // Horizontal space between chips
+                runSpacing: 4.0, // Vertical space between lines of chips
+                children: List.generate(7, (index) {
+                  return ChoiceChip(
+                    label: Text(dayAbbreviations[index]),
+                    selected: _selectedWeekdaysBool[index],
+                    onSelected: (bool selected) {
+                      _onWeekdaySelected(index);
+                    },
+                    selectedColor: Theme.of(context).colorScheme.primary,
+                    labelStyle: TextStyle(
+                      color: _selectedWeekdaysBool[index]
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
+                    backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: BorderSide(
+                        color: _selectedWeekdaysBool[index]
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey.shade400,
+                        width: 1,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
           ),
         ),
       ),

@@ -45,6 +45,12 @@ class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
 /// Event triggered to finish the current workout session attempt.
 class WorkoutSessionFinishAttempt extends WorkoutSessionEvent {}
 
+/// Event to directly save a fully formed, completed WorkoutSession.
+class WorkoutSessionSaveCompleted extends WorkoutSessionEvent {
+  final WorkoutSession session;
+  WorkoutSessionSaveCompleted(this.session);
+}
+
 // --- Internal Events for Timer Management ---
 class _SessionTimerTicked extends WorkoutSessionEvent {} // No payload needed
 class _RestTimerTicked extends WorkoutSessionEvent {
@@ -122,6 +128,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<WorkoutSessionLoadExisting>(_onWorkoutSessionLoadExisting);
     on<WorkoutSetMarkedComplete>(_onWorkoutSetMarkedComplete);
     on<WorkoutSessionFinishAttempt>(_onWorkoutSessionFinishAttempt);
+    on<WorkoutSessionSaveCompleted>(_onWorkoutSessionSaveCompleted); // Add handler
     on<_SessionTimerTicked>(_onSessionTimerTicked);
     on<_RestTimerTicked>(_onRestTimerTicked);
     on<_RestPeriodEnded>(_onRestPeriodEnded);
@@ -307,6 +314,43 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       _loadAllSessions();
     }
   } // End _onWorkoutSessionFinishAttempt
+
+  /// Handles the event to directly save a completed workout session.
+  /// This is typically called from a page that manages its own session lifecycle
+  /// and just needs to persist the final result.
+  Future<void> _onWorkoutSessionSaveCompleted(WorkoutSessionSaveCompleted event, Emitter<WorkoutSessionState> emit) async {
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSessionSaveCompleted for session ID: ${event.session.id}");
+    // No need to emit loading state here as this is a direct save, UI might not be the main session page.
+    // However, it's good practice if this BLoC's state is observed for global loading.
+    // For simplicity now, directly save and reload.
+
+    try {
+      // 1. Ensure the session is marked completed and has an end time (caller should ensure this)
+      if (!event.session.isCompleted || event.session.endTime == null) {
+        debugPrint("[WorkoutSessionBloc] Warning: WorkoutSessionSaveCompleted called with a session not marked as completed or missing endTime.");
+        // Optionally, force completion here, or throw error
+      }
+
+      // 2. Attempt to Save Session to DB
+      debugPrint("[WorkoutSessionBloc] Attempting to save provided completed session to DB (ID: ${event.session.id})...");
+      await dbProvider.saveWorkoutSession(event.session);
+      debugPrint("[WorkoutSessionBloc] Provided completed session saved successfully to DB.");
+
+      // Note: We are NOT updating routine stats here. That's assumed to be handled
+      // by the calling context (e.g., RoutineStepPage calling RoutinesBloc directly).
+      // This event is purely for persisting the WorkoutSession object.
+
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] CRITICAL Error during direct session save: $e\n$s");
+      // Optionally emit an error state if this BLoC's state is relevant to the caller
+      // emit(state.copyWith(errorMessage: "Failed to save completed session."));
+    } finally {
+      // 3. Reload All Sessions (CRITICAL FOR CALENDAR UPDATE)
+      debugPrint("[WorkoutSessionBloc] Finally block (SaveCompleted): Reloading all sessions for stream update...");
+      _loadAllSessions();
+    }
+  }
+
 
   // --- Internal Timer Event Handlers ---
   void _onSessionTimerTicked(_SessionTimerTicked event, Emitter<WorkoutSessionState> emit) {

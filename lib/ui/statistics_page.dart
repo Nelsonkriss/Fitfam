@@ -10,10 +10,12 @@ import 'package:provider/provider.dart'; // To access BLoCs
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
 // import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Not directly needed if CalendarPage handles its own data
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For getFirstRunDate
+import 'package:workout_planner/resource/shared_prefs_provider.dart'; // Re-add import statement
 
 // Import Models and UI Components
 // Included via routine.dart
 // Included via routine.dart
+import 'package:workout_planner/models/part.dart'; // Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 
@@ -33,11 +35,15 @@ class StatisticsPage extends StatefulWidget {
 
 class _StatisticsPageState extends State<StatisticsPage> {
   String _firstRunDate = 'loading...'; // State variable for async data
+  Set<int> _selectedWeeklyProgressRoutineIds = {}; // State variable for selected routine IDs for weekly progress
+  int? _selectedWeeklyAmount; // State variable for weekly workout amount
 
   @override
   void initState() {
     super.initState();
     _loadFirstRunDate(); // Load async data once when state initializes
+    _loadSelectedWeeklyProgressRoutines(); // Load selected routines for weekly progress
+    _loadWeeklyAmount(); // Load weekly workout amount
   }
 
   /// Asynchronously loads the first run date from SharedPreferences.
@@ -47,6 +53,26 @@ class _StatisticsPageState extends State<StatisticsPage> {
     if (mounted) {
       setState(() {
         _firstRunDate = date ?? 'Unknown'; // Update state with fetched value or default
+      });
+    }
+  }
+
+  /// Asynchronously loads the selected routine IDs for weekly progress from SharedPreferences.
+  Future<void> _loadSelectedWeeklyProgressRoutines() async {
+    final selectedIds = await sharedPrefsProvider.getWeeklyProgressRoutineIds();
+    if (mounted) {
+      setState(() {
+        _selectedWeeklyProgressRoutineIds = selectedIds.toSet();
+      });
+    }
+  }
+
+  /// Asynchronously loads the weekly workout amount from SharedPreferences.
+  Future<void> _loadWeeklyAmount() async {
+    final amount = await sharedPrefsProvider.getWeeklyAmount();
+    if (mounted) {
+      setState(() {
+        _selectedWeeklyAmount = amount ?? 0; // Default to 0 if not set
       });
     }
   }
@@ -199,13 +225,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text("Workout Focus", style: _kCardLabelTextStyle),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12), // Increased space
                   Expanded(
-                    // Show chart only if there are completed workouts
-                    child: (totalCompletionCount == 0)
-                        ? Center(child: Text("No completed workouts", style: _kCardTextStyle.copyWith(color: Colors.white54, fontSize: 12)))
-                    // Assuming DonutAutoLabelChart exists and takes List<Routine>
-                        : DonutAutoLabelChart(routines),
+                    child: Builder( // Use Builder to create allParts list within the scope
+                      builder: (context) {
+                        // Extract all parts from all routines
+                        final List<Part> allParts = routines.expand((routine) => routine.parts).toList();
+
+                        return (allParts.isEmpty)
+                            ? Center(child: Text("No parts defined in routines", style: _kCardTextStyle.copyWith(color: Colors.white54, fontSize: 12)))
+                            : DonutAutoLabelChart(allParts); // Pass List<Part>
+                      }
+                    ),
                   ),
                 ],
               ),
@@ -259,25 +290,32 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 
-  /// Calculates the weekly completion ratio based on scheduled days vs completed sessions this week.
-  /// Note: Relies on routineHistory timestamps. Accuracy depends on how history is populated.
+  /// Calculates the weekly completion ratio based on the number of completed workouts this week
+  /// for the routines selected by the user in settings, compared to the weekly workout target.
   double _calculateWeeklyRatio(List<Routine> routines) {
-    int totalScheduledThisWeek = 0;
-    int completedCountThisWeek = 0; // Count unique (routine, weekday) completions
+    // Get the list of routine IDs selected for weekly progress
+    // Assumes _selectedWeeklyProgressRoutineIds is populated in initState.
+
+    // Get the weekly workout target from shared preferences
+    // Assumes _selectedWeeklyAmount is populated in initState.
+    final weeklyTarget = _selectedWeeklyAmount ?? 0; // Use 0 if target is not set
+
+    // If the weekly target is 0, the progress is 0.
+    if (weeklyTarget <= 0) return 0.0;
+
+    // Filter routines based on selected IDs
+    final filteredRoutines = routines.where((routine) =>
+        routine.id != null && _selectedWeeklyProgressRoutineIds.contains(routine.id!)).toList();
+
+    int completedCountThisWeek = 0; // Count total completed workouts this week
 
     final now = DateTime.now().toLocal();
     final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
     // Use DateUtils.dateOnly for accurate date comparison (ignores time)
     final startOfWeekDate = DateUtils.dateOnly(startOfWeek);
 
-    // Set to track unique completions this week (e.g., routineId + weekday)
-    final Set<String> uniqueCompletions = {};
-
-    for (final routine in routines) {
-      // Sum scheduled occurrences for this routine based on its weekdays list
-      totalScheduledThisWeek += routine.weekdays.length;
-
-      // Check completion history timestamps
+    // Iterate through the filtered routines and count completions this week
+    for (final routine in filteredRoutines) {
       for (final timestamp in routine.routineHistory) {
         try {
           final dateCompletedLocal = DateTime.fromMillisecondsSinceEpoch(timestamp).toLocal();
@@ -285,32 +323,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
           // Check if completion is within the current week (Monday or later)
           if (!dateCompletedOnly.isBefore(startOfWeekDate)) {
-            // Create a unique key for this completion event
-            // This prevents counting multiple logs for the same routine on the same weekday
-            // within the same week multiple times towards the ratio.
-            // Assumes routine.id is not null.
-            if (routine.id != null) {
-              String completionKey = "${routine.id}_${dateCompletedLocal.weekday}";
-              uniqueCompletions.add(completionKey);
-            } else {
-              // If routine ID is null, we can't accurately track unique completions
-              // As a fallback, maybe just count timestamps? This is less accurate.
-              // completedCountThisWeek++; // Less accurate fallback
-            }
+            completedCountThisWeek++; // Count each completion
           }
         } catch (e) {
           debugPrint("Error parsing routine history timestamp: $timestamp, Error: $e");
         }
       }
     }
-    // The count of completed items is the number of unique completions found
-    completedCountThisWeek = uniqueCompletions.length;
 
-
-    if (totalScheduledThisWeek == 0) return 0.0; // Avoid division by zero
+    // Calculate ratio based on completed workouts vs weekly target
+    final ratio = completedCountThisWeek / weeklyTarget;
 
     // Calculate ratio, clamp between 0.0 and 1.0
-    final ratio = completedCountThisWeek / totalScheduledThisWeek;
     return ratio.clamp(0.0, 1.0);
   }
 

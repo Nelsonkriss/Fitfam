@@ -21,6 +21,8 @@ String mainTargetedBodyPartToStringConverter(MainTargetedBodyPart targetedBodyPa
       return 'Shoulders';
     case MainTargetedBodyPart.FullBody:
       return 'Full Body';
+    case MainTargetedBodyPart.Other:
+      return 'Other';
     default:
       throw Exception('Unmatched main targetedBodyPart: $targetedBodyPart');
   }

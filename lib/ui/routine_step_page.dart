@@ -10,6 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 // Import BLoC, Models, Providers, Utils (adjust paths as necessary)
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
+import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Import WorkoutSessionBloc
+import 'package:workout_planner/models/workout_session.dart'; // Import WorkoutSession model
+import 'package:workout_planner/models/exercise_performance.dart'; // Added import
+import 'package:workout_planner/models/set_performance.dart'; // Added import
 // Optional custom snackbars
 import 'package:workout_planner/utils/routine_helpers.dart'; // For enum ToString converters
 
@@ -44,10 +48,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
   late Routine _currentWorkingRoutine; // Holds the mutable copy for the session state
   late List<Exercise> _currentExercises; // Flattened list from _currentWorkingRoutine for easy access by index
   bool _finished = false; // Tracks if the workout is complete
-  bool _isModifyingWeight = false; // Tracks if +/- button is being held down
-
-  Timer? _incrementTimer; // Timer for continuous weight increase
-  Timer? _decrementTimer; // Timer for continuous weight decrease
+  // Removed _isModifyingWeight and related timers as weight changes are local to ticker until set completion
 
   // Stepper logic state - These lists map the linear step index to routine structure
   final List<int> _exerciseIndexesInStepOrder = []; // Index into _currentExercises for each step
@@ -55,6 +56,8 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
   final List<int> _setsTotalInStepOrder = []; // Total sets for the exercise in this step
   final List<int> _setNumberOfStep = [];      // Which set number this step represents (1-based)
   int _currentStepIndex = 0; // Current position in the step sequence
+
+  WorkoutSession? _activeWorkoutSession; // To store the current session being performed
 
   // Controllers for weight tickers - manage dynamically based on exercises
   Map<int, NumberTickerController> _tickerControllers = {}; // Map exercise index to its ticker controller
@@ -82,6 +85,13 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
     // Initialize the step sequence and ticker controllers based on the copied routine
     _rebuildStateFromRoutine();
+
+    // Start a new WorkoutSession instance for this workout attempt
+    // _currentWorkingRoutine is the one with potentially modified exercise weights during the session
+    // widget.originalRoutine is the pristine template.
+    // For WorkoutSession, we link it to the original routine template.
+    _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
+    debugPrint("RoutineStepPage: Initialized _activeWorkoutSession with ID: ${_activeWorkoutSession?.id}");
   }
 
   /// Initializes or resets the internal state lists (_currentExercises, step indexes, tickers)
@@ -158,9 +168,6 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
   @override
   void dispose() {
-    // Cancel any active timers
-    _incrementTimer?.cancel();
-    _decrementTimer?.cancel();
     // Dispose controllers
     _confettiController.dispose();
     _disposeTickerControllers();
@@ -358,7 +365,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
                 padding: const EdgeInsets.only(top: 24.0, bottom: 16.0), // More spacing
                 child: Center(
                   child: ElevatedButton(
-                    onPressed: _isModifyingWeight ? null : details.onStepContinue, // Disable while holding +/-
+                    onPressed: details.onStepContinue, // Always enabled, weight changes are local to ticker
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepOrangeAccent,
                         foregroundColor: Colors.white,
@@ -429,7 +436,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _buildWeightButton(Icons.remove, tickerController, exerciseIndex),
+              _buildWeightButton(Icons.remove, tickerController),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -450,7 +457,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
                   ),
                 ),
               ),
-              _buildWeightButton(Icons.add, tickerController, exerciseIndex),
+              _buildWeightButton(Icons.add, tickerController),
             ],
           ),
           const SizedBox(height: 24), // Spacer
@@ -497,151 +504,29 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
 // ... (Rest of the _RoutineStepPageState class remains the same) ...
 
-  /// Builds a weight adjustment button wrapped in GestureDetector for long press.
-  Widget _buildWeightButton(IconData icon, NumberTickerController controller, int exerciseIndex) {
-    // Determine actions based on icon
-    VoidCallback simpleAction; // Action for single tap
-    VoidCallback timerAction;  // Action for long press start
+  /// Builds a weight adjustment button.
+  Widget _buildWeightButton(IconData icon, NumberTickerController controller) {
+    VoidCallback action;
     if (icon == Icons.add) {
-      // Increment weight by controller's step value
-      simpleAction = () => _updateExerciseWeight(exerciseIndex, controller.number + controller.step);
-      timerAction = () => _increaseWeight(controller, exerciseIndex);
+      action = controller.increment; // Directly call controller method
     } else {
-      // Decrement weight by controller's step value
-      simpleAction = () => _updateExerciseWeight(exerciseIndex, controller.number - controller.step);
-      timerAction = () => _decreaseWeight(controller, exerciseIndex);
+      action = controller.decrement; // Directly call controller method
     }
 
-    // Use GestureDetector to capture long presses
-    return GestureDetector(
-      onLongPressStart: (_) {
-        // Prevent starting multiple timers if already modifying
-        if (_isModifyingWeight) return;
-        setState(() => _isModifyingWeight = true);
-        timerAction(); // Start the continuous weight change timer
-      },
-      onLongPressEnd: (_) => _cancelTimers(), // Stop timers when long press released
-      onTapUp: (_) => _cancelTimers(), // Also cancel if tap released quickly
-      onTapCancel: () => _cancelTimers(), // Cancel if gesture is interrupted
-      child: ElevatedButton(
-        // *** ElevatedButton does NOT have long press handlers ***
-        onPressed: () { // Handle single tap
-          if (!_isModifyingWeight) { // Only trigger if not currently long-pressing
-            simpleAction();
-          }
-        },
-        style: ElevatedButton.styleFrom(
-          shape: const CircleBorder(),
-          padding: const EdgeInsets.all(16),
-          backgroundColor: Colors.white.withOpacity(0.2),
-          foregroundColor: Colors.white,
-        ),
-        child: Icon(icon, size: 28),
+    return ElevatedButton(
+      onPressed: action, // Simple tap action
+      style: ElevatedButton.styleFrom(
+        shape: const CircleBorder(),
+        padding: const EdgeInsets.all(16),
+        backgroundColor: Colors.white.withOpacity(0.2),
+        foregroundColor: Colors.white,
       ),
+      child: Icon(icon, size: 28),
     );
   }
 
-
-  // --- State Update Logic (Using copyWith for Immutability) ---
-
-  /// Updates the weight for a specific exercise in the state immutably.
-  void _updateExerciseWeight(int exerciseIndex, double newWeight) {
-    if (exerciseIndex < 0 || exerciseIndex >= _currentExercises.length) {
-      debugPrint("Error: Invalid exerciseIndex $exerciseIndex in _updateExerciseWeight");
-      return;
-    }
-
-    // Get the controller to access clamp values
-    final NumberTickerController controller = _tickerControllers[exerciseIndex]!;
-    final clampedWeight = newWeight.clamp(controller.minValue, controller.maxValue ?? double.infinity);
-
-    // Only proceed if the clamped value is different from the current weight
-    if (_currentExercises[exerciseIndex].weight == clampedWeight) return;
-
-    // Update the controller's value first so the ticker reflects the change
-    // Use .value setter which should handle notification if implemented correctly
-    controller.value = clampedWeight;
-
-    // Create new immutable list of exercises with the updated weight
-    final updatedExercisesList = List<Exercise>.from(_currentExercises);
-    final originalExercise = updatedExercisesList[exerciseIndex];
-    updatedExercisesList[exerciseIndex] = originalExercise.copyWith(weight: clampedWeight);
-
-    // ---- Update the nested _currentWorkingRoutine state ----
-    // This is complex because we need to find the exercise within the nested parts structure.
-    // We map through parts, then exercises within parts, replacing the specific one.
-    int exerciseCounter = 0;
-    bool partWasUpdated = false; // Flag to potentially optimize mapping
-    final updatedPartsList = _currentWorkingRoutine.parts.map((part) {
-      // If we already found and updated the part containing the exercise, return original part
-      if (partWasUpdated) return part;
-
-      int startIndex = exerciseCounter;
-      int endIndex = exerciseCounter + part.exercises.length;
-      exerciseCounter = endIndex; // Update counter for next part
-
-      // Check if the target exercise index falls within this part's range
-      if (exerciseIndex >= startIndex && exerciseIndex < endIndex) {
-        int indexWithinPart = exerciseIndex - startIndex; // Calculate index *within* this part
-
-        // Create a new list of exercises for this part
-        final updatedPartExercises = List<Exercise>.from(part.exercises);
-        // Replace the specific exercise with the updated one from updatedExercisesList
-        updatedPartExercises[indexWithinPart] = updatedExercisesList[exerciseIndex];
-        partWasUpdated = true; // Mark that we found and updated the part
-
-        // Return a new Part object with the updated exercises list
-        return part.copyWith(exercises: updatedPartExercises);
-      } else {
-        // This part does not contain the exercise, return the original part
-        return part;
-      }
-    }).toList();
-    // ---- End nested update ----
-
-
-    // Update the page state with the new routine and flattened exercise list
-    setState(() {
-      _currentWorkingRoutine = _currentWorkingRoutine.copyWith(parts: updatedPartsList);
-      _currentExercises = updatedExercisesList; // Keep flattened list in sync
-    });
-  }
-
-  /// Starts timer to continuously increase weight.
-  void _increaseWeight(NumberTickerController controller, int exerciseIndex) {
-    _decrementTimer?.cancel(); _decrementTimer = null; // Stop opposite timer
-    // Start timer only if not already running
-    if (_incrementTimer == null || !_incrementTimer!.isActive) {
-      _incrementTimer = Timer.periodic(_weightChangeTimerDuration, (_) {
-        controller.increment(); // Use controller's method (handles step/max)
-        _updateExerciseWeight(exerciseIndex, controller.number); // Update state with new value
-      });
-    }
-  }
-
-  /// Starts timer to continuously decrease weight.
-  void _decreaseWeight(NumberTickerController controller, int exerciseIndex) {
-    _incrementTimer?.cancel(); _incrementTimer = null; // Stop opposite timer
-    // Start timer only if not already running
-    if (_decrementTimer == null || !_decrementTimer!.isActive) {
-      _decrementTimer = Timer.periodic(_weightChangeTimerDuration, (_) {
-        controller.decrement(); // Use controller's method (handles step/min)
-        _updateExerciseWeight(exerciseIndex, controller.number); // Update state with new value
-      });
-    }
-  }
-
-  /// Cancels both weight change timers and resets the modification flag.
-  void _cancelTimers() {
-    _incrementTimer?.cancel();
-    _incrementTimer = null;
-    _decrementTimer?.cancel();
-    _decrementTimer = null;
-    // Only call setState if the flag actually needs changing
-    if (_isModifyingWeight) {
-      setState(() => _isModifyingWeight = false);
-    }
-  }
+  // --- State Update Logic (Removed _updateExerciseWeight, _increaseWeight, _decreaseWeight, _cancelTimers) ---
+  // Weight is now managed locally by the NumberTickerController until the set is completed.
 
   // --- Step Navigation and Completion ---
 
@@ -652,87 +537,76 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
       return;
     }
 
-    // Record history for the step *just completed*
-    _updateExHistoryForCurrentStep();
+    // --- Update _activeWorkoutSession with completed set data ---
+    if (_activeWorkoutSession != null) {
+      final int exerciseFlatIndex = _exerciseIndexesInStepOrder[_currentStepIndex];
+      final int setNumber = _setNumberOfStep[_currentStepIndex]; // 1-based set number
+      final int setIndex = setNumber - 1; // 0-based index for list access
 
-    // Update state to move to the next step or finish
+      // Find the corresponding ExercisePerformance in _activeWorkoutSession
+      // This assumes the order in _activeWorkoutSession.exercises matches the flattened order used for steps.
+      if (exerciseFlatIndex < _activeWorkoutSession!.exercises.length) {
+        final ExercisePerformance currentExercisePerf = _activeWorkoutSession!.exercises[exerciseFlatIndex];
+
+        // Ensure the set index is valid
+        if (setIndex >= 0 && setIndex < currentExercisePerf.sets.length) {
+          final SetPerformance setToUpdate = currentExercisePerf.sets[setIndex];
+
+          // Get actual weight from the ticker controller
+          final NumberTickerController? tickerController = _tickerControllers[exerciseFlatIndex];
+          final double actualWeight = tickerController?.number ?? setToUpdate.targetWeight; // Fallback to target weight if controller missing
+
+          // Get actual reps (assuming target reps for now, needs input field later)
+          // TODO: Replace this with actual reps input from user
+          final int actualReps = setToUpdate.targetReps; // Placeholder
+
+          // Create the updated SetPerformance
+          final updatedSet = setToUpdate.copyWith(
+            actualReps: actualReps,
+            actualWeight: actualWeight,
+            isCompleted: true,
+          );
+
+          // Create updated list of sets for the exercise performance
+          final updatedSetsList = List<SetPerformance>.from(currentExercisePerf.sets);
+          updatedSetsList[setIndex] = updatedSet;
+
+          // Create updated ExercisePerformance
+          final updatedExercisePerf = currentExercisePerf.copyWith(sets: updatedSetsList);
+
+          // Create updated list of exercises for the session
+          final updatedSessionExercises = List<ExercisePerformance>.from(_activeWorkoutSession!.exercises);
+          updatedSessionExercises[exerciseFlatIndex] = updatedExercisePerf;
+
+          // Update the _activeWorkoutSession state variable
+          // No need for setState here if we only use _activeWorkoutSession when finishing
+          _activeWorkoutSession = _activeWorkoutSession!.copyWith(exercises: updatedSessionExercises);
+          debugPrint("Updated _activeWorkoutSession for Exercise: ${updatedExercisePerf.exerciseName}, Set: ${setNumber}, Weight: $actualWeight, Reps: $actualReps");
+
+        } else {
+          debugPrint("Error: Invalid set index ($setIndex) for ExercisePerformance '${currentExercisePerf.exerciseName}'.");
+        }
+      } else {
+        debugPrint("Error: Invalid exercise index ($exerciseFlatIndex) for _activeWorkoutSession.");
+      }
+    } else {
+      debugPrint("Error: _activeWorkoutSession is null in _handleStepContinue.");
+    }
+    // --- End _activeWorkoutSession update ---
+
+
+    // Update UI state to move to the next step or finish
     setState(() {
       if (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1) {
         _currentStepIndex++; // Increment step index
         debugPrint('Advanced to step index: $_currentStepIndex');
-        // Future enhancement: Scroll the stepper/list to show the new active step
       } else {
         _finishWorkout(); // Trigger finish logic
       }
     });
   }
 
-  /// Records the weight used for the current step in the exercise history map
-  /// within the immutable `_currentWorkingRoutine`.
-  void _updateExHistoryForCurrentStep() {
-    if (_currentStepIndex >= _exerciseIndexesInStepOrder.length) return; // Safety check
-
-    final String tempDateStr = _dateTimeToString(DateTime.now());
-    final int exerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex]; // Index in flattened list
-    final int partIdx = _partIndexesInStepOrder[_currentStepIndex]; // Index in parts list
-
-    // Safety checks for indices
-    if (partIdx >= _currentWorkingRoutine.parts.length || exerciseIdx >= _currentExercises.length) {
-      debugPrint("Error updating history: Invalid part or exercise index.");
-      return;
-    }
-
-    // Need to find the correct exercise *within the nested part structure*
-    // to update its history immutably.
-    final targetPart = _currentWorkingRoutine.parts[partIdx];
-    final exerciseBeingCompleted = _currentExercises[exerciseIdx]; // Get the potentially modified exercise state
-
-    // Find the index of this exercise *within the part's own exercise list*
-    // Matching by reference might work if _currentExercises contains exact refs from the nested copy
-    // Otherwise, match by a unique property like name (assuming names are unique within a part)
-    int indexWithinPart = targetPart.exercises.indexWhere((ex) => ex == exerciseBeingCompleted);
-    if (indexWithinPart == -1) {
-      // Fallback to name matching if reference matching failed
-      indexWithinPart = targetPart.exercises.indexWhere((ex) => ex.name == exerciseBeingCompleted.name);
-    }
-
-
-    if (indexWithinPart == -1) {
-      debugPrint("Could not find exercise index $exerciseIdx ('${exerciseBeingCompleted.name}') within part $partIdx for history update.");
-      return; // Cannot update history if exercise isn't found correctly
-    }
-
-    final originalExerciseInPart = targetPart.exercises[indexWithinPart]; // Get the corresponding exercise in the structure
-    final currentWeight = exerciseBeingCompleted.weight; // Use the current weight value
-
-    // Create an updated history map based on the original exercise's history
-    final updatedHistory = Map<String, dynamic>.from(originalExerciseInPart.exHistory);
-    updatedHistory.update(
-      tempDateStr,
-          (value) => '$value/${StringHelper.weightToString(currentWeight)}', // Append weight (use helper for formatting)
-      ifAbsent: () => StringHelper.weightToString(currentWeight), // Add first weight entry (use helper)
-    );
-
-    // Create new Exercise instance with updated history
-    final updatedExerciseInPart = originalExerciseInPart.copyWith(exHistory: updatedHistory);
-
-    // Create new list of exercises for the part
-    final updatedPartExercises = List<Exercise>.from(targetPart.exercises);
-    updatedPartExercises[indexWithinPart] = updatedExerciseInPart;
-
-    // Create new Part instance
-    final updatedPart = targetPart.copyWith(exercises: updatedPartExercises);
-
-    // Create new list of parts for the routine
-    final updatedPartsList = List<Part>.from(_currentWorkingRoutine.parts);
-    updatedPartsList[partIdx] = updatedPart;
-
-    // Update the main working routine state variable.
-    // **Crucially, DO NOT call setState here**, as this update happens *before*
-    // the setState call in _handleStepContinue moves to the next step.
-    // This ensures the history is recorded based on the state *before* moving on.
-    _currentWorkingRoutine = _currentWorkingRoutine.copyWith(parts: updatedPartsList);
-  }
+  // Removed _updateExHistoryForCurrentStep method as it's no longer used for performance tracking
 
   /// Finalizes the workout, updates the routine state, and calls the BLoC.
   void _finishWorkout() {
@@ -743,20 +617,35 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
     widget.celebrateCallback?.call(); // Call external callback
 
     // Create the final immutable Routine object with updated completion stats
-    final finalRoutine = _currentWorkingRoutine.copyWith(
-      completionCount: _currentWorkingRoutine.completionCount + 1,
+    // Use widget.originalRoutine as the base, as _currentWorkingRoutine might have temporary weight changes
+    final finalRoutine = widget.originalRoutine.copyWith(
+      completionCount: widget.originalRoutine.completionCount + 1,
       lastCompletedDate: DateTime.now(),
-      // Assuming routineHistory (list of timestamps) is updated elsewhere or not needed here
-      // routineHistory: List<int>.from(_currentWorkingRoutine.routineHistory)..add(getTimestampNow()),
+      // Update routineHistory on the original routine template
+      routineHistory: List<int>.from(widget.originalRoutine.routineHistory)..add(DateTime.now().millisecondsSinceEpoch),
     );
 
-    // Update the routine in the persistent storage via the BLoC
+    // Update the routine template in the persistent storage via the BLoC
     try {
-      // Access BLoC using Provider context extension
       context.read<RoutinesBloc>().updateRoutine(finalRoutine);
       debugPrint("Final routine update sent to BLoC.");
+
+      // Now, save the completed WorkoutSession (which should have updated performance data)
+      if (_activeWorkoutSession != null) {
+        final finishedSessionForDb = _activeWorkoutSession!.copyWith(
+          isCompleted: true,
+          endTime: finalRoutine.lastCompletedDate, // Use same timestamp for consistency
+          // The 'exercises' list in _activeWorkoutSession should now contain the actual performance data
+        );
+        context.read<WorkoutSessionBloc>().add(WorkoutSessionSaveCompleted(finishedSessionForDb));
+        debugPrint("WorkoutSessionSaveCompleted event added to WorkoutSessionBloc for session ID: ${finishedSessionForDb.id}.");
+      } else {
+        debugPrint("Error: _activeWorkoutSession was null in _finishWorkout. Cannot save WorkoutSession.");
+        _showSnackBar("Critical Error: Could not record session details.", isError: true);
+      }
+
     } catch(e) {
-      debugPrint("Error updating routine in BLoC after finish: $e");
+      debugPrint("Error updating routine or session in BLoC after finish: $e");
       _showSnackBar("Error saving final workout state.", isError: true);
     }
   }
@@ -781,7 +670,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
           ),
           TextButton(
             onPressed: () {
-              _cancelTimers(); // Ensure timers are stopped if quitting
+              // _cancelTimers(); // No longer needed
               Navigator.pop(dialogContext, true); // Quit, return true
             },
             child: const Text('Quit Workout', style: TextStyle(color: Colors.red)),

@@ -1,35 +1,40 @@
+// lib/ui/components/chart.dart
+
 import 'dart:math'; // For max() function used in chart data processing
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:workout_planner/bloc/workout_session_bloc.dart';
+import 'package:flutter_bloc/flutter_bloc.dart'; // If used, otherwise remove
 import 'package:fl_chart/fl_chart.dart';
-import 'package:intl/intl.dart'; // Needed for Date parsing and formatting
+import 'package:intl/intl.dart';
 import 'dart:async';
 
-// Import Models (Adjust paths if necessary)
-import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/main_targeted_body_part.dart';
+// Import your actual models
+import 'package:workout_planner/models/part.dart'; // Changed from routine.dart
+// MainTargetedBodyPart is no longer directly used here, TargetedBodyPart from part.dart will be used.
+import 'package:workout_planner/models/exercise.dart'; // Ensure this path is correct
 
-/// A Line Chart displaying the maximum weight progression for a single exercise over time.
 class StackedAreaLineChart extends StatelessWidget {
   final Exercise exercise;
   final bool animate;
 
   const StackedAreaLineChart(this.exercise, {this.animate = false, super.key});
 
+  static List<MapEntry<DateTime, double>> _datedMaxWeightsCache = [];
+
   @override
   Widget build(BuildContext context) {
     final List<FlSpot> dataPoints = _createDataPointsFromHistory();
 
     if (dataPoints.length < 2) {
-      return Center( /* ... No data message ... */ );
+      return const Center( child: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text("Not enough historical data for this exercise to display a trend chart.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+      ));
     }
 
     return LineChart(
       LineChartData(
-        // --- Data ---
         lineBarsData: [
-          LineChartBarData( /* ... spots, curve, color, dot, belowBarData ... */
+          LineChartBarData(
             spots: dataPoints, isCurved: true, curveSmoothness: 0.35, barWidth: 3,
             color: Colors.deepOrangeAccent, isStrokeCapRound: true,
             dotData: FlDotData(show: dataPoints.length < 30),
@@ -39,48 +44,60 @@ class StackedAreaLineChart extends StatelessWidget {
             ),
           ),
         ],
-
-        // --- Interaction ---
-        lineTouchData: LineTouchData( /* ... Tooltip setup ... */
+        lineTouchData: LineTouchData(
           enabled: true, handleBuiltInTouches: true,
           touchTooltipData: LineTouchTooltipData(
             maxContentWidth: 120,
-            getTooltipItems: (List<LineBarSpot> touchedBarSpots) { /* ... Tooltip item generation ... */
+            getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
               return touchedBarSpots.map((barSpot) {
-                final DateTime date = DateTime.fromMillisecondsSinceEpoch(barSpot.x.toInt());
-                final String dateStr = DateFormat.yMd().format(date);
+                String dateStr = "Date N/A";
+                if (_datedMaxWeightsCache.isNotEmpty) {
+                  final firstDate = _datedMaxWeightsCache.first.key;
+                  try {
+                    final actualDate = firstDate.add(Duration(days: barSpot.x.toInt()));
+                    dateStr = DateFormat.yMd().format(actualDate);
+                  } catch (e) {
+                    debugPrint("Error calculating tooltip date: $e");
+                  }
+                }
                 final double weight = barSpot.y;
                 final String weightStr = weight.toStringAsFixed(weight.truncateToDouble() == weight ? 0 : 1);
-                return LineTooltipItem( '$weightStr kg \n', TextStyle(color: Theme.of(context).colorScheme.onInverseSurface, fontWeight: FontWeight.bold),
-                  children: [ TextSpan( text: dateStr, style: TextStyle(color: Theme.of(context).colorScheme.onInverseSurface.withOpacity(0.8), fontSize: 12), ), ],
+                return LineTooltipItem( '$weightStr kg \n', TextStyle(color: Theme.of(context).colorScheme.onInverseSurface ?? Colors.white, fontWeight: FontWeight.bold),
+                  children: [ TextSpan( text: dateStr, style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontSize: 12), ), ],
                   textAlign: TextAlign.center, );
               }).toList();
             },
           ),
         ),
-
-        // --- Appearance (Titles - ALTERNATIVE APPROACH) ---
         titlesData: FlTitlesData(
           show: true,
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: dataPoints.length > 1,
-              reservedSize: 30, // Adjust space as needed
+              reservedSize: 30,
               interval: _calculateDateInterval(dataPoints),
-              // Use Text directly with manual padding
-              getTitlesWidget: (double value, TitleMeta meta) { // meta still provided
-                if (value == meta.min || value == meta.max) { // Show only min/max
-                  final DateTime date = DateTime.fromMillisecondsSinceEpoch(value.toInt());
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 6.0), // Manual spacing
-                    child: Text(
-                      DateFormat('MMM d').format(date),
-                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
-                    ),
-                  );
+              getTitlesWidget: (double value, TitleMeta meta) {
+                if (_datedMaxWeightsCache.isNotEmpty) {
+                  final firstDate = _datedMaxWeightsCache.first.key;
+                  bool isMin = (value - meta.min).abs() < 1e-9;
+                  bool isMax = (value - meta.max).abs() < 1e-9;
+                  bool isIntervalMultiple = meta.appliedInterval != null && meta.appliedInterval! > 0
+                      ? ((value - meta.min) % meta.appliedInterval!).abs() < 1e-9
+                      : false;
+                  if (isMin || isMax || isIntervalMultiple) {
+                    final DateTime date = firstDate.add(Duration(days: value.toInt()));
+                    // *** REVERTING TO axisSide HERE ***
+                    return SideTitleWidget(
+                      axisSide: meta.axisSide,
+                      space: 6.0,
+                      child: Text(
+                        DateFormat('MMM d').format(date),
+                        style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      ),
+                    );
+                  }
                 }
                 return const SizedBox.shrink();
               },
@@ -89,17 +106,17 @@ class StackedAreaLineChart extends StatelessWidget {
           leftTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
-              reservedSize: 40, // Adjust space as needed
-              // interval: _calculateWeightInterval(dataPoints), // Let fl_chart decide interval
-              // Use Text directly with manual padding
-              getTitlesWidget: (double value, TitleMeta meta) { // meta still provided
-                if ((value == meta.min && value > 0) || value == meta.max) { // Show non-zero min & max
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 4.0), // Manual spacing
+              reservedSize: 40,
+              getTitlesWidget: (double value, TitleMeta meta) {
+                if ((value == meta.min && value >= 0) || value == meta.max || (value == 0 && meta.max ==0)) {
+                  // *** REVERTING TO axisSide HERE ***
+                  return SideTitleWidget(
+                    axisSide: meta.axisSide,
+                    space: 4.0,
                     child: Text(
                       '${value.toStringAsFixed(0)}kg',
                       style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
-                      textAlign: TextAlign.right,
+                      textAlign: TextAlign.center,
                     ),
                   );
                 }
@@ -107,9 +124,7 @@ class StackedAreaLineChart extends StatelessWidget {
               },
             ),
           ),
-        ), // End titlesData
-
-        // --- Grid, Border, Min/Max ---
+        ),
         borderData: FlBorderData(show: false),
         gridData: FlGridData(
           show: true, drawHorizontalLine: true, drawVerticalLine: false,
@@ -121,29 +136,38 @@ class StackedAreaLineChart extends StatelessWidget {
     );
   }
 
-  // --- Data Parsing and Helper Methods ---
   List<FlSpot> _createDataPointsFromHistory() {
     final List<FlSpot> dataPoints = [];
     final List<MapEntry<DateTime, double>> datedMaxWeights = [];
+    if (exercise.exHistory == null) {
+      _datedMaxWeightsCache = [];
+      return dataPoints;
+    }
 
-    exercise.exHistory.forEach((dateString, weightsHistoryValue) {
+    exercise.exHistory.forEach((dateString, historyEntryList) {
       try {
         final date = DateTime.parse(dateString);
-        if (weightsHistoryValue.isNotEmpty) {
-          final maxWeight = weightsHistoryValue
-              .map((entry) => entry.weight)
-              .reduce((a, b) => a > b ? a : b);
-          datedMaxWeights.add(MapEntry(date, maxWeight));
+        if (historyEntryList.isNotEmpty) {
+          double maxWeightInDay = 0.0;
+          for (final entry in historyEntryList) {
+            if (entry != null && entry.weight != null) {
+              if (entry.weight! > maxWeightInDay) {
+                maxWeightInDay = entry.weight!;
+              }
+            }
+          }
+          if (maxWeightInDay > 0) {
+            datedMaxWeights.add(MapEntry(date, maxWeightInDay));
+          }
         }
       } catch (e) {
-        debugPrint('Error parsing history entry $dateString: $e');
+        debugPrint('Error parsing history for ${exercise.name} on $dateString: $e. EntryList type: ${historyEntryList.runtimeType}');
       }
     });
 
-    // Sort entries by date ascending
     datedMaxWeights.sort((a, b) => a.key.compareTo(b.key));
+    _datedMaxWeightsCache = List.from(datedMaxWeights);
 
-    // Convert to FlSpot format with days since first entry as X-axis
     if (datedMaxWeights.isNotEmpty) {
       final firstDate = datedMaxWeights.first.key;
       dataPoints.addAll(datedMaxWeights.map((entry) {
@@ -151,74 +175,125 @@ class StackedAreaLineChart extends StatelessWidget {
         return FlSpot(xValue, entry.value);
       }));
     }
-
     return dataPoints;
   }
-  double _getMaxWeightFromString(String weightsStr) {
-    // (Implementation remains the same)
-    if (weightsStr.isEmpty) return 0.0; try { return weightsStr.split('/').map((p) => double.tryParse(p.trim()) ?? 0.0).fold(0.0, max); } catch (e) { return 0.0; }
-  }
+
   double? _calculateDateInterval(List<FlSpot> spots) {
-    // (Implementation remains the same)
-    if (spots.length < 2) return null; final minDateEpoch = spots.first.x; final maxDateEpoch = spots.last.x; final durationMillis = (maxDateEpoch - minDateEpoch).toInt(); if (durationMillis <= 0) return null; final durationDays = Duration(milliseconds: durationMillis).inDays; final double daysPerLabel = durationDays / 5.0; if (daysPerLabel <= 1.5) return const Duration(days: 1).inMilliseconds.toDouble(); if (daysPerLabel <= 4) return const Duration(days: 2).inMilliseconds.toDouble(); if (daysPerLabel <= 10) return const Duration(days: 7).inMilliseconds.toDouble(); if (daysPerLabel <= 20) return const Duration(days: 14).inMilliseconds.toDouble(); if (daysPerLabel <= 45) return const Duration(days: 30).inMilliseconds.toDouble(); return null;
+    if (spots.length < 2) return 1;
+    final double minX = spots.first.x;
+    final double maxX = spots.last.x;
+    final double durationDays = maxX - minX;
+
+    if (durationDays <= 0) return 1;
+    if (durationDays <= 7) return 1;
+    if (durationDays <= 30) return 7;
+    if (durationDays <= 90) return 14;
+    if (durationDays <= 180) return 30;
+    double calculatedInterval = (durationDays / 6.0).roundToDouble();
+    return calculatedInterval > 0 ? calculatedInterval : 1;
   }
+
   double? _calculateWeightInterval(List<FlSpot> spots) {
-    // (Implementation remains the same)
-    if (spots.isEmpty) return null; double maxWeight = spots.map((s) => s.y).fold(0.0, max); if (maxWeight <= 0) return 10; double interval = maxWeight / 5.0; if (interval <= 2.5) return 2.5; if (interval <= 5) return 5.0; if (interval <= 10) return 10.0; if (interval <= 20) return 20.0; if (interval <= 25) return 25.0; if (interval <= 50) return 50.0; return (interval / 50).ceilToDouble() * 50;
+    if (spots.isEmpty) return 10;
+    double maxWeight = spots.map((s) => s.y).fold(0.0, (prev, current) => max(prev, current));
+    if (maxWeight <= 0) return 10;
+    double interval = maxWeight / 5.0;
+    if (interval == 0) return 10;
+
+    const List<double> steps = [2.5, 5, 10, 20, 25, 50];
+    for (final step in steps) {
+      if (interval <= step) return step;
+    }
+    return (interval / steps.last).ceil() * steps.last;
   }
-
-} // End StackedAreaLineChart
-
-
-// =========================================================================
-// DonutAutoLabelChart remains the same as the previous corrected version
-// =========================================================================
-class DonutAutoLabelChart extends StatefulWidget {
-  final List<Routine> routines;
-  final bool animate;
-
-  const DonutAutoLabelChart(this.routines, {this.animate = false, super.key});
-
-  @override
-  State<DonutAutoLabelChart> createState() => _DonutAutoLabelChartState();
 }
 
-class _DonutAutoLabelChartState extends State<DonutAutoLabelChart> {
-  late StreamSubscription _sessionsSub;
+// =========================================================================
+// DonutAutoLabelChart - (No changes from previous version)
+// =========================================================================
+class DonutAutoLabelChart extends StatelessWidget { // Changed to StatelessWidget
+  final List<Part> parts; // Changed from List<Routine> routines
+  final bool animate;
 
-  @override
-  void initState() {
-    super.initState();
-    _sessionsSub = context.read<WorkoutSessionBloc>().allSessionsStream.listen((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _sessionsSub.cancel();
-    super.dispose();
-  }
+  const DonutAutoLabelChart(this.parts, {this.animate = false, super.key}); // Updated constructor
 
   @override
   Widget build(BuildContext context) {
-    final List<PieChartSectionData> sections = _createSectionsData(context);
-    if (sections.isEmpty) { return const Center( /* ... No data message ... */ ); }
-    return PieChart( PieChartData(/* ... Sections, touch data etc. ... */), );
+    final List<PieChartSectionData> sections = _createSectionsData(context, parts); // Pass parts directly
+    if (sections.isEmpty) {
+      return const Center( child: Text("No routine completion data to display.", style: TextStyle(color: Colors.grey)) );
+    }
+    return PieChart(
+      PieChartData(
+        sectionsSpace: 2,
+        centerSpaceRadius: 60,
+        sections: sections,
+        pieTouchData: PieTouchData(
+          touchCallback: (FlTouchEvent event, pieTouchResponse) {
+            // Handle touch events if needed
+          },
+        ),
+        startDegreeOffset: 180,
+      ),
+      swapAnimationDuration: Duration(milliseconds: animate ? 350 : 0), // Use animate directly
+      swapAnimationCurve: Curves.easeInOutQuint,
+    );
   }
 
-  List<PieChartSectionData> _createSectionsData(BuildContext context) {
-    // (Implementation remains the same)
-    final Map<MainTargetedBodyPart, int> countsByBodyPart = {}; int totalCompletions = 0; for (final routine in widget.routines) { if (routine.completionCount > 0) {
-      // Safely convert to MainTargetedBodyPart with bounds checking
-      final index = routine.mainTargetedBodyPart?.index ?? 0;
-      final bodyPart = index < MainTargetedBodyPart.values.length
-          ? MainTargetedBodyPart.values[index]
-          : MainTargetedBodyPart.Other;
+List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> parts) { // Changed signature
+    final Map<TargetedBodyPart, int> countsByBodyPart = {}; // Changed to TargetedBodyPart
+    int totalPartsCount = 0;
+
+    // Iterate over parts instead of routines
+    for (final part in parts) {
+      // Assuming each part instance counts as one towards its targeted body part.
+      // If parts have a specific "count" or "completion" metric, use that here.
+      // For now, we count each part as 1.
+      final TargetedBodyPart bodyPart = part.targetedBodyPart;
+
       countsByBodyPart.update(
         bodyPart,
-        (v) => v + routine.completionCount.toInt(),
-        ifAbsent: () => routine.completionCount.toInt(),
-      ); totalCompletions += routine.completionCount.toInt(); } } if (totalCompletions == 0) return []; final List<Color> colors = [ Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.tertiary ?? Colors.green, Colors.orange.shade600, Colors.red.shade400, Colors.purple.shade400, Colors.teal.shade400, Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400, ]; int colorIndex = 0; final List<PieChartSectionData> sections = []; countsByBodyPart.forEach((bodyPart, count) { final double percentage = (count / totalCompletions) * 100; final Color sectionColor = colors[colorIndex % colors.length]; colorIndex++; sections.add(PieChartSectionData( color: sectionColor, value: count.toDouble(), title: '${percentage.toStringAsFixed(0)}%', radius: 50, titleStyle: const TextStyle( fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white, shadows: [ Shadow(color: Colors.black54, blurRadius: 2) ] ), )); }); return sections;
+        (v) => v + 1, // Increment count for this body part
+        ifAbsent: () => 1,
+      );
+      totalPartsCount += 1; // Increment total parts processed
+    }
+
+    if (totalPartsCount == 0) return [];
+
+    final List<Color> colors = [
+      Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary,
+      Theme.of(context).colorScheme.tertiary, Theme.of(context).colorScheme.primaryContainer,
+      Theme.of(context).colorScheme.secondaryContainer, Theme.of(context).colorScheme.tertiaryContainer,
+      Colors.orange.shade600, Colors.red.shade500, Colors.purple.shade500, Colors.teal.shade400,
+      Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400,
+      Colors.lightGreen.shade500, Colors.blueGrey.shade400,
+    ];
+    int colorIndex = 0;
+    final List<PieChartSectionData> sections = [];
+
+    var sortedEntries = countsByBodyPart.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    for (var entry in sortedEntries) {
+      final bodyPart = entry.key;
+      final count = entry.value;
+      final double percentage = (count / totalPartsCount) * 100; // Use totalPartsCount
+      final Color sectionColor = colors[colorIndex % colors.length];
+      colorIndex++;
+
+      sections.add(PieChartSectionData(
+        color: sectionColor,
+        value: count.toDouble(),
+        title: bodyPart.name,
+        radius: 60,
+        titleStyle: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.bold,
+            color: ThemeData.estimateBrightnessForColor(sectionColor) == Brightness.dark ? Colors.white : Colors.black,
+            shadows: const [Shadow(color: Colors.black26, blurRadius: 2.0)]
+        ),
+      ));
+    }
+    return sections;
   }
-} // End DonutAutoLabelChart
+}

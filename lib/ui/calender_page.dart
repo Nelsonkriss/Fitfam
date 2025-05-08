@@ -10,13 +10,7 @@ import 'package:workout_planner/models/workout_session.dart';
 import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Your RxDart Bloc
 import 'package:workout_planner/ui/components/routine_card.dart'; // Make sure path is correct
 
-// Extension for date formatting (Keep locally or move to utils)
-extension DateTimeFormatting on DateTime {
-  /// Formats date to 'YYYY-MM-DD' string.
-  String toSimpleString() {
-    return DateFormat('yyyy-MM-dd').format(this);
-  }
-}
+// Removed local DateTimeFormatting extension
 
 
 /// A widget displaying a yearly calendar heatmap of completed workouts.
@@ -38,7 +32,15 @@ class CalenderPage extends StatelessWidget {
       // ACTION REQUIRED: Verify stream name in WorkoutSessionBloc
       stream: workoutSessionBloc.allSessionsStream, // Listen to session stream
       builder: (context, snapshot) {
-        if (kDebugMode) print("Calendar StreamBuilder state: ${snapshot.connectionState}");
+        if (kDebugMode) {
+          print("Calendar StreamBuilder state: ${snapshot.connectionState}, HasData: ${snapshot.hasData}, Error: ${snapshot.hasError}");
+          if (snapshot.hasData) {
+            print("Calendar StreamBuilder: Received ${snapshot.data!.length} sessions.");
+          }
+          if (snapshot.hasError) {
+            print("Calendar StreamBuilder Error: ${snapshot.error}");
+          }
+        }
 
         // --- Handle Stream States ---
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
@@ -95,8 +97,9 @@ class CalenderPage extends StatelessWidget {
       // Use only completed sessions with a valid end time
       if (session.isCompleted && session.endTime != null) {
         try {
-          // Use the date part only, using UTC time
-          final dateStr = session.endTime!.toUtc().toSimpleString();
+          // Use the date part only, using the phone's LOCAL time for the key
+          final localEndTime = session.endTime!.toLocal();
+          final dateStr = "${localEndTime.year}-${localEndTime.month.toString().padLeft(2, '0')}-${localEndTime.day.toString().padLeft(2, '0')}";
           // Store the session (overwrites if multiple on same day - keeps last processed)
           dates[dateStr] = session;
         } catch (e) {
@@ -140,16 +143,17 @@ class CalenderPage extends StatelessWidget {
       for (int month = 1; month <= 12; month++) {
         DateTime? currentDate;
         // Validate if the date exists (e.g., handle Feb 30th)
-        // DateTime.utc is generally safer for date-only checks
+        // Use local DateTime constructor
         if (day <= DateUtils.getDaysInMonth(currentYear, month)) {
-          currentDate = DateTime.utc(currentYear, month, day);
+          currentDate = DateTime(currentYear, month, day); // Uses local timezone
         }
 
         if (currentDate == null) {
           // Cell for non-existent dates (e.g., Feb 30/31)
           gridChildren.add(Container(color: Theme.of(context).scaffoldBackgroundColor)); // Match background
         } else {
-          final dateStr = currentDate.toSimpleString(); // YYYY-MM-DD format
+          // Format the check key using local date components directly
+          final dateStr = "${currentDate.year}-${currentDate.month.toString().padLeft(2, '0')}-${currentDate.day.toString().padLeft(2, '0')}";
           final bool isWorkoutDay = workoutDayMap.containsKey(dateStr);
           final WorkoutSession? sessionForDay = workoutDayMap[dateStr];
 
@@ -189,9 +193,16 @@ class CalenderPage extends StatelessWidget {
   }
 
   /// Determines the color for a calendar cell based on workout status and date.
-  Color _getColorForWorkoutDay(bool isWorkoutDay, DateTime date) {
-    final today = DateUtils.dateOnly(DateTime.now());
-    final cellDate = DateUtils.dateOnly(date); // Ensure comparison uses date only
+  Color _getColorForWorkoutDay(bool isWorkoutDay, DateTime date) { // 'date' is now local
+    // Get today's date using local time
+    final nowLocal = DateTime.now();
+    final todayLocal = DateTime(nowLocal.year, nowLocal.month, nowLocal.day); // Local date part only
+    final cellDate = date; // 'date' parameter is already the local date of the cell
+
+    // Log the comparison specifically for today's cell
+    if (kDebugMode && cellDate.year == todayLocal.year && cellDate.month == todayLocal.month && cellDate.day == todayLocal.day) {
+      debugPrint("[CalendarColor] Comparing for today: cellDate=$cellDate (Local), todayLocal=$todayLocal, isWorkoutDay=$isWorkoutDay");
+    }
 
     // Using Theme colors for consistency
     final Color workoutColor = Colors.green.shade400; // Or Theme.of(context).colorScheme.primaryContainer
@@ -200,9 +211,16 @@ class CalenderPage extends StatelessWidget {
     final Color defaultColor = Colors.grey.shade100; // Or Theme.of(context).colorScheme.surfaceVariant
 
     if (isWorkoutDay) {
-      return cellDate.isAtSameMomentAs(today) ? todayWorkoutColor : workoutColor;
+      // Compare year, month, and day for "is today" check using local dates
+      bool isToday = cellDate.year == todayLocal.year &&
+                     cellDate.month == todayLocal.month &&
+                     cellDate.day == todayLocal.day;
+      return isToday ? todayWorkoutColor : workoutColor;
     } else {
-      return cellDate.isAtSameMomentAs(today) ? todayColor : defaultColor;
+      bool isToday = cellDate.year == todayLocal.year &&
+                     cellDate.month == todayLocal.month &&
+                     cellDate.day == todayLocal.day;
+      return isToday ? todayColor : defaultColor;
     }
   }
 

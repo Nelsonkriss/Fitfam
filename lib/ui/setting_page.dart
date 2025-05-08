@@ -34,6 +34,7 @@ class _SettingPageState extends State<SettingPage> {
 
   // State for weekly amount preference
   int? _selectedWeeklyAmount; // Use nullable int
+  Set<int> _selectedRoutineIds = {}; // State variable for selected routine IDs
 
   // Access global providers (assuming they exist)
   // final FirebaseProvider firebaseProvider = firebaseProvider; // Already global
@@ -44,6 +45,7 @@ class _SettingPageState extends State<SettingPage> {
   void initState() {
     super.initState();
     _loadInitialSettings();
+    _loadSelectedRoutines(); // Load selected routines
   }
 
   Future<void> _loadInitialSettings() async {
@@ -54,6 +56,19 @@ class _SettingPageState extends State<SettingPage> {
         _selectedWeeklyAmount = amount ?? 3;
       });
     }
+  }
+
+  Future<void> _loadSelectedRoutines() async {
+    final selectedIds = await sharedPrefsProvider.getWeeklyProgressRoutineIds(); // Need to implement this method
+    if (mounted) {
+      setState(() {
+        _selectedRoutineIds = selectedIds.toSet(); // Convert list to set
+      });
+    }
+  }
+
+  Future<void> _saveSelectedRoutines() async {
+    await sharedPrefsProvider.setWeeklyProgressRoutineIds(_selectedRoutineIds.toList()); // Need to implement this method
   }
 
   // Helper to show messages consistently
@@ -454,6 +469,57 @@ class _SettingPageState extends State<SettingPage> {
                     padding: EdgeInsets.all(16.0),
                     child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
                 ),
+
+              // --- Weekly Progress Routines Section ---
+              _buildSectionHeader(context, "Weekly Progress Routines"),
+              StreamBuilder<List<Routine>>(
+                stream: routinesBlocInstance.allRoutinesStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error loading routines: ${snapshot.error}'));
+                  }
+                  final routines = snapshot.data ?? [];
+
+                  if (routines.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text("No routines available."),
+                    );
+                  }
+
+                  return ListView.builder(
+                    shrinkWrap: true, // Important for nested ListViews
+                    physics: const NeverScrollableScrollPhysics(), // Disable scrolling for this inner ListView
+                    itemCount: routines.length,
+                    itemBuilder: (context, index) {
+                      final routine = routines[index];
+                      // Ensure routine.id is not null before using it as a key
+                      if (routine.id == null) return const SizedBox.shrink();
+
+                      final isSelected = _selectedRoutineIds.contains(routine.id);
+
+                      return CheckboxListTile(
+                        title: Text(routine.routineName),
+                        value: isSelected,
+                        onChanged: (bool? newValue) {
+                          if (newValue == null) return;
+                          setState(() {
+                            if (newValue) {
+                              _selectedRoutineIds.add(routine.id!);
+                            } else {
+                              _selectedRoutineIds.remove(routine.id!);
+                            }
+                          });
+                          _saveSelectedRoutines(); // Call a new method to save
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
             ],
           );
         },

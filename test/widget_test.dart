@@ -269,7 +269,12 @@ class MockWorkoutSessionBloc extends Mock implements WorkoutSessionBloc {
 
   @override
   // TODO: implement stopwatch
-  Stopwatch get stopwatch => throw UnimplementedError(); // Provide default state
+  Stopwatch get stopwatch => throw UnimplementedError();
+
+  @override
+  void refreshAllSessions() {
+    // TODO: implement refreshAllSessions
+  } // Provide default state
 }
 
 class Mock {

@@ -10,6 +10,7 @@ const String firstRunDateKey = "firstRunDate";
 const String databaseStatusKey = "databaseStatus"; // Example: Tracks local DB setup status
 const String weeklyAmountKey = "weeklyAmount";   // Example: User preference
 const String DailyRankKey = "dailyRankInfo"; // Stores string like "YYYY-MM-DD/rank"
+const String weeklyProgressRoutineIdsKey = "weeklyProgressRoutineIds"; // Key for selected routine IDs
 
 // Authentication related keys
 const String signInMethodKey = "signInMethod"; // Stores the enum name (e.g., "google", "apple")
@@ -153,6 +154,34 @@ class SharedPrefsProvider {
       await prefs.setInt(weeklyAmountKey, amt);
     } catch (e) {
       debugPrint("SharedPrefsProvider: Error setting weekly amount: $e");
+    }
+  }
+
+  /// Gets the list of routine IDs selected for weekly progress calculation.
+  /// Returns an empty list if no IDs are stored or on error.
+  Future<List<int>> getWeeklyProgressRoutineIds() async {
+    try {
+      final prefs = await _prefs;
+      final idStrings = prefs.getStringList(weeklyProgressRoutineIdsKey);
+      if (idStrings == null) return [];
+
+      // Convert list of strings to list of integers, handling potential parsing errors
+      return idStrings.map((idStr) => int.tryParse(idStr)).whereType<int>().toList();
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting weekly progress routine IDs: $e");
+      return []; // Return empty list on error
+    }
+  }
+
+  /// Sets the list of routine IDs selected for weekly progress calculation.
+  Future<void> setWeeklyProgressRoutineIds(List<int> ids) async {
+    try {
+      final prefs = await _prefs;
+      // Convert list of integers to list of strings
+      final idStrings = ids.map((id) => id.toString()).toList();
+      await prefs.setStringList(weeklyProgressRoutineIdsKey, idStrings);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting weekly progress routine IDs: $e");
     }
   }
 
