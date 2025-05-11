@@ -225,8 +225,8 @@ class DonutAutoLabelChart extends StatelessWidget { // Changed to StatelessWidge
     }
     return PieChart(
       PieChartData(
-        sectionsSpace: 2,
-        centerSpaceRadius: 60,
+        sectionsSpace: 1,
+        centerSpaceRadius: 30,
         sections: sections,
         pieTouchData: PieTouchData(
           touchCallback: (FlTouchEvent event, pieTouchResponse) {
