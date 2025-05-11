@@ -8,6 +8,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart'; /
 import 'package:timezone/data/latest_all.dart' as tz; // Added for timezone scheduling
 import 'package:timezone/timezone.dart' as tz; // Added for timezone scheduling
 import 'package:intl/intl.dart'; // Added for DateFormat
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Added for .env file loading
 
 // Import Providers and BLoCs (Adjust paths if needed)
 import 'package:workout_planner/resource/db_provider_interface.dart'; // Interface
@@ -16,6 +17,7 @@ import 'package:workout_planner/resource/firebase_provider.dart'; // Global inst
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // Global instance
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
 import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Your flutter_bloc BLoC
+import 'package:workout_planner/bloc/theme_provider.dart'; // Import ThemeProvider
 import 'package:workout_planner/models/routine.dart'; // Needed for scheduling logic
 
 // Import UI Pages
@@ -23,6 +25,7 @@ import 'package:workout_planner/ui/home_page.dart';
 import 'package:workout_planner/ui/statistics_page.dart';
 import 'package:workout_planner/ui/progress_charts.dart';
 import 'package:workout_planner/ui/setting_page.dart';
+import 'package:workout_planner/ui/recommend_page.dart'; // Import RecommendPage
 
 // Global provider instances are created in their respective files
 // (e.g., final dbProvider = createDbProvider(); in db_provider.dart)
@@ -36,6 +39,17 @@ Future<void> main() async { // Make main async
   // 1. Ensure Flutter framework is ready
   WidgetsFlutterBinding.ensureInitialized();
   print('[MAIN] Flutter Binding Initialized.');
+
+  // 1.5 Load Environment Variables here before anything else
+  print('[MAIN] Loading environment variables from main()...');
+  try {
+    await dotenv.load(fileName: ".env");
+    print('[MAIN] Environment variables loaded successfully from main().');
+  } catch (e) {
+    print('[MAIN] CRITICAL: Could not load .env file from main(). App may not function correctly: $e');
+    // Consider how to handle this critical failure - perhaps show an error UI or exit.
+    // For now, it will proceed, and OpenRouterService will fail later if key is missing.
+  }
 
   // 2. Run the app with an initialization loader
   runApp(const InitializationLoader());
@@ -212,6 +226,8 @@ class _InitializationLoaderState extends State<InitializationLoader> {
 
   Future<void> _initializeApp() async {
     try {
+      // Environment variables are now loaded in main()
+
       // 2. Initialize Firebase
       print('[MAIN] Starting Firebase initialization block...');
       FirebaseApp? app;
@@ -306,12 +322,16 @@ class _InitializationLoaderState extends State<InitializationLoader> {
         Provider<DbProviderInterface>.value(value: dbProvider),
         Provider<FirebaseProvider>.value(value: firebaseProvider),
         Provider<SharedPrefsProvider>.value(value: sharedPrefsProvider),
+        ChangeNotifierProvider<ThemeProvider>( // Add ThemeProvider
+          create: (_) => ThemeProvider(sharedPrefsProvider),
+        ),
         Provider<RoutinesBloc>(
             create: (_) {
               print('[PROVIDER] Creating RoutinesBloc...');
               final bloc = RoutinesBloc();
               bloc.fetchAllRoutines();
-              bloc.fetchRecommendedRoutines();
+              // fetchRecommendedRoutines is specific to RecommendPage, let it handle it.
+              // bloc.fetchRecommendedRoutines();
               return bloc;
             },
             dispose: (_, bloc) {
@@ -330,44 +350,161 @@ class _InitializationLoaderState extends State<InitializationLoader> {
             }
         ),
       ],
-      child: const MyApp(),
+      child: const MyApp(), // MyApp will consume ThemeProvider
     );
   }
 }
 
-/// The root application widget. Sets up MaterialApp.
-class MyApp extends StatelessWidget {
+/// The root application widget. Sets up MaterialApp and consumes ThemeProvider.
+class MyApp extends StatelessWidget { // Changed back to StatelessWidget
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    print("[BUILD] MyApp");
-    return MaterialApp(
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blueGrey.shade800,
-          primary: Colors.blueGrey.shade800,
-          secondary: Colors.deepOrangeAccent,
-          brightness: Brightness.light,
-        ),
-        appBarTheme: AppBarTheme(
-          backgroundColor: Colors.blueGrey.shade800,
-          foregroundColor: Colors.white,
-          elevation: 1,
-        ),
-        fontFamily: 'Staa',
-        textTheme: const TextTheme(
-          bodyMedium: TextStyle(fontSize: 16),
-          headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-        ),
-        useMaterial3: true,
+    // Consume the ThemeProvider
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    print("[BUILD] MyApp, ThemeMode from Provider: ${themeProvider.themeMode}");
+
+    // Define a light theme
+    final ThemeData lightTheme = ThemeData(
+      fontFamily: 'Roboto', // Using Roboto for a more standard modern feel
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.deepPurple, // A modern primary color
+        primary: Colors.deepPurple.shade600,
+        secondary: Colors.teal.shade400, // A complementary accent
+        brightness: Brightness.light,
+        surface: Colors.grey.shade100, // Background for cards, dialogs
+        onSurface: Colors.black87,     // Text on surface
+        background: Colors.white,      // Scaffold background
+        onBackground: Colors.black87,  // Text on scaffold background
       ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.deepPurple.shade600,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        titleTextStyle: const TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w500),
+      ),
+      textTheme: const TextTheme(
+        bodyMedium: TextStyle(fontSize: 16, color: Colors.black87),
+        headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.black87),
+        titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+      ),
+      cardTheme: CardTheme(
+        elevation: 1.0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.deepPurple.shade500,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(color: Colors.deepPurple.shade500, width: 2.0),
+        ),
+        labelStyle: TextStyle(color: Colors.deepPurple.shade500),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: Colors.deepPurple.shade600,
+        unselectedItemColor: Colors.grey.shade600,
+        backgroundColor: Colors.white,
+        elevation: 4.0,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: Colors.deepPurple.shade600, // Match primary
+        foregroundColor: Colors.white, // Icon color
+      ),
+      useMaterial3: true,
+    );
+
+    // Define a dark theme
+    final ThemeData darkTheme = ThemeData(
+      fontFamily: 'Roboto',
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.deepPurple,
+        primary: Colors.deepPurple.shade300,
+        secondary: Colors.tealAccent.shade400,
+        brightness: Brightness.dark,
+        surface: Colors.grey.shade800,
+        onSurface: Colors.white70,
+        background: const Color(0xFF121212),
+        onBackground: Colors.white70,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: Colors.grey.shade900,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        titleTextStyle: const TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w500, color: Colors.white),
+      ),
+      textTheme: const TextTheme(
+        bodyMedium: TextStyle(fontSize: 16, color: Colors.white70),
+        headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
+        titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+      ),
+      cardTheme: CardTheme(
+        elevation: 2.0,
+        color: Colors.grey.shade800, // Darker card color
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.deepPurple.shade400,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(color: Colors.grey.shade700),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8.0),
+          borderSide: BorderSide(color: Colors.deepPurple.shade300, width: 2.0),
+        ),
+        labelStyle: TextStyle(color: Colors.deepPurple.shade300),
+        hintStyle: TextStyle(color: Colors.grey.shade500),
+      ),
+      bottomNavigationBarTheme: BottomNavigationBarThemeData(
+        selectedItemColor: Colors.deepPurple.shade300,
+        unselectedItemColor: Colors.grey.shade500,
+        backgroundColor: Colors.grey.shade900,
+        elevation: 4.0,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: Colors.deepPurple.shade300, // Match dark primary
+        foregroundColor: Colors.black87, // Icon color for contrast on lighter purple
+      ),
+      scaffoldBackgroundColor: const Color(0xFF121212),
+      useMaterial3: true,
+    );
+
+    return MaterialApp(
+      theme: lightTheme,
+      darkTheme: darkTheme,
+      themeMode: themeProvider.themeMode, // Use themeMode from ThemeProvider
       debugShowCheckedModeBanner: false,
       title: 'Workout Planner',
       home: const MainPage(),
     );
   }
 }
+
+// The toggleThemeExample is no longer needed here as ThemeProvider handles changes.
+// The UI for changing the theme will be in SettingPage.
 
 /// The main scaffold holding the different pages via BottomNavigationBar.
 class MainPage extends StatefulWidget {
@@ -384,6 +521,7 @@ class MainPageState extends State<MainPage> {
     HomePage(),
     StatisticsPage(),
     ProgressCharts(),
+    RecommendPage(), // Added RecommendPage
     SettingPage(),
   ];
 
@@ -406,6 +544,7 @@ class MainPageState extends State<MainPage> {
           BottomNavigationBarItem( icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home', ),
           BottomNavigationBarItem( icon: Icon(Icons.calendar_today_outlined), activeIcon: Icon(Icons.calendar_today), label: 'Calendar', ),
           BottomNavigationBarItem( icon: Icon(Icons.show_chart_outlined), activeIcon: Icon(Icons.show_chart), label: 'Progress', ),
+          BottomNavigationBarItem( icon: Icon(Icons.auto_awesome_outlined), activeIcon: Icon(Icons.auto_awesome), label: 'AI Coach', ), // Added AI Coach / Recommend
           BottomNavigationBarItem( icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings', ),
         ],
         currentIndex: _selectedIndex,

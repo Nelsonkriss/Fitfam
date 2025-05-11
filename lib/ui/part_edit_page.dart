@@ -267,13 +267,15 @@ class _PartEditPageState extends State<PartEditPage> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      // Card properties will be inherited from CardTheme in main.dart
       child: ExpansionTile(
         leading: Icon(icon, color: Theme.of(context).colorScheme.secondary),
-        title: Text(title, style: Theme.of(context).textTheme.titleMedium),
+        title: Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500)), // Consistent with RoutineEditPage section titles
         initiallyExpanded: initiallyExpanded,
         childrenPadding: const EdgeInsets.all(16.0).copyWith(top: 0),
         tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        iconColor: Theme.of(context).colorScheme.onSurfaceVariant, // Theme expand/collapse icon
+        collapsedIconColor: Theme.of(context).colorScheme.onSurfaceVariant,
         children: [child],
       ),
     );
@@ -283,15 +285,53 @@ class _PartEditPageState extends State<PartEditPage> {
   Widget _buildTargetedBodyPartRadioList() {
     // (Implementation remains the same)
     int currentRadioValue = PartEditPageHelper.targetedBodyPartToRadioValue(_selectedTargetedBodyPart);
-    return Column( mainAxisSize: MainAxisSize.min, children: TargetedBodyPart.values.map((bodyPart) { int radioValue = PartEditPageHelper.targetedBodyPartToRadioValue(bodyPart); return RadioListTile<int>( title: Text(targetedBodyPartToStringConverter(bodyPart)), value: radioValue, groupValue: currentRadioValue, onChanged: (newValue) { if (newValue != null) { setState(() { _selectedTargetedBodyPart = PartEditPageHelper.radioValueToTargetedBodyPartConverter(newValue); }); } }, dense: true, visualDensity: VisualDensity.compact, ); }).toList());
+    return Column( mainAxisSize: MainAxisSize.min, children: TargetedBodyPart.values.map((bodyPart) {
+      int radioValue = PartEditPageHelper.targetedBodyPartToRadioValue(bodyPart);
+      return RadioListTile<int>(
+        title: Text(targetedBodyPartToStringConverter(bodyPart), style: Theme.of(context).textTheme.bodyLarge),
+        value: radioValue,
+        groupValue: currentRadioValue,
+        onChanged: (newValue) { if (newValue != null) { setState(() { _selectedTargetedBodyPart = PartEditPageHelper.radioValueToTargetedBodyPartConverter(newValue); }); } },
+        dense: true,
+        visualDensity: VisualDensity.compact,
+        activeColor: Theme.of(context).colorScheme.primary, // Themed active color
+      );
+    }).toList());
   }
 
   /// Builds CupertinoSegmentedControl for selecting the set type.
   Widget _buildSetTypeSegmentedControl() {
-    // (Implementation remains the same)
-    const selectedTextStyle = TextStyle(fontSize: 14, fontWeight: FontWeight.bold); const unselectedTextStyle = TextStyle(fontSize: 14);
-    final Map<SetType, Widget> children = { for (var type in SetType.values) type: Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: Text(setTypeToStringConverter(type).split(' ').first, style: _selectedSetType == type ? selectedTextStyle : unselectedTextStyle ), ) };
-    return Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: SizedBox( width: double.infinity, child: CupertinoSlidingSegmentedControl<SetType>( children: children, groupValue: _selectedSetType, thumbColor: setTypeToColorConverter(_selectedSetType).withOpacity(0.8), backgroundColor: Colors.grey.shade300, onValueChanged: (newSetType) { if (newSetType != null && newSetType != _selectedSetType) { _updateExercisesForSetType(newSetType); } }, ), ), );
+    final theme = Theme.of(context);
+    final selectedTextStyle = theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimaryContainer);
+    final unselectedTextStyle = theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+    final Map<SetType, Widget> children = {
+      for (var type in SetType.values)
+        type: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+          child: Text(
+            setTypeToStringConverter(type).split(' ').first,
+            style: _selectedSetType == type ? selectedTextStyle : unselectedTextStyle
+          ),
+        )
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: SizedBox(
+        width: double.infinity,
+        child: CupertinoSlidingSegmentedControl<SetType>(
+          children: children,
+          groupValue: _selectedSetType,
+          thumbColor: theme.colorScheme.primaryContainer, // Themed thumb
+          backgroundColor: theme.colorScheme.surfaceContainerHighest, // Themed background
+          onValueChanged: (newSetType) {
+            if (newSetType != null && newSetType != _selectedSetType) {
+              _updateExercisesForSetType(newSetType);
+            }
+          },
+        ),
+      ),
+    );
   }
 
   /// Builds the list of exercise editor widgets (wrapped by Form externally now).
@@ -309,20 +349,31 @@ class _PartEditPageState extends State<PartEditPage> {
     if (index >= _exerciseEditStates.length) return const SizedBox.shrink();
     final exerciseState = _exerciseEditStates[index]; int focusNodeBaseIndex = index * 4;
     FocusNode? getNode(int offset) { int nodeIndex = focusNodeBaseIndex + offset; return nodeIndex < _focusNodes.length ? _focusNodes[nodeIndex] : null; }
-    return Padding( padding: const EdgeInsets.symmetric(vertical: 12.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Text('Exercise ${index + 1}', style: Theme.of(context).textTheme.titleSmall), Row( mainAxisSize: MainAxisSize.min, children: [ Text('Weight', style: TextStyle(fontSize: 12, color: exerciseState.workoutType == WorkoutType.Weight ? Theme.of(context).primaryColor : Colors.grey)), Switch( value: exerciseState.workoutType == WorkoutType.Cardio, onChanged: (isCardio) { setState(() { exerciseState.workoutType = isCardio ? WorkoutType.Cardio : WorkoutType.Weight; }); }, activeColor: Colors.lightBlueAccent, inactiveThumbColor: Theme.of(context).primaryColor, inactiveTrackColor: Theme.of(context).primaryColor.withOpacity(0.5), materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, ), Text('Time', style: TextStyle(fontSize: 12, color: exerciseState.workoutType == WorkoutType.Cardio ? Colors.lightBlueAccent : Colors.grey)), ], ) ], ), const SizedBox(height: 8), TextFormField( controller: exerciseState.nameController, focusNode: getNode(0), textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Exercise Name *', border: OutlineInputBorder(), isDense: true), validator: (value) => (value == null || value.trim().isEmpty) ? 'Name required' : null, textInputAction: TextInputAction.next, ), const SizedBox(height: 12), Row( crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[ if (exerciseState.workoutType == WorkoutType.Weight) Expanded( flex: 2, child: TextFormField( controller: exerciseState.weightController, focusNode: getNode(1), inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))], keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Wt (kg)', border: OutlineInputBorder(), isDense: true), validator: (value) => (value != null && value.isNotEmpty && double.tryParse(value) == null) ? 'Invalid' : null, textInputAction: TextInputAction.next, ), ) else const Expanded(flex: 2, child: SizedBox()), const SizedBox(width: 8), Expanded( flex: 1, child: TextFormField( controller: exerciseState.setsController, focusNode: getNode(2), inputFormatters: [FilteringTextInputFormatter.digitsOnly], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Sets *', border: OutlineInputBorder(), isDense: true), validator: (value) => (value == null || value.trim().isEmpty || (int.tryParse(value.trim()) ?? 0) <= 0) ? 'Invalid' : null, textInputAction: TextInputAction.next, ), ), const SizedBox(width: 8), Expanded( flex: 2, child: TextFormField( controller: exerciseState.repsController, focusNode: getNode(3), keyboardType: exerciseState.workoutType == WorkoutType.Weight ? TextInputType.text : TextInputType.number, inputFormatters: exerciseState.workoutType == WorkoutType.Cardio ? [FilteringTextInputFormatter.digitsOnly] : [], decoration: InputDecoration( labelText: exerciseState.workoutType == WorkoutType.Weight ? 'Reps *' : 'Time (sec) *', border: const OutlineInputBorder(), isDense: true ), validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null, textInputAction: TextInputAction.done, ), ), ], ), if (index < _exerciseEditStates.length - 1) const Divider(height: 32, thickness: 0.5, indent: 8, endIndent: 8), ], ), );
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final colorScheme = theme.colorScheme;
+
+    return Padding( padding: const EdgeInsets.symmetric(vertical: 12.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Text('Exercise ${index + 1}', style: textTheme.titleMedium), Row( mainAxisSize: MainAxisSize.min, children: [ Text('Weight', style: textTheme.labelSmall?.copyWith(color: exerciseState.workoutType == WorkoutType.Weight ? colorScheme.primary : colorScheme.onSurfaceVariant)), Switch( value: exerciseState.workoutType == WorkoutType.Cardio, onChanged: (isCardio) { setState(() { exerciseState.workoutType = isCardio ? WorkoutType.Cardio : WorkoutType.Weight; }); }, activeColor: colorScheme.secondary, inactiveThumbColor: colorScheme.outline, inactiveTrackColor: colorScheme.surfaceVariant, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, ), Text('Time', style: textTheme.labelSmall?.copyWith(color: exerciseState.workoutType == WorkoutType.Cardio ? colorScheme.secondary : colorScheme.onSurfaceVariant)), ], ) ], ), const SizedBox(height: 8), TextFormField( controller: exerciseState.nameController, focusNode: getNode(0), textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Exercise Name *', /*border: OutlineInputBorder(),*/ isDense: true), validator: (value) => (value == null || value.trim().isEmpty) ? 'Name required' : null, textInputAction: TextInputAction.next, ), const SizedBox(height: 12), Row( crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[ if (exerciseState.workoutType == WorkoutType.Weight) Expanded( flex: 2, child: TextFormField( controller: exerciseState.weightController, focusNode: getNode(1), inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))], keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Wt (kg)', /*border: OutlineInputBorder(),*/ isDense: true), validator: (value) => (value != null && value.isNotEmpty && double.tryParse(value) == null) ? 'Invalid' : null, textInputAction: TextInputAction.next, ), ) else const Expanded(flex: 2, child: SizedBox()), const SizedBox(width: 8), Expanded( flex: 1, child: TextFormField( controller: exerciseState.setsController, focusNode: getNode(2), inputFormatters: [FilteringTextInputFormatter.digitsOnly], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Sets *', /*border: OutlineInputBorder(),*/ isDense: true), validator: (value) => (value == null || value.trim().isEmpty || (int.tryParse(value.trim()) ?? 0) <= 0) ? 'Invalid' : null, textInputAction: TextInputAction.next, ), ), const SizedBox(width: 8), Expanded( flex: 2, child: TextFormField( controller: exerciseState.repsController, focusNode: getNode(3), keyboardType: exerciseState.workoutType == WorkoutType.Weight ? TextInputType.text : TextInputType.number, inputFormatters: exerciseState.workoutType == WorkoutType.Cardio ? [FilteringTextInputFormatter.digitsOnly] : [], decoration: InputDecoration( labelText: exerciseState.workoutType == WorkoutType.Weight ? 'Reps *' : 'Time (sec) *', /*border: const OutlineInputBorder(),*/ isDense: true ), validator: (value) => (value == null || value.trim().isEmpty) ? 'Required' : null, textInputAction: TextInputAction.done, ), ), ], ), if (index < _exerciseEditStates.length - 1) Divider(height: 32, thickness: 0.5, indent: 8, endIndent: 8, color: theme.dividerColor), ], ), );
   }
 
   /// Builds the field for additional notes.
   Widget _buildAdditionalNotesField() {
-    // (Implementation remains the same)
-    return Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: TextFormField( controller: _additionalNotesController, decoration: const InputDecoration( labelText: 'Notes', hintText: 'Add any specific instructions or tips...', border: OutlineInputBorder(), ), maxLines: 3, textCapitalization: TextCapitalization.sentences, ), );
+    return Padding( padding: const EdgeInsets.symmetric(vertical: 8.0), child: TextFormField( controller: _additionalNotesController, decoration: const InputDecoration( labelText: 'Notes', hintText: 'Add any specific instructions or tips...', /*border: OutlineInputBorder(),*/ ), maxLines: 3, textCapitalization: TextCapitalization.sentences, ), );
   }
 
 
   /// Configuration for the KeyboardActions toolbar.
   KeyboardActionsConfig _buildKeyboardActionsConfig() {
-    // (Implementation remains the same)
-    final validFocusNodes = _focusNodes.where((node) => node != null).toList(); return KeyboardActionsConfig( keyboardActionsPlatform: KeyboardActionsPlatform.ALL, keyboardBarColor: Colors.grey[200], nextFocus: true, actions: validFocusNodes.map((node) { return KeyboardActionsItem( focusNode: node, displayDoneButton: true, ); }).toList(), );
+    final theme = Theme.of(context);
+    final validFocusNodes = _focusNodes.where((node) => node != null).toList();
+    return KeyboardActionsConfig(
+      keyboardActionsPlatform: KeyboardActionsPlatform.ALL,
+      keyboardBarColor: theme.colorScheme.surfaceContainer, // Themed
+      nextFocus: true,
+      actions: validFocusNodes.map((node) {
+        return KeyboardActionsItem( focusNode: node, displayDoneButton: true, );
+      }).toList(),
+    );
   }
 
 } // End of _PartEditPageState

@@ -353,9 +353,12 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text('ADD PART', style: TextStyle(color: Colors.white)),
+          // icon: const Icon(Icons.add, color: Colors.white), // Color from FAB Theme
+          // label: const Text('ADD PART', style: TextStyle(color: Colors.white)), // Style from FAB Theme
+          icon: const Icon(Icons.add),
+          label: const Text('ADD PART'),
           onPressed: _onAddPartPressed,
+          // backgroundColor and foregroundColor will be inherited from FloatingActionButtonThemeData
         ),
       ),
     );
@@ -388,8 +391,15 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             key: _formKey,
             child: TextFormField(
               controller: _nameEditingController,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w500),
-              decoration: const InputDecoration( labelText: 'Routine Title *', hintText: 'e.g., Push Day', border: InputBorder.none, isDense: true,),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurface), // Ensure text color is themed
+              decoration: InputDecoration( // Will pick up from InputDecorationTheme
+                labelText: 'Routine Title *',
+                hintText: 'e.g., Push Day',
+                border: InputBorder.none, // Keeps the no-border look, but other aspects are themed
+                isDense: true,
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant), // Explicitly theme label
+                hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7)), // Explicitly theme hint
+              ),
               validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter a routine title' : null,
               textInputAction: TextInputAction.done,
               onChanged: (_) => _markDirtyOnNameChange(),
@@ -413,35 +423,39 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             children: [
               Text(
                 'Schedule (Optional)',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500, color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
               const SizedBox(height: 8),
               Wrap(
-                spacing: 6.0, // Horizontal space between chips
-                runSpacing: 4.0, // Vertical space between lines of chips
+                spacing: 8.0, // Increased spacing
+                runSpacing: 8.0, // Increased spacing
                 children: List.generate(7, (index) {
+                  final bool isSelected = _selectedWeekdaysBool[index];
                   return ChoiceChip(
                     label: Text(dayAbbreviations[index]),
-                    selected: _selectedWeekdaysBool[index],
+                    selected: isSelected,
                     onSelected: (bool selected) {
                       _onWeekdaySelected(index);
                     },
-                    selectedColor: Theme.of(context).colorScheme.primary,
+                    selectedColor: Theme.of(context).colorScheme.primaryContainer, // Use container color for selection
                     labelStyle: TextStyle(
-                      color: _selectedWeekdaysBool[index]
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : Theme.of(context).textTheme.bodyLarge?.color,
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
-                    backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest, // More distinct background
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                       side: BorderSide(
-                        color: _selectedWeekdaysBool[index]
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey.shade400,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primaryContainer // Border matches selected background
+                            : Theme.of(context).colorScheme.outline.withOpacity(0.5), // Themed outline
                         width: 1,
                       ),
                     ),
+                    showCheckmark: false, // Modern chips often omit checkmark
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), // Adjust padding
                   );
                 }),
               ),

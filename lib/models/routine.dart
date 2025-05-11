@@ -28,6 +28,7 @@ class Routine {
   final List<int> weekdays; // List of integers
   /// History of completion timestamps (millisecondsSinceEpoch).
   final List<int> routineHistory; // List of integers (timestamps)
+  final bool isAiGenerated; // New field
 
   /// Creates an immutable Routine instance.
   const Routine({
@@ -40,6 +41,7 @@ class Routine {
     this.completionCount = 0,
     List<int>? weekdays, // Nullable list arguments
     List<int>? routineHistory, // Nullable list arguments
+    this.isAiGenerated = false, // Default to false
   })  : weekdays = weekdays ?? const [], // Use const empty lists as default
         routineHistory = routineHistory ?? const [];
 
@@ -67,21 +69,21 @@ class Routine {
     int? completionCount,
     List<int>? weekdays,
     List<int>? routineHistory,
+    bool? isAiGenerated,
   }) {
     return Routine(
       id: id ?? this.id,
       routineName: routineName ?? this.routineName,
       mainTargetedBodyPart: mainTargetedBodyPart ?? this.mainTargetedBodyPart,
-      // Keep existing list reference if not provided (lists are immutable)
       parts: parts ?? this.parts,
       createdDate: createdDate ?? this.createdDate,
       lastCompletedDate: lastCompletedDate is _Undefined
           ? this.lastCompletedDate
           : lastCompletedDate as DateTime?,
       completionCount: completionCount ?? this.completionCount,
-      // Only create new list instances if a new list is actually passed
       weekdays: weekdays ?? this.weekdays,
       routineHistory: routineHistory ?? this.routineHistory,
+      isAiGenerated: isAiGenerated ?? this.isAiGenerated,
     );
   }
 
@@ -111,6 +113,7 @@ class Routine {
       'completionCount': completionCount, // Store as INTEGER
       'weekdays': jsonEncode(weekdays), // Encode List<int> to JSON string (TEXT)
       'routineHistory': jsonEncode(routineHistory), // Encode List<int> to JSON string (TEXT)
+      'isAiGenerated': isAiGenerated ? 1 : 0, // Store bool as INTEGER (0 or 1)
     };
   }
 
@@ -185,6 +188,7 @@ class Routine {
       completionCount: map['completionCount'] as int? ?? 0,
       weekdays: decodeJsonList<int>(map['weekdays']), // Decode int list
       routineHistory: decodeJsonList<int>(map['routineHistory']), // Decode int list
+      isAiGenerated: (map['isAiGenerated'] as int? ?? 0) == 1, // Convert INTEGER to bool
     );
   }
 
@@ -210,7 +214,8 @@ class Routine {
         lastCompletedDate == other.lastCompletedDate &&
         completionCount == other.completionCount &&
         listEquals(weekdays, other.weekdays) && // Compare int lists
-        listEquals(routineHistory, other.routineHistory); // Compare int lists
+        listEquals(routineHistory, other.routineHistory) && // Compare int lists
+        isAiGenerated == other.isAiGenerated;
   }
 
   // Hash code generation using Object.hash and DeepCollectionEquality
@@ -225,6 +230,7 @@ class Routine {
     completionCount,
     const DeepCollectionEquality().hash(weekdays), // Hash for int list
     const DeepCollectionEquality().hash(routineHistory), // Hash for int list
+    isAiGenerated,
   );
 }
 

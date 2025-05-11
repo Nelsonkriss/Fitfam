@@ -12,15 +12,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Flag to enable support for the new language APIs
+        isCoreLibraryDesugaringEnabled = true // Changed to isCoreLibraryDesugaringEnabled
     }
 
     kotlinOptions {
         jvmTarget = "17"
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
+
 
     defaultConfig {
         applicationId = "com.example.dumbbell_new"
@@ -39,4 +38,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4") // Use the latest version
+    // Add other existing dependencies here if any were outside a dependencies block
 }

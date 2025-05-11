@@ -60,6 +60,7 @@ dependencies:
   connectivity_plus: ^6.1.3
   flutter_local_notifications: ^17.1.2 # Use the latest version
   timezone: ^0.9.3 # Use latest version
+  flutter_dotenv: ^5.2.1
 
 
 
@@ -81,6 +82,7 @@ flutter:
   uses-material-design: true
   
   assets:
+    - .env # Added .env file to assets
     - assets/test.jpg
     - assets/dumbbells.png
     - assets/stopwatch.png

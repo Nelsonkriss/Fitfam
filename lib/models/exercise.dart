@@ -15,15 +15,17 @@ class Exercise {
   final String reps;
   final WorkoutType workoutType;
   final Map<String, dynamic> exHistory; // Keys: Date String, Values: String or Map
+  final double? lastUsedWeight; // New field for last used weight
 
   /// Creates an immutable instance of [Exercise].
   const Exercise({ // Make constructor const
     required this.name,
-    required this.weight,
+    required this.weight, // This is the original/template weight
     required this.sets,
     required this.reps,
     this.workoutType = WorkoutType.Weight,
     Map<String, dynamic>? exHistory,
+    this.lastUsedWeight, // Initialize with null by default
   }) : exHistory = exHistory ?? const {}; // Use const empty map
 
   /// Creates a new Exercise instance with specified fields updated.
@@ -34,6 +36,8 @@ class Exercise {
     String? reps,
     WorkoutType? workoutType,
     Map<String, dynamic>? exHistory,
+    double? lastUsedWeight, // Allow nullable for explicit reset or no change
+    bool setLastUsedWeightToNull = false, // Flag to explicitly set lastUsedWeight to null
   }) {
     return Exercise(
       name: name ?? this.name,
@@ -41,8 +45,8 @@ class Exercise {
       sets: sets ?? this.sets,
       reps: reps ?? this.reps,
       workoutType: workoutType ?? this.workoutType,
-      // Deep copy history map if provided, otherwise keep current
       exHistory: exHistory ?? Map<String, dynamic>.from(this.exHistory),
+      lastUsedWeight: setLastUsedWeightToNull ? null : (lastUsedWeight ?? this.lastUsedWeight),
     );
   }
 
@@ -92,6 +96,8 @@ class Exercise {
       workoutType: parseWorkoutType(map['workoutType'], WorkoutType.Weight),
       // Decode history using helper
       exHistory: decodeHistory(map['history']),
+      // lastUsedWeight might be null in DB or not present in older maps
+      lastUsedWeight: (map['lastUsedWeight'] as num?)?.toDouble(),
     );
   }
 
@@ -105,6 +111,7 @@ class Exercise {
     'workoutType': workoutType.name, // Store enum name as String
     // *** Correctly encodes history map to JSON string ***
     'history': jsonEncode(exHistory),
+    'lastUsedWeight': lastUsedWeight, // Add to map, will be null if not set
   };
 
   /// Creates a copy of an Exercise instance without its history.
@@ -116,12 +123,13 @@ class Exercise {
       reps: other.reps,
       workoutType: other.workoutType,
       exHistory: const {}, // Use const empty map
+      lastUsedWeight: other.lastUsedWeight, // Copy this field as well
     );
   }
 
   @override
   String toString() {
-    return 'Exercise(name: $name, weight: $weight, sets: $sets, reps: $reps, type: ${workoutType.name}, history: ${exHistory.length} entries)';
+    return 'Exercise(name: $name, weight: $weight, lastUsed: $lastUsedWeight, sets: $sets, reps: $reps, type: ${workoutType.name}, history: ${exHistory.length} entries)';
   }
 
   // Equality operator comparing core fields (history omitted for performance)
@@ -136,7 +144,8 @@ class Exercise {
         other.weight == weight &&
         other.sets == sets &&
         other.reps == reps &&
-        other.workoutType == workoutType;
+        other.workoutType == workoutType &&
+        other.lastUsedWeight == lastUsedWeight; // Compare new field
   }
 
   // Hash code based on core fields
@@ -147,6 +156,7 @@ class Exercise {
     sets,
     reps,
     workoutType,
+    lastUsedWeight, // Add to hash
     // Use DeepCollectionEquality().hash(exHistory) if history is included in ==
   );
 }

@@ -89,10 +89,10 @@ class _ProgressChartsState extends State<ProgressCharts> {
               .toList();
 
           if (completedSessions.isEmpty) {
-            return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(20.0),
-                  child: Text("No completed workout sessions found.\nComplete a workout to see progress charts here!", textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: Colors.grey)),
+            return Center( // Removed const
+                child: Padding( // Removed const
+                  padding: const EdgeInsets.all(20.0), // Padding can be const
+                  child: Text("No completed workout sessions found.\nComplete a workout to see progress charts here!", textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 )
             );
           }
@@ -123,7 +123,7 @@ class _ProgressChartsState extends State<ProgressCharts> {
         if (subtitle.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 2.0),
-            child: Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)),
+            child: Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
       ],
     );
@@ -161,27 +161,29 @@ class _ProgressChartsState extends State<ProgressCharts> {
               lineTouchData: LineTouchData(
                   handleBuiltInTouches: true,
                   touchTooltipData: LineTouchTooltipData(
+                      tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9),
                       maxContentWidth: 100,
                       getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
                         final date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
                         return LineTooltipItem(
                             '${spot.y.toStringAsFixed(0)} kg\n',
-                            TextStyle(color: Theme.of(context).colorScheme.onInverseSurface ?? Colors.white, fontWeight: FontWeight.bold),
-                            children: [TextSpan(text: DateFormat.yMd().format(date), style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontSize: 12))]);
+                            TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold),
+                            children: [TextSpan(text: DateFormat.yMd().format(date), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8), fontSize: 12))]);
                       }).toList())),
               lineBarsData: [
                 LineChartBarData(
-                    spots: volumeData, isCurved: true, curveSmoothness: 0.35, color: Colors.blueAccent.shade400, barWidth: 3, isStrokeCapRound: true,
+                    spots: volumeData, isCurved: true, curveSmoothness: 0.35, color: Theme.of(context).colorScheme.primary, barWidth: 3, isStrokeCapRound: true,
                     dotData: FlDotData(show: volumeData.length < 40),
-                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [Colors.blueAccent.shade200.withOpacity(0.4), Colors.blueAccent.shade700.withOpacity(0.0)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))],
+                    belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [Theme.of(context).colorScheme.primary.withOpacity(0.4), Theme.of(context).colorScheme.primary.withOpacity(0.0)], begin: Alignment.topCenter, end: Alignment.bottomCenter)))],
               titlesData: FlTitlesData(
                   show: true, topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: _calculateDateInterval(volumeData), getTitlesWidget: _bottomTitleWidgets)),
                   leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 45, getTitlesWidget: (value, meta) => _leftTitleWidgets(value, meta, true)))),
               gridData: FlGridData(
                   show: true, drawVerticalLine: true, drawHorizontalLine: true, horizontalInterval: _calculateVolumeInterval(volumeData), verticalInterval: _calculateDateInterval(volumeData),
-                  getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade300, strokeWidth: 0.5), getDrawingVerticalLine: (value) => FlLine(color: Colors.grey.shade300, strokeWidth: 0.5)),
-              borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400, width: 1)),
+                  getDrawingHorizontalLine: (value) => FlLine(color: Theme.of(context).dividerColor.withOpacity(0.5), strokeWidth: 0.5),
+                  getDrawingVerticalLine: (value) => FlLine(color: Theme.of(context).dividerColor.withOpacity(0.5), strokeWidth: 0.5)),
+              borderData: FlBorderData(show: true, border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.5), width: 1)),
               minY: 0,
             ),
           ),
@@ -240,17 +242,21 @@ class _ProgressChartsState extends State<ProgressCharts> {
               padding: const EdgeInsets.fromLTRB(8, 20, 20, 12),
               child: LineChart(
                 LineChartData(
-                  lineTouchData: LineTouchData(handleBuiltInTouches: true, touchTooltipData: LineTouchTooltipData(maxContentWidth: 120, getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
+                  lineTouchData: LineTouchData(handleBuiltInTouches: true, touchTooltipData: LineTouchTooltipData(
+                    tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9),
+                    maxContentWidth: 120, getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
                     final date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
                     final weightStr = spot.y.toStringAsFixed(spot.y.truncateToDouble() == spot.y ? 0 : 1);
-                    return LineTooltipItem('$weightStr kg\n', TextStyle(color: Theme.of(context).colorScheme.onInverseSurface ?? Colors.white, fontWeight: FontWeight.bold), children: [TextSpan(text: DateFormat.yMd().format(date), style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontSize: 12))]);
+                    return LineTooltipItem('$weightStr kg\n', TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold), children: [TextSpan(text: DateFormat.yMd().format(date), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8), fontSize: 12))]);
                   }).toList())),
-                  lineBarsData: [LineChartBarData(spots: dataPoints, isCurved: true, curveSmoothness: 0.35, color: Colors.teal.shade600, barWidth: 3, isStrokeCapRound: true, dotData: FlDotData(show: dataPoints.length < 40), belowBarData: BarAreaData(show: false))],
+                  lineBarsData: [LineChartBarData(spots: dataPoints, isCurved: true, curveSmoothness: 0.35, color: Theme.of(context).colorScheme.secondary, barWidth: 3, isStrokeCapRound: true, dotData: FlDotData(show: dataPoints.length < 40), belowBarData: BarAreaData(show: false))],
                   titlesData: FlTitlesData(show: true, topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: _calculateDateInterval(dataPoints), getTitlesWidget: _bottomTitleWidgets)),
                       leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (value, meta) => _leftTitleWidgets(value, meta, false)))),
-                  gridData: FlGridData(show: true, drawHorizontalLine: true, drawVerticalLine: true, horizontalInterval: _calculateWeightInterval(dataPoints), verticalInterval: _calculateDateInterval(dataPoints), getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade300, strokeWidth: 0.5), getDrawingVerticalLine: (value) => FlLine(color: Colors.grey.shade300, strokeWidth: 0.5)),
-                  borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade400, width: 1)),
+                  gridData: FlGridData(show: true, drawHorizontalLine: true, drawVerticalLine: true, horizontalInterval: _calculateWeightInterval(dataPoints), verticalInterval: _calculateDateInterval(dataPoints),
+                      getDrawingHorizontalLine: (value) => FlLine(color: Theme.of(context).dividerColor.withOpacity(0.5), strokeWidth: 0.5),
+                      getDrawingVerticalLine: (value) => FlLine(color: Theme.of(context).dividerColor.withOpacity(0.5), strokeWidth: 0.5)),
+                  borderData: FlBorderData(show: true, border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.5), width: 1)),
                   minY: 0,
                 ),
               ),
@@ -261,11 +267,17 @@ class _ProgressChartsState extends State<ProgressCharts> {
     );
   }
 
-  Widget _buildChartPlaceholder(String message) => SizedBox(height: 200, child: Card(elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), color: Colors.grey.shade50, child: Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey))))));
+  Widget _buildChartPlaceholder(String message) => SizedBox(
+    height: 200,
+    child: Card( // Card will use CardTheme
+      // color: Theme.of(context).colorScheme.surfaceVariant, // Or let CardTheme handle it
+      child: Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant))))
+    )
+  );
 
   // --- Chart Title Helper Widgets (Reverting to axisSide) ---
   Widget _bottomTitleWidgets(double value, TitleMeta meta) {
-    final style = TextStyle(fontSize: 10, color: Colors.grey.shade700);
+    final style = TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)); // Themed
     Widget text;
     try {
       text = Text(DateFormat('MMM d').format(DateTime.fromMillisecondsSinceEpoch(value.toInt())), style: style);
@@ -281,7 +293,7 @@ class _ProgressChartsState extends State<ProgressCharts> {
   }
 
   Widget _leftTitleWidgets(double value, TitleMeta meta, bool isVolumeChart) {
-    final style = TextStyle(fontSize: 10, color: Colors.grey.shade700, fontWeight: FontWeight.w600);
+    final style = TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontWeight: FontWeight.w600); // Themed
     String textValue = '';
     if (value == meta.min || value > 0 || meta.max == 0) {
       textValue = isVolumeChart

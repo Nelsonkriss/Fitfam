@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 // Import BLoC, Models, and Providers
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
+import 'package:workout_planner/bloc/theme_provider.dart'; // Import ThemeProvider
 import 'package:workout_planner/resource/firebase_provider.dart'; // Use global instance
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // Use global instance
 import 'package:workout_planner/resource/db_provider.dart'; // Use global instance (for db clear maybe)
@@ -469,6 +470,48 @@ class _SettingPageState extends State<SettingPage> {
                     padding: EdgeInsets.all(16.0),
                     child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
                 ),
+              _buildDivider(),
+
+              // --- Theme Settings Section ---
+              _buildSectionHeader(context, "Appearance"),
+              Consumer<ThemeProvider>( // Use Consumer to listen to ThemeProvider
+                builder: (context, themeProvider, child) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Text("App Theme", style: Theme.of(context).textTheme.titleSmall),
+                      ),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('System Default'),
+                        value: ThemeMode.system,
+                        groupValue: themeProvider.themeMode,
+                        onChanged: (ThemeMode? value) {
+                          if (value != null) themeProvider.setThemeMode(value);
+                        },
+                      ),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Light Mode'),
+                        value: ThemeMode.light,
+                        groupValue: themeProvider.themeMode,
+                        onChanged: (ThemeMode? value) {
+                          if (value != null) themeProvider.setThemeMode(value);
+                        },
+                      ),
+                      RadioListTile<ThemeMode>(
+                        title: const Text('Dark Mode'),
+                        value: ThemeMode.dark,
+                        groupValue: themeProvider.themeMode,
+                        onChanged: (ThemeMode? value) {
+                          if (value != null) themeProvider.setThemeMode(value);
+                        },
+                      ),
+                    ],
+                  );
+                },
+              ),
+              // --- End Theme Settings Section ---
 
               // --- Weekly Progress Routines Section ---
               _buildSectionHeader(context, "Weekly Progress Routines"),

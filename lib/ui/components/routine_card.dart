@@ -20,17 +20,17 @@ class RoutineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Material(
-        color: Theme.of(context).primaryColor,
-        borderRadius: const BorderRadius.all(Radius.circular(6)),
-        elevation: 4,
-        child: InkWell(
-          splashColor: Colors.grey.withOpacity(0.5),
-          borderRadius: const BorderRadius.all(Radius.circular(6)),
+    // Get theme for easier access
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
+    return Card(
+      child: InkWell(
+          borderRadius: (theme.cardTheme.shape is RoundedRectangleBorder)
+              ? ((theme.cardTheme.shape as RoundedRectangleBorder).borderRadius as BorderRadius?) // Cast to BorderRadius
+              : BorderRadius.circular(12.0), // Default if not RoundedRectangleBorder or borderRadius is not BorderRadius
           onTap: () {
-            // --- START: Corrected onTap Logic for RxDart Bloc ---
 
             final int? currentRoutineId = routine.id;
             if (currentRoutineId == null) {
@@ -62,67 +62,63 @@ class RoutineCard extends StatelessWidget {
               ),
             );
           },
-          // --- Widget structure remains the same ---
-          child: Container(
-            height: 72,
-            padding: const EdgeInsets.only(left: 12, right: 12, top: 6, bottom: 2),
-            decoration: const BoxDecoration(
-                borderRadius: BorderRadius.all(Radius.circular(6))
-            ),
+          child: Padding( // Add padding inside InkWell
+            padding: const EdgeInsets.all(16.0), // More modern padding
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.min, // Allow card to size to content
               children: [
-                // Routine Name
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 6.0),
-                      child: Text(
-                        routine.routineName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.w500),
-                      ),
-                    ),
+                Text(
+                  routine.routineName,
+                  maxLines: 2, // Allow a bit more space for longer names
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleLarge?.copyWith(
+                    // Use themed text style
+                    fontWeight: FontWeight.bold,
+                    // Color will be inherited from theme (e.g., onSurface)
                   ),
                 ),
-                // Weekday Indicators
-                if (!isRecRoutine)
+                if (!isRecRoutine && routine.parts.isNotEmpty) ...[ // Add some spacing if details are shown
+                  const SizedBox(height: 8),
+                  Text(
+                    "${routine.parts.length} part${routine.parts.length == 1 ? '' : 's'}", // Example subtitle
+                    style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.7)),
+                  ),
+                ],
+                if (!isRecRoutine) ...[
+                  const SizedBox(height: 12),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.start, // Align to start
                     children: List.generate(7, (index) {
                       final weekday = index + 1;
                       final bool isScheduled = routine.weekdays.contains(weekday);
-                      return Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Container(
-                          height: 16,
-                          width: 16,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isScheduled ? Colors.deepOrangeAccent : Colors.white.withOpacity(0.3),
-                          ),
-                          child: Center(
-                            child: Text(
-                              ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
-                              style: TextStyle(
-                                  color: isScheduled ? Colors.white : Colors.white70,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            ),
+                      return Container(
+                        margin: const EdgeInsets.only(right: 6), // Spacing between circles
+                        height: 20, // Slightly larger circles
+                        width: 20,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isScheduled ? colorScheme.primary : colorScheme.surfaceVariant, // Themed colors
+                          border: isScheduled ? null : Border.all(color: colorScheme.outline.withOpacity(0.5))
+                        ),
+                        child: Center(
+                          child: Text(
+                            ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
+                            style: TextStyle(
+                                color: isScheduled ? colorScheme.onPrimary : colorScheme.onSurfaceVariant, // Themed text colors
+                                fontSize: 10, // Adjusted size
+                                fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       );
                     }),
                   ),
+                ]
               ],
             ),
           ),
         ),
-      ),
     );
   }
 }

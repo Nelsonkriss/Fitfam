@@ -11,6 +11,7 @@ const String databaseStatusKey = "databaseStatus"; // Example: Tracks local DB s
 const String weeklyAmountKey = "weeklyAmount";   // Example: User preference
 const String DailyRankKey = "dailyRankInfo"; // Stores string like "YYYY-MM-DD/rank"
 const String weeklyProgressRoutineIdsKey = "weeklyProgressRoutineIds"; // Key for selected routine IDs
+const String themeModeKey = "themeMode"; // Key for storing theme preference (light, dark, system)
 
 // Authentication related keys
 const String signInMethodKey = "signInMethod"; // Stores the enum name (e.g., "google", "apple")
@@ -297,6 +298,28 @@ class SharedPrefsProvider {
       // Handle case where stored name doesn't match any enum value (e.g., corrupted data)
       debugPrint("SharedPrefsProvider: Error parsing stored SignInMethod name. Defaulting to none. Error: $e");
       return SignInMethod.none; // Default to none on error
+    }
+  }
+
+  // --- Theme Preference ---
+
+  Future<String?> getThemeMode() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getString(themeModeKey); // Defaults to null if not set
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting theme mode: $e");
+      return null;
+    }
+  }
+
+  Future<void> setThemeMode(String mode) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setString(themeModeKey, mode);
+      debugPrint("SharedPrefsProvider: Theme mode set to $mode");
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting theme mode: $e");
     }
   }
 

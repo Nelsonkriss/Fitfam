@@ -36,10 +36,10 @@ class StackedAreaLineChart extends StatelessWidget {
         lineBarsData: [
           LineChartBarData(
             spots: dataPoints, isCurved: true, curveSmoothness: 0.35, barWidth: 3,
-            color: Colors.deepOrangeAccent, isStrokeCapRound: true,
+            color: Theme.of(context).colorScheme.secondary, isStrokeCapRound: true, // Themed
             dotData: FlDotData(show: dataPoints.length < 30),
             belowBarData: BarAreaData( show: true,
-              gradient: LinearGradient( colors: [ Colors.deepOrangeAccent.withOpacity(0.4), Colors.deepOrangeAccent.withOpacity(0.0), ],
+              gradient: LinearGradient( colors: [ Theme.of(context).colorScheme.secondary.withOpacity(0.4), Theme.of(context).colorScheme.secondary.withOpacity(0.0), ], // Themed
                 begin: Alignment.topCenter, end: Alignment.bottomCenter, ),
             ),
           ),
@@ -47,6 +47,7 @@ class StackedAreaLineChart extends StatelessWidget {
         lineTouchData: LineTouchData(
           enabled: true, handleBuiltInTouches: true,
           touchTooltipData: LineTouchTooltipData(
+            tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9), // Themed tooltip background
             maxContentWidth: 120,
             getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
               return touchedBarSpots.map((barSpot) {
@@ -62,8 +63,8 @@ class StackedAreaLineChart extends StatelessWidget {
                 }
                 final double weight = barSpot.y;
                 final String weightStr = weight.toStringAsFixed(weight.truncateToDouble() == weight ? 0 : 1);
-                return LineTooltipItem( '$weightStr kg \n', TextStyle(color: Theme.of(context).colorScheme.onInverseSurface ?? Colors.white, fontWeight: FontWeight.bold),
-                  children: [ TextSpan( text: dateStr, style: TextStyle(color: (Theme.of(context).colorScheme.onInverseSurface ?? Colors.white).withOpacity(0.8), fontSize: 12), ), ],
+                return LineTooltipItem( '$weightStr kg \n', TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold), // Themed text
+                  children: [ TextSpan( text: dateStr, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8), fontSize: 12), ), ], // Themed text
                   textAlign: TextAlign.center, );
               }).toList();
             },
@@ -94,7 +95,7 @@ class StackedAreaLineChart extends StatelessWidget {
                       space: 6.0,
                       child: Text(
                         DateFormat('MMM d').format(date),
-                        style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                        style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)), // Themed
                       ),
                     );
                   }
@@ -109,13 +110,12 @@ class StackedAreaLineChart extends StatelessWidget {
               reservedSize: 40,
               getTitlesWidget: (double value, TitleMeta meta) {
                 if ((value == meta.min && value >= 0) || value == meta.max || (value == 0 && meta.max ==0)) {
-                  // *** REVERTING TO axisSide HERE ***
                   return SideTitleWidget(
                     axisSide: meta.axisSide,
                     space: 4.0,
                     child: Text(
                       '${value.toStringAsFixed(0)}kg',
-                      style: TextStyle(fontSize: 10, color: Colors.grey.shade700),
+                      style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)), // Themed
                       textAlign: TextAlign.center,
                     ),
                   );
@@ -129,7 +129,7 @@ class StackedAreaLineChart extends StatelessWidget {
         gridData: FlGridData(
           show: true, drawHorizontalLine: true, drawVerticalLine: false,
           horizontalInterval: _calculateWeightInterval(dataPoints),
-          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade300, strokeWidth: 0.5),
+          getDrawingHorizontalLine: (value) => FlLine(color: Theme.of(context).dividerColor.withOpacity(0.5), strokeWidth: 0.5), // Themed
         ),
         minY: 0,
       ),
@@ -261,13 +261,21 @@ List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> p
 
     if (totalPartsCount == 0) return [];
 
+    // Use a more diverse and theme-friendly set of colors
     final List<Color> colors = [
-      Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary,
-      Theme.of(context).colorScheme.tertiary, Theme.of(context).colorScheme.primaryContainer,
-      Theme.of(context).colorScheme.secondaryContainer, Theme.of(context).colorScheme.tertiaryContainer,
-      Colors.orange.shade600, Colors.red.shade500, Colors.purple.shade500, Colors.teal.shade400,
-      Colors.pink.shade300, Colors.amber.shade600, Colors.indigo.shade400,
-      Colors.lightGreen.shade500, Colors.blueGrey.shade400,
+      Theme.of(context).colorScheme.primary,
+      Theme.of(context).colorScheme.secondary,
+      Theme.of(context).colorScheme.tertiary,
+      Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8),
+      Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.8),
+      Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.8),
+      // Add more distinct colors if needed, ensuring they work in both light/dark
+      Colors.cyan.shade400,
+      Colors.pink.shade300,
+      Colors.green.shade400,
+      Colors.amber.shade600,
+      Colors.indigo.shade300,
+      Colors.lime.shade400,
     ];
     int colorIndex = 0;
     final List<PieChartSectionData> sections = [];
@@ -289,7 +297,9 @@ List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> p
         radius: 60,
         titleStyle: TextStyle(
             fontSize: 12, fontWeight: FontWeight.bold,
-            color: ThemeData.estimateBrightnessForColor(sectionColor) == Brightness.dark ? Colors.white : Colors.black,
+            color: ThemeData.estimateBrightnessForColor(sectionColor) == Brightness.dark
+                   ? Theme.of(context).colorScheme.onPrimary // Or a light color
+                   : Theme.of(context).colorScheme.onSurface, // Or a dark color
             shadows: const [Shadow(color: Colors.black26, blurRadius: 2.0)]
         ),
       ));

@@ -19,10 +19,7 @@ import 'package:workout_planner/models/part.dart'; // Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 
-// Default text styles for cards (Consider moving to theme)
-const TextStyle _kCardTextStyle = TextStyle(color: Colors.white, fontSize: 16, height: 1.2);
-const TextStyle _kCardLabelTextStyle = TextStyle(color: Colors.white70, fontSize: 13, height: 1.2);
-const TextStyle _kCardLargeNumStyle = TextStyle(color: Colors.white, fontWeight: FontWeight.bold); // Size determined by FittedBox
+// Default text styles for cards are now replaced by theme-aware styles below.
 
 
 /// Page displaying user statistics, workout calendar, and charts.
@@ -185,15 +182,15 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                const Text('Using since', textAlign: TextAlign.center, style: _kCardLabelTextStyle),
-                Text(displayFirstRunDate, textAlign: TextAlign.center, style: _kCardTextStyle.copyWith(fontSize: 16, fontWeight: FontWeight.w500)),
+                Text('Using since', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
+                Text(displayFirstRunDate, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
                 const Spacer(flex: 2),
                 Expanded(
                     flex: 5,
-                    child: FittedBox(fit: BoxFit.contain, child: Text('$daysSince', textAlign: TextAlign.center, style: _kCardLargeNumStyle))
+                    child: FittedBox(fit: BoxFit.contain, child: Text('$daysSince', textAlign: TextAlign.center, style: Theme.of(context).textTheme.displaySmall))
                 ),
                 const Spacer(flex: 1),
-                const Text('Days Ago', textAlign: TextAlign.center, style: _kCardLabelTextStyle),
+                Text('Days Ago', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
                 const SizedBox(height: 8),
               ],
             ),
@@ -205,13 +202,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('Total Workouts\nCompleted', textAlign: TextAlign.center, style: _kCardLabelTextStyle),
+                Text('Total Workouts\nCompleted', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
                 const Spacer(flex: 2),
                 Expanded(
                   flex: 5,
-                  child: FittedBox(fit: BoxFit.contain, child: Text( totalCompletionCount.toString(), textAlign: TextAlign.center, style: _kCardLargeNumStyle)),
+                  child: FittedBox(fit: BoxFit.contain, child: Text( totalCompletionCount.toString(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.displaySmall)),
                 ),
-                const Spacer(flex: 3), // Adjust spacing as needed
+                const Spacer(flex: 3),
               ],
             ),
           ),
@@ -220,21 +217,20 @@ class _StatisticsPageState extends State<StatisticsPage> {
           _buildInfoCard(
             context: context,
             child: Padding(
-              padding: const EdgeInsets.all(8.0), // Inner padding for chart card
+              padding: const EdgeInsets.all(8.0),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Workout Focus", style: _kCardLabelTextStyle),
-                  const SizedBox(height: 12), // Increased space
+                  Text("Workout Focus", style: Theme.of(context).textTheme.labelMedium),
+                  const SizedBox(height: 12),
                   Expanded(
-                    child: Builder( // Use Builder to create allParts list within the scope
+                    child: Builder(
                       builder: (context) {
-                        // Extract all parts from all routines
                         final List<Part> allParts = routines.expand((routine) => routine.parts).toList();
-
+                        // TODO: DonutAutoLabelChart needs to be made theme-aware
                         return (allParts.isEmpty)
-                            ? Center(child: Text("No parts defined in routines", style: _kCardTextStyle.copyWith(color: Colors.white54, fontSize: 12)))
-                            : DonutAutoLabelChart(allParts); // Pass List<Part>
+                            ? Center(child: Text("No parts defined", style: Theme.of(context).textTheme.bodySmall))
+                            : DonutAutoLabelChart(allParts);
                       }
                     ),
                   ),
@@ -251,22 +247,22 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text("Weekly Progress", textAlign: TextAlign.center, style: _kCardLabelTextStyle),
-                      const Spacer(flex: 2), // Push indicator down slightly
+                      Text("Weekly Progress", textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
+                      const Spacer(flex: 1), // Reduced flex
                       CircularPercentIndicator(
-                        radius: 48.0, // Adjusted radius to prevent overflow
-                        lineWidth: 10.0, // Adjusted line width
+                        radius: 45.0, // Slightly reduced radius
+                        lineWidth: 9.0, // Slightly reduced line width
                         animation: true,
                         animationDuration: 800,
-                        percent: weeklyRatio, // Use the calculated ratio (already clamped)
+                        percent: weeklyRatio,
                         center: Text( "${(weeklyRatio * 100).toStringAsFixed(0)}%",
-                          style: _kCardTextStyle.copyWith(fontWeight: FontWeight.bold, fontSize: 20.0),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), // Slightly smaller text
                         ),
                         circularStrokeCap: CircularStrokeCap.round,
-                        backgroundColor: Colors.white.withOpacity(0.2), // Background circle
-                        progressColor: Colors.deepOrangeAccent, // Use theme accent?
+                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        progressColor: Theme.of(context).colorScheme.secondary,
                       ),
-                      const Spacer(flex: 3), // Bottom space
+                      const Spacer(flex: 2), // Reduced flex
                     ]
                 ),
               )
@@ -279,12 +275,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
   /// Helper widget to build the standard card appearance.
   Widget _buildInfoCard({required BuildContext context, required Widget child}) {
     return Card(
-      shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(12) ),
-      elevation: 4,
-      // Use primary color from theme for cards, or a slightly darker variant
-      color: Theme.of(context).primaryColorDark ?? Theme.of(context).primaryColor,
-      child: Padding( // Apply padding inside the card
-        padding: const EdgeInsets.all(8.0),
+      // Card properties like shape, elevation, and color will be inherited from CardTheme in main.dart
+      // color: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface, // Example if CardTheme didn't set color
+      child: Padding(
+        padding: const EdgeInsets.all(12.0), // Increased padding for content within card
         child: child,
       ),
     );

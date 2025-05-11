@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-// Keep if Cupertino widgets are used indirectly
-import 'package:provider/provider.dart'; // Import Provider
-import 'package:workout_planner/bloc/routines_bloc.dart'; // Import RxDart Bloc
+import 'package:provider/provider.dart';
+import 'package:workout_planner/bloc/routines_bloc.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-// Import Routine model
-import 'package:workout_planner/utils/routine_helpers.dart'; // For converter
-
-import 'components/routine_card.dart'; // Import RoutineCard widget
+import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/utils/routine_helpers.dart';
+import 'package:workout_planner/resource/open_router_service.dart';
+import 'components/routine_card.dart';
+import 'package:flutter/foundation.dart'; // For kDebugMode
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
 
 class RecommendPage extends StatefulWidget {
   const RecommendPage({super.key});
@@ -17,24 +18,44 @@ class RecommendPage extends StatefulWidget {
 
 class _RecommendPageState extends State<RecommendPage> {
   final ScrollController _scrollController = ScrollController();
-  bool _showAppBarShadow = false; // Use clearer variable name
+  bool _showAppBarShadow = false;
+
+  // --- AI Routine Generation State ---
+  final TextEditingController _aiPromptController = TextEditingController();
+  bool _isGeneratingAiRoutine = false;
+  String? _aiError;
+  late final OpenRouterService _openRouterService;
+  bool _apiKeyMissing = false;
+  // --- End AI State ---
 
   @override
   void initState() {
     super.initState();
-    // Listen to scroll position to toggle AppBar shadow
     _scrollController.addListener(_handleScroll);
 
-    // Fetch recommended routines when the page loads
-    // Access BLoC via context (ensure it's available after build)
+    final apiKey = dotenv.env['OPENROUTER_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      _apiKeyMissing = true;
+      _aiError = "OpenRouter API Key is missing. Please set it in your .env file and restart the app.";
+      _openRouterService = OpenRouterService(apiKey: ''); 
+      debugPrint("[RecommendPage] API Key missing in initState.");
+    } else {
+      _openRouterService = OpenRouterService(apiKey: apiKey);
+      debugPrint("[RecommendPage] API Key loaded, OpenRouterService initialized.");
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Use read() as we only need to trigger the fetch once
-      context.read<RoutinesBloc>().fetchRecommendedRoutines();
+      if (mounted) {
+        context.read<RoutinesBloc>().fetchAllRoutines(); 
+        if (_apiKeyMissing) {
+          setState(() {}); 
+        }
+      }
     });
   }
 
   void _handleScroll() {
-    if (!mounted) return; // Check if widget is still mounted
+    if (!mounted) return;
     final bool shouldShowShadow = _scrollController.offset > 0;
     if (shouldShowShadow != _showAppBarShadow) {
       setState(() {
@@ -45,169 +66,265 @@ class _RecommendPageState extends State<RecommendPage> {
 
   @override
   void dispose() {
-    _scrollController.removeListener(_handleScroll); // Remove listener
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
+    _aiPromptController.dispose();
     super.dispose();
+  }
+
+  Future<void> _generateAndSaveAiRoutine() async {
+    if (_aiPromptController.text.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _aiError = "Please enter a description for the routine you want.";
+        });
+      }
+      return;
+    }
+
+    if (_apiKeyMissing) {
+      if (mounted) {
+        setState(() {
+          _aiError = "OpenRouter API Key is missing. Cannot generate routine. Please set it in .env and restart.";
+        });
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingAiRoutine = true;
+      _aiError = null;
+    });
+
+    try {
+      final String? routineJsonString = await _openRouterService.getAiGeneratedRoutineDescription(_aiPromptController.text.trim());
+
+      if (!mounted) return;
+
+      if (routineJsonString != null) {
+        final Routine? newRoutine = _openRouterService.parseRoutineFromJsonString(routineJsonString);
+        if (newRoutine != null) {
+          if (mounted) {
+            await context.read<RoutinesBloc>().addRoutine(newRoutine);
+            _aiPromptController.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("AI routine generated and saved!"), backgroundColor: Colors.green),
+            );
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _aiError = "AI generated a routine, but it couldn't be understood. Please try a different prompt.";
+            });
+          }
+          debugPrint("[RecommendPage] Failed to parse AI JSON into Routine object. JSON: $routineJsonString");
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _aiError = "Failed to get a response from the AI. Check connection/API key.";
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _aiError = "An error occurred: ${e.toString()}";
+        });
+      }
+      debugPrint("[RecommendPage] Error generating AI routine: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingAiRoutine = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Access the BLoC instance provided by Provider
     final routinesBlocInstance = context.watch<RoutinesBloc>();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Dev's Favorites"), // Title consistency
-        elevation: _showAppBarShadow ? 4.0 : 0.0, // Use state variable for elevation
-        shadowColor: Colors.black.withOpacity(0.3), // Optional shadow color
+        title: const Text("AI Routine Coach"), 
+        elevation: _showAppBarShadow ? 4.0 : 0.0,
+        shadowColor: Colors.black.withOpacity(0.3),
       ),
-      body: StreamBuilder<List<Routine>>(
-        // *** FIX: Access stream via BLoC instance ***
-        stream: routinesBlocInstance.allRecommendedRoutinesStream,
-        builder: (context, snapshot) {
-          // Handle different stream states
-          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-            // Initial loading state
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            // Error state
-            return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(
-                    'Error loading recommendations: ${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Generate with AI",
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _aiPromptController,
+                  decoration: InputDecoration(
+                    hintText: "e.g., 3-day full body for beginners",
+                    // border: const OutlineInputBorder(), // Will pick up from InputDecorationTheme
+                    errorText: _aiError,
                   ),
-                )
-            );
-          } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            // Empty state
-            return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'No recommended routines available at the moment.',
-                    textAlign: TextAlign.center,
+                  minLines: 2,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => (_isGeneratingAiRoutine || _apiKeyMissing) ? null : _generateAndSaveAiRoutine(),
+                  readOnly: _apiKeyMissing,
+                ),
+                const SizedBox(height: 12),
+                if (_apiKeyMissing)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      _aiError ?? "API Key is missing. Configure .env file and restart.",
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                )
-            );
-          } else {
-            // Data available state
-            final routines = snapshot.data!;
-            // Use ListView.builder for potentially long lists (better performance)
-            return ListView.builder(
-              controller: _scrollController,
-              itemCount: _calculateListItemCount(routines), // Calculate total items including headers
-              itemBuilder: (context, index) {
-                return _buildListItem(context, routines, index); // Build header or card
+                _isGeneratingAiRoutine
+                    ? const Center(child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ))
+                    : ElevatedButton.icon(
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text("Generate Routine"),
+                        onPressed: _apiKeyMissing ? null : _generateAndSaveAiRoutine,
+                        style: ElevatedButton.styleFrom( // Theme will provide base, this makes it full width
+                          minimumSize: const Size(double.infinity, 48), 
+                        ),
+                      ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "AI-Generated Routines", 
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<List<Routine>>(
+              stream: routinesBlocInstance.allRoutinesStream, 
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                } else if (snapshot.hasError) {
+                  return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Text(
+                          'Error loading routines: ${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                        ),
+                      )
+                  );
+                } else {
+                  final aiGeneratedRoutines = snapshot.data?.where((r) => r.isAiGenerated).toList() ?? [];
+                  
+                  if (aiGeneratedRoutines.isEmpty) {
+                    return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            'No AI-generated routines yet. Try creating one above!', 
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                    );
+                  }
+                  
+                  return ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+                    itemCount: _calculateListItemCount(aiGeneratedRoutines), 
+                    itemBuilder: (context, index) {
+                      return _buildListItem(context, aiGeneratedRoutines, index); 
+                    },
+                  );
+                }
               },
-            );
-          }
-        },
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- Helper Functions for Building List ---
-
-  // Group routines by body part (consider moving to BLoC or a helper if complex)
   Map<MainTargetedBodyPart, List<Routine>> _groupRoutines(List<Routine> routines) {
-    // Initialize map with all possible body parts to maintain order if desired
     final map = { for (var v in MainTargetedBodyPart.values) v : <Routine>[] };
-    // final map = <MainTargetedBodyPart, List<Routine>>{}; // Alternative: only include parts present
-
     for (final routine in routines) {
-      // Ensure routine's body part exists in the enum before adding
       if (map.containsKey(routine.mainTargetedBodyPart)) {
         map[routine.mainTargetedBodyPart]!.add(routine);
       } else {
-        debugPrint("Warning: Routine '${routine.routineName}' has unknown MainTargetedBodyPart: ${routine.mainTargetedBodyPart}");
+        if (kDebugMode) {
+          print("Warning: Routine '${routine.routineName}' has unknown MainTargetedBodyPart: ${routine.mainTargetedBodyPart}");
+        }
       }
     }
-    // Remove empty categories after grouping if map wasn't pre-initialized with all keys
-    // map.removeWhere((key, value) => value.isEmpty);
+    map.removeWhere((key, value) => value.isEmpty);
     return map;
   }
 
-  // Calculate the total number of items (headers + routine cards)
   int _calculateListItemCount(List<Routine> routines) {
     final grouped = _groupRoutines(routines);
     int count = 0;
     grouped.forEach((key, value) {
-      if (value.isNotEmpty) {
-        count++; // Add 1 for the header
-        count += value.length; // Add count for routine cards
+      if (value.isNotEmpty) { 
+        count++; 
+        count += value.length; 
       }
     });
     return count;
   }
 
-  // Build either a header or a routine card based on the index
   Widget _buildListItem(BuildContext context, List<Routine> routines, int index) {
     final grouped = _groupRoutines(routines);
-    // Filter out empty categories before indexing
-    final categoriesWithRoutines = grouped.entries.where((entry) => entry.value.isNotEmpty).toList();
+    final categoriesWithRoutines = grouped.entries.toList(); 
 
     int currentIndex = 0;
     for (var entry in categoriesWithRoutines) {
       final bodyPart = entry.key;
       final categoryRoutines = entry.value;
 
-      // Check if current index is the header for this category
       if (index == currentIndex) {
         return _buildCategoryHeader(context, bodyPart);
       }
-      currentIndex++; // Increment past the header
+      currentIndex++;
 
-      // Check if current index falls within the routines for this category
       if (index < currentIndex + categoryRoutines.length) {
         final routineIndexInCategory = index - currentIndex;
         final routine = categoryRoutines[routineIndexInCategory];
-        // Build the RoutineCard for this routine
-        return RoutineCard(routine: routine, isRecRoutine: true);
+        return RoutineCard(routine: routine, isRecRoutine: false); 
       }
-      // Increment past the routines in this category
       currentIndex += categoryRoutines.length;
     }
-
-    // Should not be reached if itemCount is calculated correctly
     return const SizedBox.shrink();
   }
 
-  // Build the header widget for a body part category
   Widget _buildCategoryHeader(BuildContext context, MainTargetedBodyPart bodyPart) {
-    // Use theme text styles for consistency
     final style = Theme.of(context).textTheme.headlineSmall?.copyWith(
       fontWeight: FontWeight.bold,
-      // color: Theme.of(context).colorScheme.secondary // Optional: use accent color
     );
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), // Adjust padding
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
-        mainTargetedBodyPartToStringConverter(bodyPart), // Use helper function
+        mainTargetedBodyPartToStringConverter(bodyPart),
         style: style,
       ),
     );
   }
-
-// --- buildChildren (Alternative if NOT using ListView.builder) ---
-/*
-  List<Widget> buildChildren(List<Routine> routines) {
-    final grouped = _groupRoutines(routines);
-    final children = <Widget>[];
-
-    grouped.forEach((bodyPart, categoryRoutines) {
-      if (categoryRoutines.isNotEmpty) {
-        children.add(_buildCategoryHeader(context, bodyPart)); // Pass context
-        children.addAll(
-          categoryRoutines.map((r) => RoutineCard(routine: r, isRecRoutine: true))
-        );
-         children.add(const SizedBox(height: 8)); // Add space between categories
-      }
-    });
-    return children;
-  }
-  */
 }

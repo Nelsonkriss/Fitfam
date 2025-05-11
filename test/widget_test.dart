@@ -165,6 +165,30 @@ class MockSharedPrefsProvider implements SharedPrefsProvider {
     // TODO: implement getAppVersion
     throw UnimplementedError();
   }
+
+  @override
+  Future<List<int>> getWeeklyProgressRoutineIds() {
+    // TODO: implement getWeeklyProgressRoutineIds
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> setWeeklyProgressRoutineIds(List<int> ids) {
+    // TODO: implement setWeeklyProgressRoutineIds
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<String?> getThemeMode() {
+    // TODO: implement getThemeMode
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> setThemeMode(String mode) {
+    // TODO: implement setThemeMode
+    throw UnimplementedError();
+  }
 }
 
 // Mock for RxDart Bloc

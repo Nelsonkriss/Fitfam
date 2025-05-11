@@ -52,7 +52,7 @@ class DBProviderIO implements DbProviderInterface {
       debugPrint("[DBProviderIO] Database path: $path");
 
       // Define DB version - increment this when schema changes require migration
-      const int dbVersion = 1; // Start at 1
+      const int dbVersion = 2; // Incremented version due to schema change
 
       return await openDatabase(path, version: dbVersion,
           onOpen: (db) async {
@@ -84,7 +84,8 @@ class DBProviderIO implements DbProviderInterface {
         "lastCompletedDate TEXT," // ISO8601 String or NULL
         "completionCount INTEGER DEFAULT 0 NOT NULL,"
         "weekdays TEXT NOT NULL," // JSON List<int>
-        "routineHistory TEXT NOT NULL" // JSON List<int> timestamps
+        "routineHistory TEXT NOT NULL," // JSON List<int> timestamps
+        "isAiGenerated INTEGER DEFAULT 0 NOT NULL" // New column, 0 for false, 1 for true
         ")");
     debugPrint("[DBProviderIO] Created Routines table.");
 
@@ -127,16 +128,15 @@ class DBProviderIO implements DbProviderInterface {
   /// Logic for handling database upgrades (schema changes) when version increases.
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
     debugPrint("[DBProviderIO] Upgrading database from $oldVersion to $newVersion...");
-    // Example Migration (add more based on your schema evolution):
-    // if (oldVersion < 2) {
-    //   // Example: Add a 'notes' column to Routines
-    //   await db.execute("ALTER TABLE Routines ADD COLUMN notes TEXT;");
-    //   debugPrint("[DBProviderIO] Added 'notes' column to Routines table.");
-    // }
+    if (oldVersion < 2) { // Assuming this is the first schema change after initial creation (version 1)
+      // Migration for adding isAiGenerated to Routines table
+      // IMPORTANT: Adjust '2' to the new DB version you set in _initDBInternal
+      await db.execute("ALTER TABLE Routines ADD COLUMN isAiGenerated INTEGER DEFAULT 0 NOT NULL;");
+      debugPrint("[DBProviderIO] Added 'isAiGenerated' column to Routines table.");
+    }
+    // Example for future migrations:
     // if (oldVersion < 3) {
-    //    // Handle migration related to removing 'exercises' column from WorkoutSessions if needed
-    //    debugPrint("[DBProviderIO] Handling migration for WorkoutSessions normalization (if applicable)...");
-    //    // Typically involves creating new table, copying data, dropping old, renaming new.
+    //   // await db.execute("ALTER TABLE SomeOtherTable ADD COLUMN newField TEXT;");
     // }
   }
 

@@ -111,9 +111,10 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        // backgroundColor: Theme.of(context).colorScheme.secondary, // Use theme color
-        child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () => _showAddRoutineSheet(context, routinesBlocInstance), // Pass BLoC instance
+        // backgroundColor will be picked from theme. Ensure FloatingActionButtonThemeData is set in main.dart if specific color needed.
+        // child: const Icon(Icons.add, color: Colors.white), // Color will be picked up by theme (onSecondary or onPrimary)
+        child: const Icon(Icons.add), // Let theme handle icon color
+        onPressed: () => _showAddRoutineSheet(context, routinesBlocInstance),
       ),
     );
   }
@@ -159,14 +160,59 @@ class _HomePageState extends State<HomePage> {
     final int weekday = DateTime.now().weekday; // 1=Monday, 7=Sunday
     final List<Widget> children = <Widget>[];
 
-    // --- Styles ---
-    // Consider defining these in theme or constants file
-    const todayTextStyle = TextStyle(fontWeight: FontWeight.bold, fontSize: 28, color: Colors.orangeAccent);
-    final routineTitleTextStyle = TextStyle(
-        fontWeight: FontWeight.w600,
-        fontSize: 20,
-        color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.8) ?? Colors.black87
+    // --- AI Generation Card ---
+    children.add(
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 0), // Add padding
+        child: Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RecommendPage()),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 32, color: Theme.of(context).colorScheme.secondary), // Keep secondary for emphasis
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Create with AI", style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Let AI generate a workout routine based on your goals.",
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+        ),
+      )
     );
+    children.add(const SizedBox(height: 8)); // Spacer after AI card
+    // --- End AI Generation Card ---
+
+
+    // --- Styles ---
+    final theme = Theme.of(context);
+    final todayTextStyle = theme.textTheme.headlineMedium?.copyWith(
+        fontWeight: FontWeight.bold,
+        color: theme.colorScheme.secondary // Use secondary for "Today" emphasis
+    );
+    final routineTitleTextStyle = theme.textTheme.titleLarge; // Use a more semantic style
 
     // 1. Separate today's routines and categorize others
     for (var routine in routines) {
@@ -192,7 +238,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 8),
               Text(
                   "Workout${todayRoutines.length > 1 ? 's' : ''}",
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16)
+                  style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)
               ),
             ],
           )));
@@ -260,7 +306,7 @@ class _HomePageState extends State<HomePage> {
                 ...MainTargetedBodyPart.values.map((val) {
                   var title = mainTargetedBodyPartToStringConverter(val);
                   return ListTile(
-                    leading: Icon(Icons.fitness_center, color: Theme.of(context).primaryColor), // Example icon
+                    leading: Icon(Icons.fitness_center, color: Theme.of(context).colorScheme.primary), // Use themed primary
                     title: Text("New '$title' Routine"),
                     onTap: () {
                       Navigator.pop(sheetContext); // Close the sheet first
@@ -277,8 +323,8 @@ class _HomePageState extends State<HomePage> {
                 const Divider(height: 1, indent: 16, endIndent: 16), // Separator
                 // Template Option
                 ListTile(
-                    leading: Icon(Icons.list_alt_outlined, color: Colors.blueGrey.shade700),
-                    title: Text( 'Add from Template', style: TextStyle(color: Colors.blueGrey.shade800), ),
+                    leading: Icon(Icons.list_alt_outlined, color: Theme.of(context).colorScheme.secondary), // Use themed secondary
+                    title: Text( 'Add from Template', style: TextStyle(color: Theme.of(context).colorScheme.secondary), ), // Use themed secondary
                     onTap: () {
                       Navigator.pop(sheetContext); // Close sheet
                       _navigateToAddFromTemplate(context); // Call helper

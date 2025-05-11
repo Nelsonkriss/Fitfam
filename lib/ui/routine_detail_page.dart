@@ -122,9 +122,8 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
             centerTitle: true,
             title: Text(
               mainTargetedBodyPartToStringConverter(currentRoutine.mainTargetedBodyPart),
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              // style will be inherited from AppBarTheme.titleTextStyle
             ),
-            // Build actions dynamically based on routine type and data
             actions: _buildAppBarActions(context, currentRoutine),
           ),
           // Body contains header card and list of part cards
@@ -188,7 +187,7 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
               child: Text(
                 "This routine has no exercise parts yet.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Theme.of(context).hintColor),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               )
           ),
         )
@@ -219,40 +218,36 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 4), // Adjust padding
       child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        elevation: 4,
-        color: Theme.of(context).primaryColorDark,
+        // Card properties will be inherited from CardTheme
+        // color: Theme.of(context).colorScheme.surfaceVariant, // Example if CardTheme didn't set color
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+          padding: const EdgeInsets.all(16.0), // Consistent padding
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
                 routine.routineName,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 24,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant // Or onPrimaryContainer if card is primaryContainer color
                 ),
               ),
-              // Show stats only for user's routines
               if (!widget.isRecRoutine) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 16), // Increased spacing
               Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  mainAxisAlignment: MainAxisAlignment.spaceAround, // Use spaceAround for better distribution
                   children: [
-                    _buildStatColumn("COMPLETED", routine.completionCount.toString()),
-                    _buildStatColumn("CREATED", _formatDate(routine.createdDate)),
-                    // Show Last Done only if it exists
+                    _buildStatColumn(context, "COMPLETED", routine.completionCount.toString()),
+                    _buildStatColumn(context, "CREATED", _formatDate(routine.createdDate)),
                     if(routine.lastCompletedDate != null)
-                      _buildStatColumn("LAST DONE", _formatDate(routine.lastCompletedDate!)),
-                    // Add placeholder if lastCompleted is null to maintain layout?
-                    if(routine.lastCompletedDate == null) const Spacer(),
+                      _buildStatColumn(context, "LAST DONE", _formatDate(routine.lastCompletedDate!)),
+                    if(routine.lastCompletedDate == null && routine.parts.isNotEmpty) // Only add spacer if there's content
+                      const Expanded(child: SizedBox.shrink()), // Use Expanded for proper spacing with spaceAround
                   ]
               ),
+              const SizedBox(height: 8), // Adjusted spacing
             ],
-              const SizedBox(height: 4),
             ],
           ),
         ),
@@ -261,12 +256,14 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
   }
 
   /// Helper for building stat columns in the header card.
-  Widget _buildStatColumn(String label, String value) {
+  Widget _buildStatColumn(BuildContext context, String label, String value) {
+    final theme = Theme.of(context);
     return Column(
+      mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
       children: [
-        Text(value, style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.white.withOpacity(0.7), letterSpacing: 0.5)),
+        Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 4), // Adjusted spacing
+        Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7))),
       ],
     );
   }
@@ -473,12 +470,12 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
                   value: _isCheckedList[index],
                   onChanged: (value) => _updateWeekdaySelection(index, value),
                   visualDensity: VisualDensity.compact,
-                  activeColor: Theme.of(context).primaryColor,
+                  activeColor: Theme.of(context).colorScheme.primary, // Themed
                 ),
                 const SizedBox(width: 10),
-                Icon(weekDayIcons[index], size: 20, color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.7)),
+                Icon(weekDayIcons[index], size: 20, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)), // Themed
                 const SizedBox(width: 15),
-                Text(weekDays[index]),
+                Text(weekDays[index]), // Text will inherit from Material's DefaultTextStyle
               ],
             )
         )),
