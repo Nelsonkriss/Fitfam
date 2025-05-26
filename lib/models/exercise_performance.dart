@@ -2,7 +2,7 @@
 
 import 'package:flutter/foundation.dart'; // For Object.hash, debugPrint
 import 'package:collection/collection.dart'; // For DeepCollectionEquality
-import 'package:meta/meta.dart'; // For @immutable
+// For @immutable
 
 // Assuming these models are correctly defined
 import 'package:workout_planner/models/exercise.dart'; // Import Exercise model

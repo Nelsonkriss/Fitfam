@@ -60,6 +60,7 @@ class RoutineOverview extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                     builder: (context) => RoutineDetailPage(
+                      key: ValueKey('routine_detail_${routine.id}'),
                       isRecRoutine: isRecRoutine,
                       // Detail page should get the routine from the BLoC stream
                     )));

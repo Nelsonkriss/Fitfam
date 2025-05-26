@@ -3,7 +3,7 @@
 import 'dart:convert'; // Import dart:convert for JSON handling
 import 'package:collection/collection.dart'; // For listEquals and hashAll
 import 'package:flutter/foundation.dart'; // For debugPrint, @immutable
-import 'package:meta/meta.dart'; // For @immutable
+// For @immutable
 
 // Assuming these models are defined correctly and handle their own toMap/fromMap
 import 'package:workout_planner/models/main_targeted_body_part.dart';

@@ -2,15 +2,15 @@
 
 import 'package:flutter/foundation.dart'; // For diagnostics, Object.hash
 import 'package:uuid/uuid.dart'; // For generating unique IDs
-import 'package:meta/meta.dart'; // For @immutable
+// For @immutable
 import 'package:collection/collection.dart'; // For DeepCollectionEquality
 
 // Import related models
 import 'routine.dart'; // Includes Part definition indirectly if exported
 import 'exercise_performance.dart';
-import 'set_performance.dart'; // Needed by ExercisePerformance
+// Needed by ExercisePerformance
 // import 'part.dart'; // No longer needed directly if Routine exports Part
-import 'exercise.dart'; // Needed by ExercisePerformance.fromExerciseDefinition
+// Needed by ExercisePerformance.fromExerciseDefinition
 
 @immutable
 class WorkoutSession {

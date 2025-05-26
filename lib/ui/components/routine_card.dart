@@ -57,6 +57,7 @@ class RoutineCard extends StatelessWidget {
               context,
               MaterialPageRoute(
                 builder: (_) => RoutineDetailPage(
+                  key: ValueKey('routine_detail_$currentRoutineId'),
                   isRecRoutine: isRecRoutine,
                 ),
               ),
@@ -98,7 +99,7 @@ class RoutineCard extends StatelessWidget {
                         width: 20,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: isScheduled ? colorScheme.primary : colorScheme.surfaceVariant, // Themed colors
+                          color: isScheduled ? colorScheme.primary : colorScheme.surfaceContainerHighest, // Themed colors
                           border: isScheduled ? null : Border.all(color: colorScheme.outline.withOpacity(0.5))
                         ),
                         child: Center(

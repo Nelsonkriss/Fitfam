@@ -1,10 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:workout_planner/models/routine.dart'; // Assuming you'll parse into this
-import 'package:workout_planner/models/part.dart';
-import 'package:workout_planner/models/exercise.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 
 
@@ -40,7 +37,7 @@ Output the routine ONLY as a JSON object with the following structure and nothin
   ]
 }
 Ensure exercise names are common and recognizable.
-'workoutType' can be 'Weight', 'Cardio', or 'Timed'.
+'workoutType' can be 'Weight', 'Cardio', 'Timed'.
 'mainTargetedBodyPart' for the routine must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Other.
 'targetedBodyPart' for a part must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep.
 'setType' for a part must be one of: Regular, Drop, Super, Tri, Giant.
@@ -187,7 +184,7 @@ Do not include any explanatory text before or after the JSON object.
                            ? (exerciseJson['sets'] ?? exerciseJson['set']) as int
                            : 0;
           if (exSets == 0) {
-            debugPrint("[OpenRouterService] Warning: Exercise '${exName}' has 0 sets or invalid 'sets'/'set' field. Value: ${exerciseJson['sets'] ?? exerciseJson['set']}. Skipping exercise.");
+            debugPrint("[OpenRouterService] Warning: Exercise '$exName' has 0 sets or invalid 'sets'/'set' field. Value: ${exerciseJson['sets'] ?? exerciseJson['set']}. Skipping exercise.");
             continue;
           }
           final String exReps = exerciseJson['reps'] as String;

@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_planner/bloc/routines_bloc.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/resource/open_router_service.dart';
+import 'package:workout_planner/services/notification_service.dart'; // Import NotificationService
 import 'components/routine_card.dart';
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
@@ -106,10 +106,20 @@ class _RecommendPageState extends State<RecommendPage> {
         final Routine? newRoutine = _openRouterService.parseRoutineFromJsonString(routineJsonString);
         if (newRoutine != null) {
           if (mounted) {
+            // Show notification immediately
+            final notificationService = NotificationService(); // Get instance
+            await notificationService.showNotification(
+              // ID can be based on routine hash or a timestamp to be unique enough for immediate notifications
+              id: DateTime.now().millisecondsSinceEpoch % 100000, // Simple unique ID
+              title: "New AI Routine Created!",
+              body: "Your new routine '${newRoutine.routineName}' is ready.",
+              payload: "ai_routine_created_${newRoutine.id ?? 'new'}" // Optional: payload for navigation
+            );
+
             await context.read<RoutinesBloc>().addRoutine(newRoutine);
             _aiPromptController.clear();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("AI routine generated and saved!"), backgroundColor: Colors.green),
+              const SnackBar(content: Text("AI routine generated, saved, and you've been notified!"), backgroundColor: Colors.green),
             );
           }
         } else {

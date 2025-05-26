@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart'; // For debugPrint
 // For potential mapEquals if needed
 
 /// Represents the type of workout an exercise belongs to.
-enum WorkoutType { Cardio, Weight }
+enum WorkoutType { Cardio, Weight, Timed }
 
 /// Represents a single exercise within a workout plan.
 /// Immutable. Use [copyWith] to create modified instances.

@@ -131,6 +131,13 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
               controller: _scrollController,
               children: _buildBodyChildren(context, currentRoutine)
           ),
+          floatingActionButton: !widget.isRecRoutine && currentRoutine.parts.isNotEmpty
+              ? FloatingActionButton.extended(
+                  onPressed: () => _startRoutine(context, currentRoutine),
+                  label: const Text('Start Workout'),
+                  icon: const Icon(Icons.play_arrow), // Or Icons.fitness_center
+                )
+              : null,
         );
       },
     );
@@ -158,11 +165,6 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
           icon: const Icon(Icons.share_outlined),
           tooltip: "Share Routine",
           onPressed: () => _handleSharePressed(routine), // Pass routine
-        ),
-        IconButton(
-          icon: const Icon(Icons.play_circle_outline, size: 30),
-          tooltip: "Start Workout",
-          onPressed: () => _startRoutine(context, routine), // Pass routine
         ),
       ],
       // Action for Recommended Routines

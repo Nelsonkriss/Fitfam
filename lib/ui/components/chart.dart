@@ -2,15 +2,14 @@
 
 import 'dart:math'; // For max() function used in chart data processing
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart'; // If used, otherwise remove
+// If used, otherwise remove
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
-import 'dart:async';
 
 // Import your actual models
 import 'package:workout_planner/models/part.dart'; // Changed from routine.dart
 // MainTargetedBodyPart is no longer directly used here, TargetedBodyPart from part.dart will be used.
-import 'package:workout_planner/models/exercise.dart'; // Ensure this path is correct
+// Ensure this path is correct
 
 class StackedAreaLineChart extends StatelessWidget {
   final Exercise exercise;
@@ -47,7 +46,7 @@ class StackedAreaLineChart extends StatelessWidget {
         lineTouchData: LineTouchData(
           enabled: true, handleBuiltInTouches: true,
           touchTooltipData: LineTouchTooltipData(
-            tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9), // Themed tooltip background
+            tooltipBgColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.9), // Themed tooltip background
             maxContentWidth: 120,
             getTooltipItems: (List<LineBarSpot> touchedBarSpots) {
               return touchedBarSpots.map((barSpot) {
@@ -84,8 +83,8 @@ class StackedAreaLineChart extends StatelessWidget {
                   final firstDate = _datedMaxWeightsCache.first.key;
                   bool isMin = (value - meta.min).abs() < 1e-9;
                   bool isMax = (value - meta.max).abs() < 1e-9;
-                  bool isIntervalMultiple = meta.appliedInterval != null && meta.appliedInterval! > 0
-                      ? ((value - meta.min) % meta.appliedInterval!).abs() < 1e-9
+                  bool isIntervalMultiple = meta.appliedInterval > 0
+                      ? ((value - meta.min) % meta.appliedInterval).abs() < 1e-9
                       : false;
                   if (isMin || isMax || isIntervalMultiple) {
                     final DateTime date = firstDate.add(Duration(days: value.toInt()));
@@ -139,10 +138,6 @@ class StackedAreaLineChart extends StatelessWidget {
   List<FlSpot> _createDataPointsFromHistory() {
     final List<FlSpot> dataPoints = [];
     final List<MapEntry<DateTime, double>> datedMaxWeights = [];
-    if (exercise.exHistory == null) {
-      _datedMaxWeightsCache = [];
-      return dataPoints;
-    }
 
     exercise.exHistory.forEach((dateString, historyEntryList) {
       try {

@@ -10,12 +10,12 @@ import 'package:provider/provider.dart'; // To access BLoCs
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
 // import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Not directly needed if CalendarPage handles its own data
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For getFirstRunDate
-import 'package:workout_planner/resource/shared_prefs_provider.dart'; // Re-add import statement
+// Re-add import statement
 
 // Import Models and UI Components
 // Included via routine.dart
 // Included via routine.dart
-import 'package:workout_planner/models/part.dart'; // Import Part model
+// Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 
@@ -259,7 +259,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), // Slightly smaller text
                         ),
                         circularStrokeCap: CircularStrokeCap.round,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                         progressColor: Theme.of(context).colorScheme.secondary,
                       ),
                       const Spacer(flex: 2), // Reduced flex

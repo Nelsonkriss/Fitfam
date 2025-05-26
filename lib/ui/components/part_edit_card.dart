@@ -209,7 +209,7 @@ class _PartEditCardState extends State<PartEditCard> {
                   )),
             ],
           ),
-        )).toList(),
+        )),
       ],
     );
   }

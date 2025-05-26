@@ -1,6 +1,5 @@
 // lib/ui/progress_charts.dart
 
-import 'dart:async';
 import 'dart:math'; // For max() function used in chart data processing
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
@@ -161,7 +160,7 @@ class _ProgressChartsState extends State<ProgressCharts> {
               lineTouchData: LineTouchData(
                   handleBuiltInTouches: true,
                   touchTooltipData: LineTouchTooltipData(
-                      tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9),
+                      tooltipBgColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.9),
                       maxContentWidth: 100,
                       getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
                         final date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
@@ -243,7 +242,7 @@ class _ProgressChartsState extends State<ProgressCharts> {
               child: LineChart(
                 LineChartData(
                   lineTouchData: LineTouchData(handleBuiltInTouches: true, touchTooltipData: LineTouchTooltipData(
-                    tooltipBgColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.9),
+                    tooltipBgColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.9),
                     maxContentWidth: 120, getTooltipItems: (touchedSpots) => touchedSpots.map((spot) {
                     final date = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
                     final weightStr = spot.y.toStringAsFixed(spot.y.truncateToDouble() == spot.y ? 0 : 1);

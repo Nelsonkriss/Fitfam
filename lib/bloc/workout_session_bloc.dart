@@ -27,6 +27,19 @@ class WorkoutSessionLoadExisting extends WorkoutSessionEvent {
   WorkoutSessionLoadExisting(this.sessionId);
 }
 
+/// Event triggered when actual weight is updated without completing the set
+class WorkoutSetActualWeightChanged extends WorkoutSessionEvent {
+  final int exerciseIndex;
+  final int setIndex;
+  final double actualWeight;
+
+  WorkoutSetActualWeightChanged({
+    required this.exerciseIndex,
+    required this.setIndex,
+    required this.actualWeight,
+  });
+}
+
 /// Event triggered when a set is completed during the workout.
 class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
   final int exerciseIndex;
@@ -39,6 +52,18 @@ class WorkoutSetMarkedComplete extends WorkoutSessionEvent {
     required this.setIndex,
     required this.actualReps,
     required this.actualWeight,
+  });
+}
+
+class WorkoutSetTargetWeightChanged extends WorkoutSessionEvent {
+  final int exerciseIndex;
+  final int setIndex;
+  final double targetWeight;
+
+  WorkoutSetTargetWeightChanged({
+    required this.exerciseIndex,
+    required this.setIndex,
+    required this.targetWeight,
   });
 }
 
@@ -132,6 +157,8 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_SessionTimerTicked>(_onSessionTimerTicked);
     on<_RestTimerTicked>(_onRestTimerTicked);
     on<_RestPeriodEnded>(_onRestPeriodEnded);
+    on<WorkoutSetTargetWeightChanged>(_onWorkoutSetTargetWeightChanged);
+    on<WorkoutSetActualWeightChanged>(_onWorkoutSetActualWeightChanged);
   }
 
   /// Allows UI to explicitly trigger a refresh of the historical session list.
@@ -314,6 +341,72 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       _loadAllSessions();
     }
   } // End _onWorkoutSessionFinishAttempt
+
+  void _onWorkoutSetActualWeightChanged(WorkoutSetActualWeightChanged event, Emitter<WorkoutSessionState> emit) {
+    if (state.session == null || state.isFinished || state.isLoading) {
+      debugPrint("[WorkoutSessionBloc] Ignoring SetActualWeightChanged: Invalid state.");
+      return;
+    }
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSetActualWeightChanged - ExIdx: ${event.exerciseIndex}, SetIdx: ${event.setIndex}, Weight: ${event.actualWeight}");
+    try {
+      final currentSession = state.session!;
+      final updatedExercises = List<ExercisePerformance>.from(
+        currentSession.exercises.map((exPerf) => exPerf.copyWith(
+          sets: List<SetPerformance>.from(exPerf.sets),
+        )),
+      );
+
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) throw RangeError("Invalid exercise index: ${event.exerciseIndex}");
+      final targetExercise = updatedExercises[event.exerciseIndex];
+      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) throw RangeError("Invalid set index: ${event.setIndex}");
+
+      final originalSet = targetExercise.sets[event.setIndex];
+      final updatedSet = originalSet.copyWith(
+        actualWeight: event.actualWeight,
+      );
+      targetExercise.sets[event.setIndex] = updatedSet;
+
+      final updatedSession = currentSession.copyWith(exercises: updatedExercises);
+      emit(state.copyWith(session: updatedSession, errorMessage: null));
+      debugPrint("[WorkoutSessionBloc] Session state updated with changed actual weight.");
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] Error updating actual weight: $e\n$s");
+      emit(state.copyWith(errorMessage: "Failed to update actual weight: $e"));
+    }
+  }
+
+  void _onWorkoutSetTargetWeightChanged(WorkoutSetTargetWeightChanged event, Emitter<WorkoutSessionState> emit) {
+    if (state.session == null || state.isFinished || state.isLoading) {
+      debugPrint("[WorkoutSessionBloc] Ignoring SetTargetWeightChanged: Invalid state.");
+      return;
+    }
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSetTargetWeightChanged - ExIdx: ${event.exerciseIndex}, SetIdx: ${event.setIndex}, Weight: ${event.targetWeight}");
+    try {
+      final currentSession = state.session!;
+      final updatedExercises = List<ExercisePerformance>.from(
+        currentSession.exercises.map((exPerf) => exPerf.copyWith(
+          sets: List<SetPerformance>.from(exPerf.sets),
+        )),
+      );
+
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) throw RangeError("Invalid exercise index: ${event.exerciseIndex}");
+      final targetExercise = updatedExercises[event.exerciseIndex];
+      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) throw RangeError("Invalid set index: ${event.setIndex}");
+
+      final originalSet = targetExercise.sets[event.setIndex];
+      final updatedSet = originalSet.copyWith(
+        targetWeight: event.targetWeight,
+      );
+      targetExercise.sets[event.setIndex] = updatedSet;
+
+      final updatedSession = currentSession.copyWith(exercises: updatedExercises);
+      emit(state.copyWith(session: updatedSession, errorMessage: null));
+      debugPrint("[WorkoutSessionBloc] Session state updated with changed target weight.");
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] Error updating target weight: $e\n$s");
+      emit(state.copyWith(errorMessage: "Failed to update target weight: $e"));
+    }
+  }
 
   /// Handles the event to directly save a completed workout session.
   /// This is typically called from a page that manages its own session lifecycle

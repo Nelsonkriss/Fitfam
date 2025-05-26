@@ -208,7 +208,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
             preferredSize: const Size.fromHeight(4.0),
             child: LinearProgressIndicator(
               value: progress.clamp(0.0, 1.0), 
-              backgroundColor: theme.colorScheme.surfaceVariant.withOpacity(0.5), // Themed
+              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5), // Themed
               valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.secondary), // Themed
             ),
           ),
@@ -290,7 +290,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
           data: theme.copyWith(
             colorScheme: theme.colorScheme.copyWith(
               primary: theme.colorScheme.secondary, // Active step color
-              onSurface: theme.colorScheme.onBackground, // Step title color etc.
+              onSurface: theme.colorScheme.onSurface, // Step title color etc.
               surface: theme.colorScheme.surface, 
             ),
             dividerColor: theme.dividerColor.withOpacity(0.5),
@@ -492,7 +492,7 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
           updatedSessionExercises[exerciseFlatIndex] = updatedExercisePerf;
 
           _activeWorkoutSession = _activeWorkoutSession!.copyWith(exercises: updatedSessionExercises);
-          debugPrint("Updated _activeWorkoutSession for Exercise: ${updatedExercisePerf.exerciseName}, Set: ${setNumber}, Weight: $actualWeight, Reps: $actualReps");
+          debugPrint("Updated _activeWorkoutSession for Exercise: ${updatedExercisePerf.exerciseName}, Set: $setNumber, Weight: $actualWeight, Reps: $actualReps");
 
         } else {
           debugPrint("Error: Invalid set index ($setIndex) for ExercisePerformance '${currentExercisePerf.exerciseName}'.");
