@@ -52,7 +52,7 @@ class DBProviderIO implements DbProviderInterface {
       debugPrint("[DBProviderIO] Database path: $path");
 
       // Define DB version - increment this when schema changes require migration
-      const int dbVersion = 2; // Incremented version due to schema change
+      const int dbVersion = 3; // Incremented version for workoutType column
 
       return await openDatabase(path, version: dbVersion,
           onOpen: (db) async {
@@ -105,6 +105,7 @@ class DBProviderIO implements DbProviderInterface {
         "id INTEGER PRIMARY KEY AUTOINCREMENT,"
         "sessionId TEXT NOT NULL," // FK to WorkoutSessions.id
         "exerciseName TEXT NOT NULL,"
+        "workoutType TEXT NOT NULL," // Enum as string (Weight, Cardio, Timed)
         "restPeriod INTEGER," // Duration in seconds or NULL
         "FOREIGN KEY (sessionId) REFERENCES WorkoutSessions(id) ON DELETE CASCADE"
         ")");
@@ -128,16 +129,14 @@ class DBProviderIO implements DbProviderInterface {
   /// Logic for handling database upgrades (schema changes) when version increases.
   Future<void> _onUpgradeDB(Database db, int oldVersion, int newVersion) async {
     debugPrint("[DBProviderIO] Upgrading database from $oldVersion to $newVersion...");
-    if (oldVersion < 2) { // Assuming this is the first schema change after initial creation (version 1)
-      // Migration for adding isAiGenerated to Routines table
-      // IMPORTANT: Adjust '2' to the new DB version you set in _initDBInternal
+    if (oldVersion < 2) {
       await db.execute("ALTER TABLE Routines ADD COLUMN isAiGenerated INTEGER DEFAULT 0 NOT NULL;");
       debugPrint("[DBProviderIO] Added 'isAiGenerated' column to Routines table.");
     }
-    // Example for future migrations:
-    // if (oldVersion < 3) {
-    //   // await db.execute("ALTER TABLE SomeOtherTable ADD COLUMN newField TEXT;");
-    // }
+    if (oldVersion < 3) {
+      await db.execute("ALTER TABLE ExercisePerformances ADD COLUMN workoutType TEXT NOT NULL DEFAULT 'Weight';");
+      debugPrint("[DBProviderIO] Added 'workoutType' column to ExercisePerformances table.");
+    }
   }
 
   @override
@@ -231,6 +230,7 @@ class DBProviderIO implements DbProviderInterface {
           final exerciseMap = {
             'sessionId': session.id, // Link to parent session
             'exerciseName': exercise.exerciseName,
+            'workoutType': exercise.workoutType.name, // Store enum as string
             'restPeriod': exercise.restPeriod?.inSeconds,
           };
           // Insert exercise and get its new DB ID
@@ -306,6 +306,10 @@ class DBProviderIO implements DbProviderInterface {
               exerciseName: exerciseMap['exerciseName'] as String? ?? 'Unknown Exercise',
               sets: setsForThisExercise, // Assign the fetched sets
               restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int) : null,
+              workoutType: WorkoutType.values.firstWhere(
+                (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
+                orElse: () => WorkoutType.Weight,
+              ),
             );
             exercisesForThisSession.add(exercisePerformance);
           } catch (e,s) { debugPrint("[DBProviderIO] Error creating ExercisePerformance object for exercise $exerciseId: $e\n$s"); }
@@ -349,7 +353,16 @@ class DBProviderIO implements DbProviderInterface {
         final exerciseId = exerciseMap['id'] as int;
         final setMaps = await dbClient.query('SetPerformances', where: 'exerciseId = ?', whereArgs: [exerciseId], orderBy: 'id ASC');
         final List<SetPerformance> setsForThisExercise = setMaps.map((setMap) => /* ... SetPerformance from setMap ... */ SetPerformance(targetReps: setMap['targetReps'] as int? ?? 0, targetWeight: (setMap['targetWeight'] as num?)?.toDouble() ?? 0.0, actualReps: setMap['actualReps'] as int? ?? 0, actualWeight: (setMap['actualWeight'] as num?)?.toDouble() ?? 0.0, isCompleted: (setMap['isCompleted'] as int? ?? 0) == 1)).toList(); // Simplified for brevity
-        final exercisePerformance = ExercisePerformance(id: exerciseId, exerciseName: exerciseMap['exerciseName'] as String? ?? '', sets: setsForThisExercise, restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null);
+        final exercisePerformance = ExercisePerformance(
+          id: exerciseId,
+          exerciseName: exerciseMap['exerciseName'] as String? ?? '',
+          sets: setsForThisExercise,
+          restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null,
+          workoutType: WorkoutType.values.firstWhere(
+            (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
+            orElse: () => WorkoutType.Weight,
+          ),
+        );
         exercisesForThisSession.add(exercisePerformance);
       }
 

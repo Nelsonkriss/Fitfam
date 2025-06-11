@@ -62,14 +62,15 @@ dependencies:
   timezone: ^0.9.3 # Use latest version
   flutter_dotenv: ^5.2.1
 
-
-
   collection: any
   path: any
   meta: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  bloc_test: ^10.0.0
+  mockito: ^5.4.4
+  build_runner: ^2.4.7
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -96,6 +97,9 @@ flutter:
     - database/data.db
     - assets/ic_launcher.png
     - assets/app_icon.png
+    # Exercise animation images
+    - assets/extraExercises/
+    - assets/exercise_images/
 
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a

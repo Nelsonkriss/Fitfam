@@ -93,23 +93,25 @@ class RoutineCard extends StatelessWidget {
                     children: List.generate(7, (index) {
                       final weekday = index + 1;
                       final bool isScheduled = routine.weekdays.contains(weekday);
-                      return Container(
-                        margin: const EdgeInsets.only(right: 6), // Spacing between circles
-                        height: 20, // Slightly larger circles
-                        width: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isScheduled ? colorScheme.primary : colorScheme.surfaceContainerHighest, // Themed colors
-                          border: isScheduled ? null : Border.all(color: colorScheme.outline.withOpacity(0.5))
-                        ),
-                        child: Center(
-                          child: Text(
-                            ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
-                            style: TextStyle(
-                                color: isScheduled ? colorScheme.onPrimary : colorScheme.onSurfaceVariant, // Themed text colors
-                                fontSize: 10, // Adjusted size
-                                fontWeight: FontWeight.bold),
-                            textAlign: TextAlign.center,
+                      return Flexible(
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 4), // Reduced spacing to prevent overflow
+                          height: 18, // Slightly smaller circles to fit better
+                          width: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isScheduled ? colorScheme.primary : colorScheme.surfaceContainerHighest, // Themed colors
+                            border: isScheduled ? null : Border.all(color: colorScheme.outline.withOpacity(0.5))
+                          ),
+                          child: Center(
+                            child: Text(
+                              ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
+                              style: TextStyle(
+                                  color: isScheduled ? colorScheme.onPrimary : colorScheme.onSurfaceVariant, // Themed text colors
+                                  fontSize: 9, // Slightly smaller font to fit better
+                                  fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
                       );

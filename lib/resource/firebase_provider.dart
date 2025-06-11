@@ -12,6 +12,7 @@ import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 // Import your models and other providers
 import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/models/user_profile.dart';
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // Make sure path is correct
 
 // Key constants (assuming defined in shared_prefs_provider.dart or globally)
@@ -75,8 +76,9 @@ class FirebaseProvider {
       rethrow;
     }
   }
-// Getter to access the current user from FirebaseAuth
-  User? get firebaseUser => firebaseAuth.currentUser;
+
+  // Getter to access the current user from FirebaseAuth
+  User? get currentUser => firebaseAuth.currentUser;
 
   /// Restores routines from Firestore for the current user.
   Future<List<Routine>> restoreRoutines() async {
@@ -129,6 +131,117 @@ class FirebaseProvider {
     } catch (e) {
       debugPrint("FirebaseProvider: Error checking user existence: $e");
       return false;
+    }
+  }
+
+  // --- User Profile Management ---
+
+  /// Saves user profile to Firestore.
+  Future<void> saveUserProfile(UserProfile profile) async {
+    debugPrint("FirebaseProvider: Attempting to save user profile...");
+    final user = firebaseAuth.currentUser;
+    if (user == null) {
+      debugPrint("FirebaseProvider: No authenticated user found. Skipping profile save.");
+      return;
+    }
+
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      debugPrint("FirebaseProvider: No internet connection. Skipping profile save.");
+      throw Exception("No internet connection. Cannot save user profile.");
+    }
+
+    try {
+      final userRef = firestore.collection("users").doc(user.uid);
+      final Map<String, dynamic> profileData = {
+        "userProfile": profile.toJson(),
+        "profileLastUpdated": FieldValue.serverTimestamp(),
+      };
+
+      await userRef.set(profileData, SetOptions(merge: true));
+      debugPrint("FirebaseProvider: Successfully saved user profile for user ${user.uid}.");
+    } catch (e, s) {
+      debugPrint('FirebaseProvider: Error saving user profile: $e\n$s');
+      rethrow;
+    }
+  }
+
+  /// Restores user profile from Firestore for the current user.
+  Future<UserProfile?> restoreUserProfile() async {
+    debugPrint("FirebaseProvider: Attempting to restore user profile...");
+    final user = firebaseAuth.currentUser;
+    if (user == null) {
+      debugPrint("FirebaseProvider: No authenticated user found. Cannot restore profile.");
+      return null;
+    }
+
+    try {
+      final docRef = firestore.collection("users").doc(user.uid);
+      final docSnapshot = await docRef.get();
+      final data = docSnapshot.data();
+
+      if (!docSnapshot.exists || data == null || data["userProfile"] == null) {
+        debugPrint("FirebaseProvider: No user profile data found for user ${user.uid}.");
+        return null;
+      }
+
+      final profileData = data["userProfile"] as Map<String, dynamic>;
+      final profile = UserProfile.fromJson(profileData);
+      debugPrint("FirebaseProvider: Successfully restored user profile.");
+      return profile;
+    } catch (e, s) {
+      debugPrint('FirebaseProvider: Error restoring user profile: $e\n$s');
+      return null;
+    }
+  }
+
+  /// Syncs user profile between local storage and cloud.
+  /// Returns the most recent profile (local or cloud).
+  Future<UserProfile?> syncUserProfile() async {
+    debugPrint("FirebaseProvider: Syncing user profile...");
+    final user = firebaseAuth.currentUser;
+    if (user == null) {
+      debugPrint("FirebaseProvider: No authenticated user. Using local profile only.");
+      return await sharedPrefsProvider.getUserProfile();
+    }
+
+    try {
+      final localProfile = await sharedPrefsProvider.getUserProfile();
+      final cloudProfile = await restoreUserProfile();
+
+      if (localProfile == null && cloudProfile == null) {
+        debugPrint("FirebaseProvider: No profile found locally or in cloud.");
+        return null;
+      }
+
+      if (localProfile == null) {
+        // Only cloud profile exists, save it locally
+        debugPrint("FirebaseProvider: Only cloud profile exists, saving locally.");
+        await sharedPrefsProvider.setUserProfile(cloudProfile!);
+        return cloudProfile;
+      }
+
+      if (cloudProfile == null) {
+        // Only local profile exists, save it to cloud
+        debugPrint("FirebaseProvider: Only local profile exists, saving to cloud.");
+        await saveUserProfile(localProfile);
+        return localProfile;
+      }
+
+      // Both exist, use the most recently updated one
+      if (localProfile.updatedAt.isAfter(cloudProfile.updatedAt)) {
+        debugPrint("FirebaseProvider: Local profile is newer, syncing to cloud.");
+        await saveUserProfile(localProfile);
+        return localProfile;
+      } else {
+        debugPrint("FirebaseProvider: Cloud profile is newer, syncing to local.");
+        await sharedPrefsProvider.setUserProfile(cloudProfile);
+        return cloudProfile;
+      }
+    } catch (e, s) {
+      debugPrint('FirebaseProvider: Error syncing user profile: $e\n$s');
+      // Return local profile as fallback
+      return await sharedPrefsProvider.getUserProfile();
     }
   }
 
@@ -189,7 +302,6 @@ class FirebaseProvider {
       return -1;
     }
   }
-
 
   // --- Authentication Methods ---
 

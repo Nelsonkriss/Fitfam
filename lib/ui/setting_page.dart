@@ -108,7 +108,7 @@ class _SettingPageState extends State<SettingPage> {
 
     try {
       // Check if user is signed in (needed for restore)
-      if (firebaseProvider.firebaseUser == null) {
+      if (firebaseProvider.currentUser == null) {
         _showMsgDialog("Not Signed In", content: "You must be signed in to restore data.");
         return;
       }
@@ -142,7 +142,7 @@ class _SettingPageState extends State<SettingPage> {
 
   Future<void> _handleBackup(RoutinesBloc bloc) async {
     // Check sign-in status
-    if (firebaseProvider.firebaseUser == null) {
+    if (firebaseProvider.currentUser == null) {
       _showSnackBar('Please sign in to back up your data.');
       return;
     }

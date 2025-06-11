@@ -235,23 +235,19 @@ class DonutAutoLabelChart extends StatelessWidget { // Changed to StatelessWidge
     );
   }
 
-List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> parts) { // Changed signature
-    final Map<TargetedBodyPart, int> countsByBodyPart = {}; // Changed to TargetedBodyPart
+List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> parts) {
+    final Map<TargetedBodyPart, int> countsByBodyPart = {};
     int totalPartsCount = 0;
 
     // Iterate over parts instead of routines
     for (final part in parts) {
-      // Assuming each part instance counts as one towards its targeted body part.
-      // If parts have a specific "count" or "completion" metric, use that here.
-      // For now, we count each part as 1.
       final TargetedBodyPart bodyPart = part.targetedBodyPart;
-
       countsByBodyPart.update(
         bodyPart,
-        (v) => v + 1, // Increment count for this body part
+        (v) => v + 1,
         ifAbsent: () => 1,
       );
-      totalPartsCount += 1; // Increment total parts processed
+      totalPartsCount += 1;
     }
 
     if (totalPartsCount == 0) return [];
@@ -264,7 +260,6 @@ List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> p
       Theme.of(context).colorScheme.primaryContainer.withOpacity(0.8),
       Theme.of(context).colorScheme.secondaryContainer.withOpacity(0.8),
       Theme.of(context).colorScheme.tertiaryContainer.withOpacity(0.8),
-      // Add more distinct colors if needed, ensuring they work in both light/dark
       Colors.cyan.shade400,
       Colors.pink.shade300,
       Colors.green.shade400,
@@ -272,6 +267,7 @@ List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> p
       Colors.indigo.shade300,
       Colors.lime.shade400,
     ];
+    
     int colorIndex = 0;
     final List<PieChartSectionData> sections = [];
 
@@ -281,24 +277,66 @@ List<PieChartSectionData> _createSectionsData(BuildContext context, List<Part> p
     for (var entry in sortedEntries) {
       final bodyPart = entry.key;
       final count = entry.value;
-      final double percentage = (count / totalPartsCount) * 100; // Use totalPartsCount
+      final double percentage = (count / totalPartsCount) * 100;
       final Color sectionColor = colors[colorIndex % colors.length];
       colorIndex++;
+
+      // Show body part names with percentages
+      final String bodyPartName = percentage >= 5.0 
+          ? bodyPart.name 
+          : _getShortBodyPartName(bodyPart);
+      final String displayText = '$bodyPartName\n${percentage.toStringAsFixed(0)}%';
 
       sections.add(PieChartSectionData(
         color: sectionColor,
         value: count.toDouble(),
-        title: bodyPart.name,
-        radius: 60,
+        title: displayText,
+        radius: 50, // Reduced radius to fit better in card
         titleStyle: TextStyle(
-            fontSize: 12, fontWeight: FontWeight.bold,
-            color: ThemeData.estimateBrightnessForColor(sectionColor) == Brightness.dark
-                   ? Theme.of(context).colorScheme.onPrimary // Or a light color
-                   : Theme.of(context).colorScheme.onSurface, // Or a dark color
-            shadows: const [Shadow(color: Colors.black26, blurRadius: 2.0)]
+          fontSize: percentage >= 5.0 ? 10 : 8, // Larger font for bigger slices
+          fontWeight: FontWeight.bold,
+          color: _getContrastColor(sectionColor, context),
+          shadows: const [Shadow(color: Colors.black38, blurRadius: 1.5, offset: Offset(0.5, 0.5))],
         ),
+        titlePositionPercentageOffset: 0.6, // Move text closer to edge for better readability
       ));
     }
     return sections;
+  }
+
+  /// Get a shortened version of body part names for small slices
+  String _getShortBodyPartName(TargetedBodyPart bodyPart) {
+    switch (bodyPart) {
+      case TargetedBodyPart.FullBody:
+        return 'Full';
+      case TargetedBodyPart.Chest:
+        return 'Chest';
+      case TargetedBodyPart.Back:
+        return 'Back';
+      case TargetedBodyPart.Leg:
+        return 'Legs';
+      case TargetedBodyPart.Shoulder:
+        return 'Shld';
+      case TargetedBodyPart.Arm:
+        return 'Arms';
+      case TargetedBodyPart.Abs:
+        return 'Abs';
+      case TargetedBodyPart.Bicep:
+        return 'Bi';
+      case TargetedBodyPart.Tricep:
+        return 'Tri';
+      default:
+        return bodyPart.name.substring(0, 3); // First 3 characters as fallback
+    }
+  }
+
+  /// Get contrasting color for text based on background color
+  Color _getContrastColor(Color backgroundColor, BuildContext context) {
+    final brightness = ThemeData.estimateBrightnessForColor(backgroundColor);
+    if (brightness == Brightness.dark) {
+      return Colors.white;
+    } else {
+      return Colors.black87;
+    }
   }
 }

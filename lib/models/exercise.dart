@@ -16,6 +16,7 @@ class Exercise {
   final WorkoutType workoutType;
   final Map<String, dynamic> exHistory; // Keys: Date String, Values: String or Map
   final double? lastUsedWeight; // New field for last used weight
+  final Duration? timedDuration; // Duration for timed exercises
 
   /// Creates an immutable instance of [Exercise].
   const Exercise({ // Make constructor const
@@ -26,6 +27,7 @@ class Exercise {
     this.workoutType = WorkoutType.Weight,
     Map<String, dynamic>? exHistory,
     this.lastUsedWeight, // Initialize with null by default
+    this.timedDuration, // Duration for timed exercises
   }) : exHistory = exHistory ?? const {}; // Use const empty map
 
   /// Creates a new Exercise instance with specified fields updated.
@@ -38,6 +40,7 @@ class Exercise {
     Map<String, dynamic>? exHistory,
     double? lastUsedWeight, // Allow nullable for explicit reset or no change
     bool setLastUsedWeightToNull = false, // Flag to explicitly set lastUsedWeight to null
+    Duration? timedDuration,
   }) {
     return Exercise(
       name: name ?? this.name,
@@ -47,6 +50,7 @@ class Exercise {
       workoutType: workoutType ?? this.workoutType,
       exHistory: exHistory ?? Map<String, dynamic>.from(this.exHistory),
       lastUsedWeight: setLastUsedWeightToNull ? null : (lastUsedWeight ?? this.lastUsedWeight),
+      timedDuration: timedDuration ?? this.timedDuration,
     );
   }
 
@@ -98,6 +102,10 @@ class Exercise {
       exHistory: decodeHistory(map['history']),
       // lastUsedWeight might be null in DB or not present in older maps
       lastUsedWeight: (map['lastUsedWeight'] as num?)?.toDouble(),
+      // Parse timedDuration from seconds
+      timedDuration: map['timedDuration'] != null 
+          ? Duration(seconds: int.tryParse(map['timedDuration'].toString()) ?? 0) 
+          : null,
     );
   }
 
@@ -112,6 +120,7 @@ class Exercise {
     // *** Correctly encodes history map to JSON string ***
     'history': jsonEncode(exHistory),
     'lastUsedWeight': lastUsedWeight, // Add to map, will be null if not set
+    'timedDuration': timedDuration?.inSeconds, // Store duration in seconds
   };
 
   /// Creates a copy of an Exercise instance without its history.
@@ -124,6 +133,7 @@ class Exercise {
       workoutType: other.workoutType,
       exHistory: const {}, // Use const empty map
       lastUsedWeight: other.lastUsedWeight, // Copy this field as well
+      timedDuration: other.timedDuration,
     );
   }
 
@@ -145,7 +155,8 @@ class Exercise {
         other.sets == sets &&
         other.reps == reps &&
         other.workoutType == workoutType &&
-        other.lastUsedWeight == lastUsedWeight; // Compare new field
+        other.lastUsedWeight == lastUsedWeight && // Compare new field
+        other.timedDuration == timedDuration;
   }
 
   // Hash code based on core fields
@@ -157,6 +168,7 @@ class Exercise {
     reps,
     workoutType,
     lastUsedWeight, // Add to hash
+    timedDuration,
     // Use DeepCollectionEquality().hash(exHistory) if history is included in ==
   );
 }

@@ -9,6 +9,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 // import 'package:flutter/rendering.dart'; // Not directly used here
 import 'package:provider/provider.dart'; // Import Provider
+import 'package:share_plus/share_plus.dart';
 // import 'package:permission_handler/permission_handler.dart'; // Keep if used for saving QR
 // import 'package:image_gallery_saver/image_gallery_saver.dart'; // Keep if used for saving QR
 
@@ -408,8 +409,8 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
 
   /// Shows the dialog with QR code and share options.
   void _showQRDialog(String routineName) {
-    // (Implementation remains the same - builds Dialog with QR and buttons)
-    showDialog( context: context, builder: (dialogContext) => Dialog( /* ... */ ), );
+    final String shareText = 'Check out this workout routine: $routineName. You can import it in the app with the ID: $_shareDataString';
+    Share.share(shareText);
   }
 
   /// Placeholder for saving QR image to gallery.

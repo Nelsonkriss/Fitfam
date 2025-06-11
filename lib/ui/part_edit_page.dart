@@ -9,6 +9,11 @@ import 'package:keyboard_actions/keyboard_actions.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/part.dart';
 import 'package:workout_planner/utils/routine_helpers.dart';
+import 'package:workout_planner/ui/components/exercise_search_dialog.dart';
+import 'package:workout_planner/models/exercise_animation_data.dart';
+import 'package:workout_planner/services/ai_weight_recommendation_service.dart';
+import 'package:workout_planner/models/user_profile.dart';
+import 'package:workout_planner/resource/shared_prefs_provider.dart';
 
 // --- Helper Classes ---
 class StringHelper {
@@ -506,52 +511,86 @@ class _PartEditPageState extends State<PartEditPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text('Exercise ${index + 1}', style: textTheme.titleMedium),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Weight',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: exerciseState.workoutType == WorkoutType.Weight
-                          ? colorScheme.primary
-                          : colorScheme.onSurfaceVariant,
+              SizedBox(
+                width: 180, // Fixed width to prevent overflow
+                child: SegmentedButton<WorkoutType>(
+                  segments: [
+                    ButtonSegment<WorkoutType>(
+                      value: WorkoutType.Weight,
+                      label: Text('W', style: textTheme.labelSmall),
+                      icon: const Icon(Icons.fitness_center, size: 16),
+                      tooltip: 'Weight',
                     ),
-                  ),
-                  Switch(
-                    value: exerciseState.workoutType == WorkoutType.Cardio,
-                    onChanged: (isCardio) {
+                    ButtonSegment<WorkoutType>(
+                      value: WorkoutType.Timed,
+                      label: Text('T', style: textTheme.labelSmall),
+                      icon: const Icon(Icons.timer, size: 16),
+                      tooltip: 'Timed',
+                    ),
+                    ButtonSegment<WorkoutType>(
+                      value: WorkoutType.Cardio,
+                      label: Text('C', style: textTheme.labelSmall),
+                      icon: const Icon(Icons.directions_run, size: 16),
+                      tooltip: 'Cardio',
+                    ),
+                  ],
+                  selected: {exerciseState.workoutType},
+                  onSelectionChanged: (Set<WorkoutType> selected) {
+                    if (selected.isNotEmpty) {
                       setState(() {
-                        exerciseState.workoutType = isCardio ? WorkoutType.Cardio : WorkoutType.Weight;
+                        exerciseState.workoutType = selected.first;
                       });
-                    },
-                    activeColor: colorScheme.secondary,
-                    inactiveThumbColor: colorScheme.outline,
-                    inactiveTrackColor: colorScheme.surfaceContainerHighest,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    }
+                  },
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: MaterialStateProperty.all(EdgeInsets.zero),
                   ),
-                  Text(
-                    'Time',
-                    style: textTheme.labelSmall?.copyWith(
-                      color: exerciseState.workoutType == WorkoutType.Cardio
-                          ? colorScheme.secondary
-                          : colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          TextFormField(
-            controller: exerciseState.nameController,
-            focusNode: getNode(0),
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Exercise Name *',
-              isDense: true,
-            ),
-            validator: (value) => (value == null || value.trim().isEmpty) ? 'Name required' : null,
-            textInputAction: TextInputAction.next,
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: exerciseState.nameController,
+                  focusNode: getNode(0),
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Exercise Name *',
+                    isDense: true,
+                    suffixIcon: ExerciseAnimationData.hasAnimationForExercise(exerciseState.nameController.text)
+                        ? Icon(
+                            Icons.play_circle_outline,
+                            color: Theme.of(context).colorScheme.primary,
+                            size: 20,
+                          )
+                        : null,
+                  ),
+                  validator: (value) => (value == null || value.trim().isEmpty) ? 'Name required' : null,
+                  textInputAction: TextInputAction.next,
+                  onChanged: (value) {
+                    // Auto-recommend weight when exercise name changes
+                    _autoRecommendWeight(index);
+                    // Trigger rebuild to show/hide animation icon
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => _showExerciseSearchDialog(index),
+                icon: const Icon(Icons.search),
+                tooltip: 'Search Exercise Library',
+                style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
@@ -560,19 +599,34 @@ class _PartEditPageState extends State<PartEditPage> {
               if (exerciseState.workoutType == WorkoutType.Weight)
                 Expanded(
                   flex: 2,
-                  child: TextFormField(
-                    controller: exerciseState.weightController,
-                    focusNode: getNode(1),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
-                      labelText: 'Wt (kg)',
-                      isDense: true,
-                    ),
-                    validator: (value) => (value != null && value.isNotEmpty && double.tryParse(value) == null)
-                        ? 'Invalid'
-                        : null,
-                    textInputAction: TextInputAction.next,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: exerciseState.weightController,
+                        focusNode: getNode(1),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(
+                          labelText: 'Wt (kg)',
+                          isDense: true,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              Icons.auto_awesome,
+                              size: 18,
+                              color: colorScheme.primary,
+                            ),
+                            onPressed: () => _showWeightRecommendationDialog(index),
+                            tooltip: 'AI Weight Recommendation',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+                          ),
+                        ),
+                        validator: (value) => (value != null && value.isNotEmpty && double.tryParse(value) == null)
+                            ? 'Invalid'
+                            : null,
+                        textInputAction: TextInputAction.next,
+                      ),
+                    ],
                   ),
                 )
               else
@@ -630,6 +684,222 @@ class _PartEditPageState extends State<PartEditPage> {
     );
   }
 
+  /// Auto-recommends weight when exercise name changes
+  void _autoRecommendWeight(int exerciseIndex) async {
+    final exerciseState = _exerciseEditStates[exerciseIndex];
+    final exerciseName = exerciseState.nameController.text.trim();
+    
+    // Only auto-recommend if exercise name is not empty and weight is currently 0 or empty
+    if (exerciseName.isNotEmpty && 
+        exerciseState.workoutType == WorkoutType.Weight &&
+        (exerciseState.weightController.text.isEmpty || 
+         double.tryParse(exerciseState.weightController.text) == 0.0)) {
+      
+      try {
+        debugPrint('Auto-recommending weight for exercise: $exerciseName');
+        final userProfile = await _getUserProfile();
+        debugPrint('User profile loaded: ${userProfile != null ? userProfile.toString() : 'null'}');
+        
+        final targetReps = int.tryParse(exerciseState.repsController.text) ?? 10;
+        debugPrint('Target reps: $targetReps');
+        
+        final recommendedWeight = await AIWeightRecommendationService()
+            .getRecommendedWeight(
+          exerciseName: exerciseName,
+          userProfile: userProfile,
+          targetReps: targetReps,
+        );
+        
+        debugPrint('Recommended weight: $recommendedWeight');
+        
+        if (recommendedWeight > 0 && mounted) {
+          setState(() {
+            exerciseState.weightController.text = StringHelper.weightToString(recommendedWeight);
+          });
+          debugPrint('Weight set to: ${exerciseState.weightController.text}');
+        } else {
+          debugPrint('No weight recommendation applied (weight: $recommendedWeight, mounted: $mounted)');
+        }
+      } catch (e) {
+        // Enhanced error logging for debugging
+        debugPrint('Auto weight recommendation failed for $exerciseName: $e');
+        debugPrint('Stack trace: ${StackTrace.current}');
+      }
+    } else {
+      debugPrint('Auto-recommendation skipped - exerciseName: "$exerciseName", workoutType: ${exerciseState.workoutType}, currentWeight: "${exerciseState.weightController.text}"');
+    }
+  }
+
+  /// Shows weight recommendation dialog with multiple rep ranges
+  void _showWeightRecommendationDialog(int exerciseIndex) async {
+    final exerciseState = _exerciseEditStates[exerciseIndex];
+    final exerciseName = exerciseState.nameController.text.trim();
+    
+    if (exerciseName.isEmpty) {
+      _showSnackBar('Please enter an exercise name first');
+      return;
+    }
+
+    if (exerciseState.workoutType != WorkoutType.Weight) {
+      _showSnackBar('Weight recommendations are only available for weight exercises');
+      return;
+    }
+
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      final userProfile = await _getUserProfile();
+      final recommendations = await AIWeightRecommendationService()
+          .getWeightRecommendationsForRepRanges(
+        exerciseName: exerciseName,
+        userProfile: userProfile,
+        repRanges: [5, 8, 10, 12, 15],
+      );
+      
+      final confidence = await AIWeightRecommendationService()
+          .getRecommendationConfidence(
+        exerciseName: exerciseName,
+        userProfile: userProfile,
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        _showWeightRecommendationBottomSheet(exerciseIndex, recommendations, confidence);
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        _showSnackBar('Failed to get weight recommendations: ${e.toString()}');
+      }
+    }
+  }
+
+  /// Shows bottom sheet with weight recommendations
+  void _showWeightRecommendationBottomSheet(
+    int exerciseIndex,
+    Map<int, double> recommendations,
+    double confidence,
+  ) {
+    final exerciseState = _exerciseEditStates[exerciseIndex];
+    final theme = Theme.of(context);
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.auto_awesome, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'AI Weight Recommendations',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'For: ${exerciseState.nameController.text}',
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(
+                  confidence > 0.7 ? Icons.verified : 
+                  confidence > 0.4 ? Icons.info : Icons.warning,
+                  size: 16,
+                  color: confidence > 0.7 ? Colors.green : 
+                         confidence > 0.4 ? Colors.orange : Colors.red,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'Confidence: ${(confidence * 100).toInt()}%',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ...recommendations.entries.map((entry) {
+              final reps = entry.key;
+              final weight = entry.value;
+              final isCurrentReps = int.tryParse(exerciseState.repsController.text) == reps;
+              
+              return Card(
+                color: isCurrentReps ? theme.colorScheme.primaryContainer : null,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: isCurrentReps 
+                        ? theme.colorScheme.primary 
+                        : theme.colorScheme.surfaceVariant,
+                    child: Text(
+                      '$reps',
+                      style: TextStyle(
+                        color: isCurrentReps 
+                            ? theme.colorScheme.onPrimary 
+                            : theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  title: Text('${StringHelper.weightToString(weight)} kg'),
+                  subtitle: Text('$reps reps'),
+                  trailing: isCurrentReps 
+                      ? Icon(Icons.star, color: theme.colorScheme.primary)
+                      : null,
+                  onTap: () {
+                    exerciseState.weightController.text = StringHelper.weightToString(weight);
+                    exerciseState.repsController.text = reps.toString();
+                    Navigator.pop(context);
+                    _showSnackBar('Weight recommendation applied!');
+                  },
+                ),
+              );
+            }).toList(),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Gets user profile from shared preferences
+  Future<UserProfile?> _getUserProfile() async {
+    try {
+      final userProfile = await sharedPrefsProvider.getUserProfile();
+      return userProfile;
+    } catch (e) {
+      debugPrint('Error loading user profile: $e');
+    }
+    return null;
+  }
+
   Widget _buildAdditionalNotesField() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -643,6 +913,19 @@ class _PartEditPageState extends State<PartEditPage> {
         textCapitalization: TextCapitalization.sentences,
       ),
     );
+  }
+
+  void _showExerciseSearchDialog(int exerciseIndex) async {
+    final selectedExercise = await showExerciseSearchDialog(
+      context: context,
+      initialQuery: _exerciseEditStates[exerciseIndex].nameController.text,
+    );
+    
+    if (selectedExercise != null) {
+      setState(() {
+        _exerciseEditStates[exerciseIndex].nameController.text = selectedExercise;
+      });
+    }
   }
 
   KeyboardActionsConfig _buildKeyboardActionsConfig() {

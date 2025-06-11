@@ -105,7 +105,7 @@ class PartCardState extends State<PartCard> {
           ),
           Expanded(
             flex: 5,
-            child: Text('Reps', textAlign: TextAlign.center, style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
+            child: Text('Reps/Time', textAlign: TextAlign.center, style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant)),
           ),
         ],
       ),
@@ -145,7 +145,7 @@ class PartCardState extends State<PartCard> {
             Expanded(
                 flex: 5,
                 child: Text(
-                  ex.reps,
+                  ex.workoutType == WorkoutType.Timed ? '${ex.reps}s' : ex.reps,
                   textAlign: TextAlign.center,
                   style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
                 )),

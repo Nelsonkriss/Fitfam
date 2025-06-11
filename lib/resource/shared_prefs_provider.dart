@@ -2,6 +2,7 @@ import 'dart:async'; // Needed for Completer
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:workout_planner/models/user_profile.dart'; // Import UserProfile model
 
 // --- Constants for SharedPreferences Keys ---
 // Consider prefixing keys for better organization, e.g., 'prefs_appVersion'
@@ -12,6 +13,10 @@ const String weeklyAmountKey = "weeklyAmount";   // Example: User preference
 const String DailyRankKey = "dailyRankInfo"; // Stores string like "YYYY-MM-DD/rank"
 const String weeklyProgressRoutineIdsKey = "weeklyProgressRoutineIds"; // Key for selected routine IDs
 const String themeModeKey = "themeMode"; // Key for storing theme preference (light, dark, system)
+
+// User Profile related keys
+const String userProfileKey = "userProfile"; // Key for storing user profile JSON
+const String onboardingCompletedKey = "onboardingCompleted"; // Key for tracking onboarding completion
 
 // Authentication related keys
 const String signInMethodKey = "signInMethod"; // Stores the enum name (e.g., "google", "apple")
@@ -186,6 +191,92 @@ class SharedPrefsProvider {
     }
   }
 
+  // --- User Profile Management ---
+
+  /// Gets the user profile from SharedPreferences. Returns null if not found or on error.
+  Future<UserProfile?> getUserProfile() async {
+    try {
+      final prefs = await _prefs;
+      final profileJsonString = prefs.getString(userProfileKey);
+      if (profileJsonString == null) return null;
+      
+      return UserProfile.fromJsonString(profileJsonString);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting user profile: $e");
+      return null;
+    }
+  }
+
+  /// Saves the user profile to SharedPreferences.
+  Future<void> setUserProfile(UserProfile profile) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setString(userProfileKey, profile.toJsonString());
+      debugPrint("SharedPrefsProvider: User profile saved successfully");
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting user profile: $e");
+    }
+  }
+
+  /// Checks if onboarding has been completed.
+  Future<bool> isOnboardingCompleted() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getBool(onboardingCompletedKey) ?? false;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error checking onboarding status: $e");
+      return false;
+    }
+  }
+
+  /// Marks onboarding as completed.
+  Future<void> setOnboardingCompleted(bool completed) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setBool(onboardingCompletedKey, completed);
+      debugPrint("SharedPrefsProvider: Onboarding completion status set to $completed");
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting onboarding completion: $e");
+    }
+  }
+
+  /// Updates user profile with new values.
+  Future<void> updateUserProfile({
+    double? height,
+    double? weight,
+    FitnessLevel? fitnessLevel,
+  }) async {
+    try {
+      final currentProfile = await getUserProfile();
+      if (currentProfile == null) {
+        debugPrint("SharedPrefsProvider: Cannot update profile - no existing profile found");
+        return;
+      }
+
+      final updatedProfile = currentProfile.update(
+        height: height,
+        weight: weight,
+        fitnessLevel: fitnessLevel,
+      );
+
+      await setUserProfile(updatedProfile);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error updating user profile: $e");
+    }
+  }
+
+  /// Clears user profile data (useful for testing or reset functionality).
+  Future<void> clearUserProfile() async {
+    try {
+      final prefs = await _prefs;
+      await prefs.remove(userProfileKey);
+      await prefs.remove(onboardingCompletedKey);
+      debugPrint("SharedPrefsProvider: User profile data cleared");
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error clearing user profile: $e");
+    }
+  }
+
   // --- Daily Tracking Example ---
 
   /// Gets the stored rank for the current day. Returns 0 if no rank for today or on error.
@@ -231,7 +322,6 @@ class SharedPrefsProvider {
       debugPrint("SharedPrefsProvider: Error setting daily rank info: $e");
     }
   }
-
 
   // --- Authentication Persistence ---
 
@@ -355,6 +445,7 @@ class SharedPrefsProvider {
       await prefs.remove(signInMethodKey);
       await prefs.remove(appleEmailKey);
       await prefs.remove(googleEmailKey);
+      // Note: We don't clear user profile on sign out as it should persist locally
       // Remove other auth-specific keys if you add them
     } catch (e) {
       debugPrint("SharedPrefsProvider: Error during sign out cleanup: $e");

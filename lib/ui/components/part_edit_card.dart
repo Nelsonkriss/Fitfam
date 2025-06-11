@@ -170,7 +170,7 @@ class _PartEditCardState extends State<PartEditCard> {
             const Expanded(flex: 22, child: SizedBox()), // For alignment with exercise name
             Expanded(flex: 5, child: Text('Sets', textAlign: TextAlign.center, style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant))),
             const Expanded(flex: 1, child: SizedBox()),
-            Expanded(flex: 5, child: Text('Reps', textAlign: TextAlign.center, style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant))),
+            Expanded(flex: 5, child: Text('Reps/Time', textAlign: TextAlign.center, style: textTheme.labelSmall?.copyWith(color: colorScheme.onSurfaceVariant))),
           ],
         ),
         Divider(color: theme.dividerColor.withOpacity(0.5), height: 8),
@@ -203,7 +203,7 @@ class _PartEditCardState extends State<PartEditCard> {
               Expanded(
                   flex: 5,
                   child: Text(
-                    ex.reps.isEmpty ? '-' : ex.reps,
+                    ex.reps.isEmpty ? '-' : (ex.workoutType == WorkoutType.Timed ? '${ex.reps}s' : ex.reps),
                     textAlign: TextAlign.center,
                     style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
                   )),

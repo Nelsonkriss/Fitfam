@@ -83,6 +83,15 @@ class _RestTimerTicked extends WorkoutSessionEvent {
   _RestTimerTicked(this.remainingDuration);
 }
 class _RestPeriodEnded extends WorkoutSessionEvent {}
+class _ExerciseTimerTicked extends WorkoutSessionEvent {
+  final Duration remainingDuration;
+  _ExerciseTimerTicked(this.remainingDuration);
+}
+class _TimedExerciseEnded extends WorkoutSessionEvent {
+  final int exerciseIndex;
+  final int setIndex;
+  _TimedExerciseEnded(this.exerciseIndex, this.setIndex);
+}
 
 
 // --- State ---
@@ -134,6 +143,7 @@ class _Undefined { const _Undefined(); }
 class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> {
   Timer? _sessionTimer;
   Timer? _restTimer;
+  Timer? _exerciseTimer;
   final DbProviderInterface dbProvider;
 
   // Controller for ALL historical sessions (used by CalendarPage, potentially history lists)
@@ -157,6 +167,8 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_SessionTimerTicked>(_onSessionTimerTicked);
     on<_RestTimerTicked>(_onRestTimerTicked);
     on<_RestPeriodEnded>(_onRestPeriodEnded);
+    on<_ExerciseTimerTicked>(_onExerciseTimerTicked);
+    on<_TimedExerciseEnded>(_onTimedExerciseEnded);
     on<WorkoutSetTargetWeightChanged>(_onWorkoutSetTargetWeightChanged);
     on<WorkoutSetActualWeightChanged>(_onWorkoutSetActualWeightChanged);
   }
@@ -223,6 +235,16 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
   void _onWorkoutSetMarkedComplete(WorkoutSetMarkedComplete event, Emitter<WorkoutSessionState> emit) {
     if (state.session == null || state.isFinished || state.isLoading) {
       debugPrint("[WorkoutSessionBloc] Ignoring SetMarkedComplete: Invalid state.");
+      return;
+    }
+
+    // Check if this is a timed exercise
+    final exercise = state.session!.exercises[event.exerciseIndex];
+    if (exercise.timedDuration != null && exercise.timedDuration!.inSeconds > 0) {
+      debugPrint("[WorkoutSessionBloc] Starting timed exercise: ${exercise.timedDuration}");
+      _cancelTimers();
+      emit(state.copyWith(isResting: false, displayDuration: exercise.timedDuration));
+      _startExerciseTimer(exercise.timedDuration!, event.exerciseIndex, event.setIndex);
       return;
     }
     debugPrint("[WorkoutSessionBloc] Event: WorkoutSetMarkedComplete - ExIdx: ${event.exerciseIndex}, SetIdx: ${event.setIndex}");
@@ -493,15 +515,99 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     debugPrint("[WorkoutSessionBloc] Starting rest timer for $restDuration.");
     _sessionTimer?.cancel(); _sessionTimer = null;
     _restTimer?.cancel();
+    
+    // Immediately emit initial rest duration
+    emit(state.copyWith(displayDuration: restDuration));
+    
     Duration remaining = restDuration;
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!state.isResting) { timer.cancel(); _restTimer = null; return; } // Safety check
+      if (!state.isResting) { 
+        timer.cancel(); 
+        _restTimer = null; 
+        return; 
+      } // Safety check
+      
       remaining = remaining - const Duration(seconds: 1);
-      if (remaining.isNegative) remaining = Duration.zero;
-      add(_RestTimerTicked(remaining));
+      if (remaining.isNegative) {
+        remaining = Duration.zero;
+      }
+      
+      // Directly emit state change for countdown
+      emit(state.copyWith(displayDuration: remaining));
+      
       if (remaining.inSeconds <= 0) {
-        _restTimer?.cancel(); _restTimer = null;
+        timer.cancel();
+        _restTimer = null;
         add(_RestPeriodEnded());
+      }
+    });
+  }
+
+  void _onExerciseTimerTicked(_ExerciseTimerTicked event, Emitter<WorkoutSessionState> emit) {
+    if (!state.isResting && state.session != null) {
+      emit(state.copyWith(displayDuration: event.remainingDuration));
+    } else {
+      _exerciseTimer?.cancel();
+      _exerciseTimer = null;
+    }
+  }
+
+  void _onTimedExerciseEnded(_TimedExerciseEnded event, Emitter<WorkoutSessionState> emit) {
+    if (state.session != null) {
+      debugPrint("[WorkoutSessionBloc] Timed exercise ended.");
+      
+      // Mark the set as completed
+      final currentSession = state.session!;
+      final updatedExercises = List<ExercisePerformance>.from(currentSession.exercises);
+      final exercise = updatedExercises[event.exerciseIndex];
+      final updatedSet = exercise.sets[event.setIndex].copyWith(
+        isCompleted: true,
+        actualReps: 1, // For timed exercises, we use 1 rep to mark completion
+      );
+      exercise.sets[event.setIndex] = updatedSet;
+
+      final updatedSession = currentSession.copyWith(exercises: updatedExercises);
+      
+      // Start rest period if needed
+      Duration? restDuration = exercise.restPeriod;
+      bool isLastSetOfExercise = event.setIndex == exercise.sets.length - 1;
+      
+      if (restDuration != null && restDuration.inSeconds > 0 && !isLastSetOfExercise) {
+        debugPrint("[WorkoutSessionBloc] Starting rest period after timed exercise: $restDuration");
+        emit(state.copyWith(
+          session: updatedSession,
+          isResting: true,
+          displayDuration: restDuration
+        ));
+        _startRestTimer(restDuration);
+      } else {
+        final elapsed = DateTime.now().difference(state.session!.startTime);
+        emit(state.copyWith(
+          session: updatedSession,
+          isResting: false,
+          displayDuration: elapsed
+        ));
+        _startSessionTimer();
+      }
+    }
+  }
+
+  void _startExerciseTimer(Duration duration, int exerciseIndex, int setIndex) {
+    _exerciseTimer?.cancel();
+    
+    Duration remaining = duration;
+    _exerciseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      remaining = remaining - const Duration(seconds: 1);
+      if (remaining.isNegative) {
+        remaining = Duration.zero;
+      }
+      
+      add(_ExerciseTimerTicked(remaining));
+      
+      if (remaining.inSeconds <= 0) {
+        timer.cancel();
+        _exerciseTimer = null;
+        add(_TimedExerciseEnded(exerciseIndex, setIndex));
       }
     });
   }
@@ -510,6 +616,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     debugPrint("[WorkoutSessionBloc] Cancelling timers.");
     _sessionTimer?.cancel(); _sessionTimer = null;
     _restTimer?.cancel(); _restTimer = null;
+    _exerciseTimer?.cancel(); _exerciseTimer = null;
   }
 
   // --- Data Loading for Historical Sessions Stream ---

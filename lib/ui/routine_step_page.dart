@@ -13,8 +13,10 @@ import 'package:workout_planner/models/workout_session.dart';
 import 'package:workout_planner/models/exercise_performance.dart'; 
 import 'package:workout_planner/models/set_performance.dart'; 
 import 'package:workout_planner/utils/routine_helpers.dart'; 
+import 'package:workout_planner/utils/android_animations.dart';
+import 'package:workout_planner/ui/components/exercise_animation_widget.dart';
 
-import 'components/number_ticker.dart'; 
+import 'components/number_ticker.dart';
 
 class RoutineStepPage extends StatefulWidget {
   final Routine originalRoutine; 
@@ -53,11 +55,54 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
   WorkoutSession? _activeWorkoutSession; 
 
-  Map<int, NumberTickerController> _tickerControllers = {}; 
+  Map<int, NumberTickerController> _tickerControllers = {};
+
+  // Enhanced Animation Controllers
+  late AnimationController _setTransitionController;
+  late AnimationController _exerciseTransitionController;
+  late AnimationController _restPeriodController;
+  late AnimationController _preparationController;
+  late AnimationController _completionController;
+  
+  // Animation States
+  bool _isInRestPeriod = false;
+  bool _isInPreparation = false;
+  bool _showingPersonalRecord = false;
+  bool _showingExerciseTransition = false;
+  int _restTimeRemaining = 0;
+  int _preparationTimeRemaining = 3;
+  Timer? _restTimer;
+  Timer? _preparationTimer;
+  Timer? _exerciseTimer;
+  int _timedExerciseRemainingSeconds = 0;
+  bool _isTimedExerciseActive = false;
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize animation controllers
+    _setTransitionController = AnimationController(
+      duration: AndroidAnimations.m3LongDuration,
+      vsync: this,
+    );
+    _exerciseTransitionController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _restPeriodController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _preparationController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _completionController = AnimationController(
+      duration: AndroidAnimations.m3ExtraLongDuration,
+      vsync: this,
+    );
+    
     _currentWorkingRoutine = widget.originalRoutine.copyWith(
       parts: widget.originalRoutine.parts.map((originalPart) {
         return originalPart.copyWith(
@@ -72,6 +117,9 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
     _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
     debugPrint("RoutineStepPage: Initialized _activeWorkoutSession with ID: ${_activeWorkoutSession?.id}");
+    
+    // Start with preparation animation for first exercise
+    _startSetPreparation();
   }
 
   void _rebuildStateFromRoutine() {
@@ -133,12 +181,62 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
     debugPrint("Generated ${_exerciseIndexesInStepOrder.length} total steps for the workout.");
   }
 
-
   @override
   void dispose() {
     _confettiController.dispose();
     _disposeTickerControllers();
+    
+    // Dispose animation controllers
+    _setTransitionController.dispose();
+    _exerciseTransitionController.dispose();
+    _restPeriodController.dispose();
+    _preparationController.dispose();
+    _completionController.dispose();
+    
+    // Cancel timers
+    _restTimer?.cancel();
+    _preparationTimer?.cancel();
+    _exerciseTimer?.cancel();
+    
     super.dispose();
+  }
+
+  void _startTimedExercise(Exercise exercise) {
+    if (exercise.workoutType != WorkoutType.Timed) return;
+    
+    final seconds = int.tryParse(exercise.reps) ?? 0;
+    if (seconds <= 0) return;
+
+    setState(() {
+      _timedExerciseRemainingSeconds = seconds;
+      _isTimedExerciseActive = true;
+    });
+
+    _exerciseTimer?.cancel();
+    _exerciseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      setState(() {
+        if (_timedExerciseRemainingSeconds > 0) {
+          _timedExerciseRemainingSeconds--;
+        }
+        
+        if (_timedExerciseRemainingSeconds <= 0) {
+          _stopTimedExercise();
+          _handleStepContinue(); // Auto-continue when timer reaches 0
+        }
+      });
+    });
+  }
+
+  void _stopTimedExercise() {
+    _exerciseTimer?.cancel();
+    setState(() {
+      _isTimedExerciseActive = false;
+    });
   }
 
   void _disposeTickerControllers() {
@@ -152,8 +250,8 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
   }
 
   Future<bool> _checkConnection() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       if (!mounted) return false;
       _showSnackBar('No Internet Connection', isError: true); 
       return false;
@@ -175,48 +273,12 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context); // Get theme for styling
-
-    String title = 'Workout'; 
-    if (!_finished && _currentStepIndex < _exerciseIndexesInStepOrder.length) {
-      final currentPartIdx = _partIndexesInStepOrder[_currentStepIndex];
-      if (currentPartIdx >= 0 && currentPartIdx < _currentWorkingRoutine.parts.length) {
-        final currentPart = _currentWorkingRoutine.parts[currentPartIdx];
-        try {
-          final bodyPartStr = targetedBodyPartToStringConverter(currentPart.targetedBodyPart);
-          final setTypeStr = setTypeToStringConverter(currentPart.setType);
-          title = '$bodyPartStr - $setTypeStr';
-        } catch (e) {
-          debugPrint("Error converting enum to string for title: $e");
-        }
-      }
-    } else if (_finished) {
-      title = 'Finished!';
-    }
-
-    final totalSteps = _exerciseIndexesInStepOrder.length;
-    final progress = totalSteps == 0 ? 0.0 : ((_currentStepIndex + (_finished ? 1: 0)) / totalSteps);
-
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        key: _scaffoldKey, 
-        appBar: AppBar(
-          // title: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 16)), // Will use AppBarTheme
-          title: Text(title), // AppBarTheme will style this
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(4.0),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0), 
-              backgroundColor: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5), // Themed
-              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.secondary), // Themed
-            ),
-          ),
-          // backgroundColor: Theme.of(context).primaryColor, // Will use AppBarTheme
-          // iconTheme: const IconThemeData(color: Colors.white), // Will use AppBarTheme
-        ),
-        // backgroundColor: Theme.of(context).primaryColor, // Will use Scaffold's background from theme
-        body: _finished ? _buildFinishedScreen() : _buildStepper(),
+        key: _scaffoldKey,
+        backgroundColor: Colors.black,
+        body: _finished ? _buildFinishedScreen() : _buildWorkoutInterface(),
       ),
     );
   }
@@ -264,7 +326,6 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
                     Navigator.pop(context); 
                   }
                 },
-                // Style will come from ElevatedButtonThemeData
                 child: const Text( 'DONE'), 
               ),
             ],
@@ -274,193 +335,511 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
     );
   }
 
-  Widget _buildStepper() {
-    final theme = Theme.of(context);
+  Widget _buildWorkoutInterface() {
     if (_exerciseIndexesInStepOrder.isEmpty) {
-      return Center(child: Text("No steps generated for this routine.", style: theme.textTheme.bodyMedium));
+      return const Center(
+        child: Text(
+          "No steps generated for this routine.",
+          style: TextStyle(color: Colors.white, fontSize: 18),
+        ),
+      );
     }
     if (_currentStepIndex >= _exerciseIndexesInStepOrder.length) {
-      return Center(child: Text("Workout progression error.", style: TextStyle(color: theme.colorScheme.error)));
+      return const Center(
+        child: Text(
+          "Workout progression error.",
+          style: TextStyle(color: Colors.red, fontSize: 18),
+        ),
+      );
     }
 
-    return ListView(
-      physics: const ClampingScrollPhysics(), 
+    final exerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex];
+    final exercise = _currentExercises[exerciseIdx];
+    final setNum = _setNumberOfStep[_currentStepIndex];
+    final totalSets = _setsTotalInStepOrder[_currentStepIndex];
+    final tickerController = _tickerControllers[exerciseIdx]!;
+
+    return Stack(
       children: [
-        Theme( // Override Stepper theme locally if needed, or rely on global theme
-          data: theme.copyWith(
-            colorScheme: theme.colorScheme.copyWith(
-              primary: theme.colorScheme.secondary, // Active step color
-              onSurface: theme.colorScheme.onSurface, // Step title color etc.
-              surface: theme.colorScheme.surface, 
+        // Background 3D Animation Figure - Enhanced with bigger size and moved up
+        Positioned(
+          top: -50, // Move animation up
+          left: 0,
+          right: 0,
+          bottom: 100,
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black, Color(0xFF1a1a1a)],
+              ),
             ),
-            dividerColor: theme.dividerColor.withOpacity(0.5),
-          ),
-          child: Stepper(
-            physics: const NeverScrollableScrollPhysics(), 
-            type: StepperType.vertical,
-            currentStep: _currentStepIndex,
-            onStepTapped: null, 
-            onStepCancel: null, 
-            onStepContinue: _handleStepContinue, 
-            controlsBuilder: (BuildContext context, ControlsDetails details) {
-              return Padding(
-                padding: const EdgeInsets.only(top: 24.0, bottom: 16.0), 
-                child: Center(
-                  child: ElevatedButton( // Will use ElevatedButtonThemeData
-                    onPressed: details.onStepContinue, 
-                    child: const Text('NEXT SET'),
-                  ),
+            child: Center(
+              child: Opacity(
+                opacity: 0.50, // Slightly more transparent for better text readability
+                child: ExerciseAnimationWidget(
+                  exerciseName: exercise.name,
+                  width: 400, // Increased from 300
+                  height: 500, // Increased from 400
+                  autoPlay: !_isInRestPeriod && !_isInPreparation,
+                  showControls: false,
+                  showDescription: false,
                 ),
-              );
-            },
-            steps: List.generate(_exerciseIndexesInStepOrder.length, (stepIdx) {
-              final exerciseIdx = _exerciseIndexesInStepOrder[stepIdx];
-              final setNum = _setNumberOfStep[stepIdx];
-              final totalSets = _setsTotalInStepOrder[stepIdx];
-
-              if (exerciseIdx >= _currentExercises.length) {
-                return Step(title: Text("Error: Invalid Exercise Index", style: TextStyle(color: theme.colorScheme.error)), content: const SizedBox());
-              }
-              final exercise = _currentExercises[exerciseIdx];
-
-              final isActive = stepIdx == _currentStepIndex;
-              final isCompleted = stepIdx < _currentStepIndex;
-
-              String stepTitle = "${exercise.name} (Set $setNum of $totalSets)";
-              Color stepTitleColor = isActive 
-                  ? theme.colorScheme.secondary // Or primary
-                  : (isCompleted ? theme.textTheme.bodySmall!.color!.withOpacity(0.6) : theme.textTheme.bodyLarge!.color!);
-
-
-              return Step(
-                title: Text(
-                  stepTitle,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                    color: stepTitleColor,
-                    decoration: isCompleted ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                content: isActive ? _buildStepContent(exerciseIdx) : const SizedBox.shrink(),
-                isActive: isActive,
-                state: isCompleted ? StepState.complete : StepState.indexed,
-              );
-            }),
+              ),
+            ),
           ),
         ),
+
+        // Main Content
+        SafeArea(
+          child: Column(
+            children: [
+              // Header
+              _buildHeader(),
+              
+              // Exercise Info
+              Expanded(
+                flex: 2,
+                child: _buildExerciseInfo(exercise, setNum, totalSets),
+              ),
+              
+              // Circular Weight/Reps Interface
+              Expanded(
+                flex: 3,
+                child: _buildCircularInterface(tickerController, exercise),
+              ),
+              
+              // Next Exercise Info
+              _buildNextExerciseInfo(),
+              
+              // Exercise Thumbnails
+              _buildExerciseThumbnails(),
+              
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+
+        // Rest Period Overlay
+        if (_isInRestPeriod)
+          Container(
+            color: Colors.black.withOpacity(0.8),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Rest Time',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    '${_restTimeRemaining}s',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 48,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  ElevatedButton(
+                    onPressed: _endRestPeriod,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                    ),
+                    child: const Text('Skip Rest'),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildStepContent(int exerciseIndex) {
-    final theme = Theme.of(context);
-    if (!_tickerControllers.containsKey(exerciseIndex)) { 
-      debugPrint("Error: Ticker controller missing for exercise index $exerciseIndex");
-      return Center(child: Text("Error loading controls.", style: TextStyle(color: theme.colorScheme.error)));
-    }
-    final exercise = _currentExercises[exerciseIndex];
-    final tickerController = _tickerControllers[exerciseIndex]!;
-    final setNum = _setNumberOfStep[_currentStepIndex];
-    final totalSets = _setsTotalInStepOrder[_currentStepIndex];
-
-    final labelStyle = theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.7));
-    final valueStyle = theme.textTheme.headlineSmall?.copyWith(color: theme.colorScheme.onSurface);
-
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-      child: Column(
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.center,
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildWeightButton(Icons.remove, tickerController),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Column(
-                    children: [
-                      Text("WEIGHT (kg)", style: labelStyle),
-                      const SizedBox(height: 4),
-                      NumberTicker(
-                        controller: tickerController,
-                        textStyle: (theme.textTheme.displaySmall ?? const TextStyle(fontSize: 56, fontFamily: 'RobotoMono')).copyWith( // Provide default if displaySmall is null
-                            color: theme.colorScheme.onSurface,
-                            // fontFamily: 'RobotoMono' // Already in default or displaySmall
-                        ),
-                      ),
-                    ],
-                  ),
+              Text(
+                'Workout',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              _buildWeightButton(Icons.add, tickerController),
             ],
-          ),
-          const SizedBox(height: 24), 
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildInfoColumn("SET", "$setNum / $totalSets", labelStyle, valueStyle),
-              _buildInfoColumn(
-                  exercise.workoutType == WorkoutType.Cardio ? "TIME (sec)" : "REPS",
-                  exercise.reps,
-                  labelStyle, valueStyle
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-
-          TextButton.icon(
-            icon: Icon(Icons.info_outline, color: theme.colorScheme.onSurface.withOpacity(0.7), size: 18),
-            label: Text("Exercise Info", style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurface.withOpacity(0.7))),
-            onPressed: () => _launchURL(exercise.name),
-            style: TextButton.styleFrom(padding: EdgeInsets.zero),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoColumn(String label, String value, TextStyle? labelStyle, TextStyle? valueStyle) {
+  Widget _buildExerciseInfo(Exercise exercise, int setNum, int totalSets) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text(label, style: labelStyle),
-        const SizedBox(height: 4),
-        Text(value, style: valueStyle),
+        Text(
+          _getEquipmentName(exercise),
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 18,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Flexible(
+          child: Text(
+            exercise.name,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Set $setNum of $totalSets',
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 16,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildWeightButton(IconData icon, NumberTickerController controller) {
-    final theme = Theme.of(context);
-    VoidCallback action;
-    if (icon == Icons.add) {
-      action = controller.increment; 
-    } else {
-      action = controller.decrement; 
+  Widget _buildCircularInterface(NumberTickerController controller, Exercise exercise) {
+    final setNum = _setNumberOfStep[_currentStepIndex];
+    final totalSets = _setsTotalInStepOrder[_currentStepIndex];
+    
+    return Center(
+      child: Container(
+        width: 280,
+        height: 280,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+        ),
+        child: Stack(
+          children: [
+            // Weight adjustment buttons
+            Positioned(
+              left: 20,
+              top: 120,
+              child: GestureDetector(
+                onTap: () => _adjustWeight(-0.5),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: Colors.white24,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.remove, color: Colors.white),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 20,
+              top: 120,
+              child: GestureDetector(
+                onTap: () => _adjustWeight(0.5),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(
+                    color: Colors.white24,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+              ),
+            ),
+            
+            // Center content
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Clickable Weight
+                  GestureDetector(
+                    onTap: () => _showWeightEditDialog(controller),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          NumberTicker(
+                            controller: controller,
+                            textStyle: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Text(
+                            ' kg',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.edit,
+                            color: Colors.white.withOpacity(0.7),
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  
+                  // Reps/Seconds
+                  exercise.workoutType == WorkoutType.Timed
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '$_timedExerciseRemainingSeconds',
+                              style: TextStyle(
+                                color: _timedExerciseRemainingSeconds <= 5 
+                                    ? Colors.red 
+                                    : Colors.white,
+                                fontSize: 72,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Text(
+                              ' sec',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 24,
+                                fontWeight: FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          exercise.reps,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 72,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // Sets display
+                  Text(
+                    'Set $setNum of $totalSets',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 15),
+                  
+                  // Done button
+                  GestureDetector(
+                    onTap: _handleStepContinue,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Done',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNextExerciseInfo() {
+    if (_currentStepIndex >= _exerciseIndexesInStepOrder.length - 1) {
+      return const Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Text(
+          'Last Exercise!',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 16,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      );
     }
 
-    return ElevatedButton(
-      onPressed: action, 
-      style: ElevatedButton.styleFrom(
-        shape: const CircleBorder(),
-        padding: const EdgeInsets.all(16),
-        backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.5), // Themed
-        foregroundColor: theme.colorScheme.onSecondaryContainer, // Themed
+    final nextExerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex + 1];
+    final nextSetNum = _setNumberOfStep[_currentStepIndex + 1];
+    
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          const Text(
+            'Next Exercise:',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Set $nextSetNum',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
-      child: Icon(icon, size: 28),
+    );
+  }
+
+  Widget _buildExerciseThumbnails() {
+    return Container(
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: min(7, _currentExercises.length),
+        itemBuilder: (context, index) {
+          final isActive = index == _currentStepIndex;
+          return Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: isActive ? Colors.white : Colors.white24,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.fitness_center,
+              color: isActive ? Colors.black : Colors.white,
+              size: 24,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _getEquipmentName(Exercise exercise) {
+    // Extract equipment from exercise name or return default
+    if (exercise.name.toLowerCase().contains('barbell')) return 'Barbell';
+    if (exercise.name.toLowerCase().contains('dumbbell')) return 'Dumbbell';
+    if (exercise.name.toLowerCase().contains('cable')) return 'Cable';
+    if (exercise.name.toLowerCase().contains('machine')) return 'Machine';
+    return 'Bodyweight';
+  }
+
+  void _adjustWeight(double delta) {
+    final exerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex];
+    final controller = _tickerControllers[exerciseIdx];
+    if (controller != null) {
+      if (delta > 0) {
+        controller.increment();
+      } else if (delta < 0) {
+        controller.decrement();
+      }
+    }
+  }
+
+  void _showWeightEditDialog(NumberTickerController controller) {
+    final TextEditingController textController = TextEditingController(
+      text: controller.number.toString(),
+    );
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Weight'),
+        content: TextField(
+          controller: textController,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Weight (kg)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+              onPressed: () {
+              final newWeight = double.tryParse(textController.text);
+              if (newWeight != null && newWeight >= 0) {
+                controller.number = newWeight;
+              }
+              Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     );
   }
 
   void _handleStepContinue() {
+    _stopTimedExercise(); // Stop any running exercise timer
+    
     if (_exerciseIndexesInStepOrder.isEmpty || _currentStepIndex >= _exerciseIndexesInStepOrder.length) {
       debugPrint("Cannot continue: Invalid step state.");
       return;
     }
 
+    bool isPersonalRecord = false;
+    
     if (_activeWorkoutSession != null) {
       final int exerciseFlatIndex = _exerciseIndexesInStepOrder[_currentStepIndex];
       final int setNumber = _setNumberOfStep[_currentStepIndex]; 
@@ -477,8 +856,21 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
           final int actualReps = setToUpdate.targetReps; 
 
+          // Check for personal record (weight higher than previous best)
+          final exercise = _currentExercises[exerciseFlatIndex];
+
+          int actualRepsToRecord = actualReps;
+          if (exercise.workoutType == WorkoutType.Timed) {
+            // For timed exercises, record actualReps as the duration in seconds (using reps field as seconds)
+            actualRepsToRecord = int.tryParse(exercise.reps) ?? actualReps;
+          }
+
+          if (exercise.lastUsedWeight != null && actualWeight > exercise.lastUsedWeight!) {
+            isPersonalRecord = true;
+          }
+
           final updatedSet = setToUpdate.copyWith(
-            actualReps: actualReps,
+            actualReps: actualRepsToRecord,
             actualWeight: actualWeight,
             isCompleted: true,
           );
@@ -504,10 +896,30 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
       debugPrint("Error: _activeWorkoutSession is null in _handleStepContinue.");
     }
 
+    // Trigger animations
+    _triggerSetTransition();
+    
+    if (isPersonalRecord) {
+      _showPersonalRecordCelebration();
+    }
+
     setState(() {
       if (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1) {
         _currentStepIndex++; 
         debugPrint('Advanced to step index: $_currentStepIndex');
+        
+        // Check if we're moving to a new exercise
+        final currentExerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex - 1];
+        final nextExerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex];
+        
+        if (currentExerciseIdx != nextExerciseIdx) {
+          _showExerciseTransition();
+          // Start rest period between exercises
+          _startRestPeriod(duration: 90); // 90 seconds rest between exercises
+        } else {
+          // Same exercise, shorter rest between sets
+          _startRestPeriod(duration: 60); // 60 seconds rest between sets
+        }
       } else {
         _finishWorkout(); 
       }
@@ -636,11 +1048,160 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
       _showSnackBar("Could not open exercise info link."); 
     }
   }
+
+  // Enhanced Animation Methods
+  void _startSetPreparation() {
+    if (!mounted) return;
+    
+    setState(() {
+      _isInPreparation = true;
+      _preparationTimeRemaining = 3;
+    });
+    
+    _preparationController.forward();
+    
+    _preparationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _preparationTimeRemaining--;
+      });
+      
+      if (_preparationTimeRemaining <= 0) {
+        timer.cancel();
+        _endSetPreparation();
+      }
+    });
+  }
+  
+  void _endSetPreparation() {
+    if (!mounted) return;
+    
+    setState(() {
+      _isInPreparation = false;
+    });
+    
+    _preparationController.reverse();
+
+    // Start timed exercise if applicable
+    if (_currentStepIndex < _exerciseIndexesInStepOrder.length) {
+      final exerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex];
+      final exercise = _currentExercises[exerciseIdx];
+      if (exercise.workoutType == WorkoutType.Timed) {
+        _startTimedExercise(exercise);
+      }
+    }
+  }
+  
+  void _startRestPeriod({int duration = 60}) {
+    if (!mounted) return;
+    
+    // Cancel any existing rest timer
+    _restTimer?.cancel();
+    debugPrint('Starting rest period: $duration seconds');
+    
+    setState(() {
+      _isInRestPeriod = true;
+      _restTimeRemaining = duration;
+    });
+    
+    _restPeriodController.forward();
+    
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _restTimeRemaining--;
+      });
+      
+      if (_restTimeRemaining <= 0) {
+        timer.cancel();
+        _endRestPeriod();
+      }
+    });
+  }
+  
+  void _endRestPeriod() {
+    if (!mounted) return;
+    
+    debugPrint('Ending rest period');
+    _restTimer?.cancel(); // Ensure timer is canceled
+    _restTimer = null;
+    
+    setState(() {
+      _isInRestPeriod = false;
+    });
+    
+    _restPeriodController.reverse();
+    _startSetPreparation();
+  }
+  
+  void _triggerSetTransition() {
+    _setTransitionController.forward().then((_) {
+      if (mounted) {
+        _setTransitionController.reverse();
+      }
+    });
+  }
+  
+  void _triggerExerciseTransition() {
+    _exerciseTransitionController.forward().then((_) {
+      if (mounted) {
+        _exerciseTransitionController.reverse();
+      }
+    });
+  }
+  
+  void _showPersonalRecordCelebration() {
+    if (!mounted) return;
+    
+    setState(() {
+      _showingPersonalRecord = true;
+    });
+    
+    _completionController.forward();
+    
+    // Auto-hide after 3 seconds
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showingPersonalRecord = false;
+        });
+        _completionController.reverse();
+      }
+    });
+  }
+  
+  void _showExerciseTransition() {
+    if (!mounted) return;
+    
+    setState(() {
+      _showingExerciseTransition = true;
+    });
+    
+    _exerciseTransitionController.forward();
+    
+    // Auto-hide after 2 seconds
+    Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _showingExerciseTransition = false;
+        });
+        _exerciseTransitionController.reverse();
+      }
+    });
+  }
 } 
 
 // Static placeholder for SetPerformance to be used in orElse of lastWhere.
 // This is used to avoid creating a new instance every time orElse is called.
-final SetPerformance _nullPlaceholderSetPerformance = SetPerformance( // Removed static
+final SetPerformance _nullPlaceholderSetPerformance = SetPerformance(
   targetReps: 0,
   targetWeight: 0,
   actualReps: 0,

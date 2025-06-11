@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:timezone/timezone.dart' as tz;
 
-// Import BLoC, Models, Utils
+// Import BLoC, Models, Utils, Services
+import 'package:workout_planner/services/notification_service.dart';
 import 'package:workout_planner/bloc/routines_bloc.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 import 'package:workout_planner/ui/components/part_edit_card.dart';
@@ -208,6 +210,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     Routine finalRoutineToSave = _routineEditState.copyWith(
       routineName: finalRoutineName
     );
+
+    // Schedule notifications for selected weekdays
+    _scheduleRoutineNotifications(finalRoutineToSave);
 
     if (finalRoutineToSave.parts.isEmpty) {
       _showSnackBar('Please add at least one exercise part.');
@@ -461,6 +466,54 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         ),
       ),
     );
+  }
+
+  /// Schedules notifications for the routine based on selected weekdays
+  void _scheduleRoutineNotifications(Routine routine) async {
+    final notificationService = NotificationService();
+    
+    // Cancel any existing notifications for this routine
+    if (routine.id != null) {
+      await notificationService.cancelNotification(routine.id!);
+    }
+
+    // If no weekdays are selected, don't schedule any notifications
+    if (routine.weekdays.isEmpty) {
+      return;
+    }
+
+    // Get current time
+    final now = DateTime.now();
+    
+    // Schedule notification for each selected weekday
+    for (int weekday in routine.weekdays) {
+      // Convert weekday to DateTime (1 = Monday, 7 = Sunday)
+      var scheduledTime = tz.TZDateTime(
+        tz.local,
+        now.year,
+        now.month,
+        now.day,
+        9, // 9 AM default time
+        0,
+      );
+
+      // Adjust to next occurrence of weekday
+      while (scheduledTime.weekday != weekday || scheduledTime.isBefore(now)) {
+        scheduledTime = scheduledTime.add(const Duration(days: 1));
+      }
+
+      try {
+        await notificationService.scheduleDailyNotification(
+          id: (routine.id ?? 0) * 10 + weekday, // Unique ID for each weekday
+          title: 'Workout Reminder',
+          body: 'Time for your ${routine.routineName} workout!',
+          scheduledTime: scheduledTime,
+        );
+        debugPrint('Scheduled notification for ${routine.routineName} on weekday $weekday');
+      } catch (e) {
+        debugPrint('Failed to schedule notification: $e');
+      }
+    }
   }
 
   Widget _buildWeekdaySelectorCard() {

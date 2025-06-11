@@ -8,14 +8,14 @@ import 'package:provider/provider.dart'; // To access BLoCs
 
 // Import BLoCs and Providers (Adjust paths if needed)
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
-// import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Not directly needed if CalendarPage handles its own data
+import 'package:workout_planner/bloc/workout_session_bloc.dart'; // Now needed for workout session data
 import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For getFirstRunDate
 // Re-add import statement
 
 // Import Models and UI Components
-// Included via routine.dart
-// Included via routine.dart
-// Import Part model
+import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/models/workout_session.dart';
+import 'package:workout_planner/models/part.dart'; // Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 
@@ -79,6 +79,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     // Access the RoutinesBloc instance provided higher up in the tree
     // Use watch() so the StreamBuilder below reacts if the BLoC instance itself changes (rare)
     final routinesBlocInstance = context.watch<RoutinesBloc>();
+    final workoutSessionBlocInstance = context.watch<WorkoutSessionBloc>();
 
     if (kDebugMode) print("[BUILD] StatisticsPage");
 
@@ -120,33 +121,49 @@ class _StatisticsPageState extends State<StatisticsPage> {
             // Use empty list if data is null (stream active but no data yet) or empty
             final routines = routineSnapshot.data ?? [];
 
-            // --- Build Layout ---
-            // Use CustomScrollView to combine slivers and regular widgets easily
-            return CustomScrollView(
-              slivers: <Widget>[
-                // 1. Statistics Grid (uses routine data)
-                _buildStatisticsGrid(context, routines), // Pass routines here
+            // Now also listen to workout sessions for the body part chart
+            return StreamBuilder<List<WorkoutSession>>(
+              stream: workoutSessionBlocInstance.allSessionsStream,
+              builder: (context, sessionSnapshot) {
+                if (kDebugMode) {
+                  print("Statistics Session StreamBuilder state: ${sessionSnapshot.connectionState}");
+                  if (sessionSnapshot.hasData) {
+                    print("StatisticsPage: Session data: ${sessionSnapshot.data?.length} sessions");
+                  }
+                }
 
-                // 2. Calendar Section Header
-                SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                      child: Text(
-                          "Workout Calendar",
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)
-                      ),
-                    )
-                ),
+                // Handle session stream states - but don't block UI if sessions are loading
+                final sessions = sessionSnapshot.data ?? [];
 
-                // 3. Calendar Page (Assumes it fetches its own session data)
-                // Wrap CalendarPage (if it's not a Sliver itself)
-                const SliverToBoxAdapter(
-                  child: CalenderPage(), // CalendarPage needs to handle its own data source
-                ),
+                // --- Build Layout ---
+                // Use CustomScrollView to combine slivers and regular widgets easily
+                return CustomScrollView(
+                  slivers: <Widget>[
+                    // 1. Statistics Grid (uses routine data and session data)
+                    _buildStatisticsGrid(context, routines, sessions), // Pass both routines and sessions
 
-                // Add bottom padding inside the scroll view
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+                    // 2. Calendar Section Header
+                    SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                          child: Text(
+                              "Workout Calendar",
+                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)
+                          ),
+                        )
+                    ),
+
+                    // 3. Calendar Page (Assumes it fetches its own session data)
+                    // Wrap CalendarPage (if it's not a Sliver itself)
+                    const SliverToBoxAdapter(
+                      child: CalenderPage(), // CalendarPage needs to handle its own data source
+                    ),
+
+                    // Add bottom padding inside the scroll view
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                  ],
+                );
+              },
             );
           },
         ),
@@ -155,7 +172,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
   /// Builds the 2x2 grid of statistics cards as a Sliver.
-  Widget _buildStatisticsGrid(BuildContext context, List<Routine> routines) {
+  Widget _buildStatisticsGrid(BuildContext context, List<Routine> routines, List<WorkoutSession> sessions) {
     // Calculate stats based on the received routines list
     final totalCompletionCount = _getTotalWorkoutCount(routines);
     final weeklyRatio = _calculateWeeklyRatio(routines); // Renamed for clarity
@@ -213,24 +230,27 @@ class _StatisticsPageState extends State<StatisticsPage> {
             ),
           ),
 
-          // --- Card 3: Workout Focus (Donut Chart) ---
+          // --- Card 3: Body Parts Trained (Donut Chart) ---
           _buildInfoCard(
             context: context,
             child: Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(6.0), // Reduced padding
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text("Workout Focus", style: Theme.of(context).textTheme.labelMedium),
-                  const SizedBox(height: 12),
+                  Text("Body Parts Trained", style: Theme.of(context).textTheme.labelMedium),
+                  const SizedBox(height: 8), // Reduced spacing
                   Expanded(
                     child: Builder(
                       builder: (context) {
-                        final List<Part> allParts = routines.expand((routine) => routine.parts).toList();
-                        // TODO: DonutAutoLabelChart needs to be made theme-aware
-                        return (allParts.isEmpty)
-                            ? Center(child: Text("No parts defined", style: Theme.of(context).textTheme.bodySmall))
-                            : DonutAutoLabelChart(allParts);
+                        // Extract body parts from completed workout sessions instead of routine templates
+                        final List<Part> trainedParts = _extractTrainedBodyParts(sessions, routines);
+                        return (trainedParts.isEmpty)
+                            ? Center(child: Text("No completed\nworkouts", textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall))
+                            : Padding(
+                                padding: const EdgeInsets.all(4.0), // Small padding around chart
+                                child: DonutAutoLabelChart(trainedParts, animate: true),
+                              );
                       }
                     ),
                   ),
@@ -346,5 +366,61 @@ class _StatisticsPageState extends State<StatisticsPage> {
   int _getTotalWorkoutCount(List<Routine> routines) {
     // Use fold for a concise sum, handling potential null for completionCount
     return routines.fold<int>(0, (sum, routine) => sum + (routine.completionCount ?? 0));
+  }
+
+  /// Extracts body parts from completed workout sessions.
+  /// Maps exercise names back to their original body part classifications using routine data.
+  List<Part> _extractTrainedBodyParts(List<WorkoutSession> sessions, List<Routine> routines) {
+    if (sessions.isEmpty) return [];
+
+    // Create a map of exercise names to their targeted body parts from routine templates
+    final Map<String, TargetedBodyPart> exerciseToBodyPartMap = {};
+    for (final routine in routines) {
+      for (final part in routine.parts) {
+        for (final exercise in part.exercises) {
+          exerciseToBodyPartMap[exercise.name] = part.targetedBodyPart;
+        }
+      }
+    }
+
+    // Process completed sessions to count trained body parts
+    final Map<TargetedBodyPart, int> bodyPartCounts = {};
+    
+    // Only consider completed sessions
+    final completedSessions = sessions.where((session) => session.isCompleted && session.endTime != null);
+    
+    for (final session in completedSessions) {
+      // Track unique body parts per session to avoid counting multiple exercises
+      // targeting the same body part within one session
+      final Set<TargetedBodyPart> sessionBodyParts = {};
+      
+      for (final exercisePerf in session.exercises) {
+        // Look up the body part for this exercise
+        final bodyPart = exerciseToBodyPartMap[exercisePerf.exerciseName];
+        if (bodyPart != null) {
+          sessionBodyParts.add(bodyPart);
+        }
+      }
+      
+      // Count each unique body part trained in this session
+      for (final bodyPart in sessionBodyParts) {
+        bodyPartCounts[bodyPart] = (bodyPartCounts[bodyPart] ?? 0) + 1;
+      }
+    }
+
+    // Convert counts back to Part objects for the chart
+    final List<Part> trainedParts = [];
+    bodyPartCounts.forEach((bodyPart, count) {
+      // Create a Part for each body part that was trained
+      for (int i = 0; i < count; i++) {
+        trainedParts.add(Part(
+          targetedBodyPart: bodyPart,
+          setType: SetType.Regular, // Default set type as it's not relevant for the chart
+          exercises: [], // Empty exercises list as it's not needed for the chart
+        ));
+      }
+    });
+
+    return trainedParts;
   }
 } // End of _StatisticsPageState

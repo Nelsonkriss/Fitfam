@@ -15,35 +15,46 @@ class ExercisePerformance {
   /// The unique ID from the 'ExercisePerformances' database table (null if not saved yet).
   final int? id;
   final String exerciseName;
+  /// The type of workout this exercise represents (Weight, Cardio, or Timed)
+  final WorkoutType workoutType;
   /// The list of sets performed for this exercise during the session.
   /// Populated by DBProviderIO after fetching from 'SetPerformances' table.
   final List<SetPerformance> sets;
   /// The planned rest period after this exercise (if any).
   final Duration? restPeriod;
+  final Duration? timedDuration;
 
   const ExercisePerformance({
     this.id, // Nullable ID from DB
     required this.exerciseName,
+    required this.workoutType,
     required this.sets,
     this.restPeriod,
+    this.timedDuration,
   });
 
   /// Creates a new ExercisePerformance instance with updated values.
   ExercisePerformance copyWith({
     int? id,
     String? exerciseName,
+    WorkoutType? workoutType,
     List<SetPerformance>? sets,
     // Allow setting restPeriod to null explicitly
     Object? restPeriod = const _Undefined(),
+    Object? timedDuration = const _Undefined(),
   }) {
     return ExercisePerformance(
       id: id ?? this.id,
       exerciseName: exerciseName ?? this.exerciseName,
+      workoutType: workoutType ?? this.workoutType,
       // If sets list is provided, use it; otherwise keep original list reference
       sets: sets ?? this.sets,
       restPeriod: restPeriod is _Undefined
           ? this.restPeriod
           : restPeriod as Duration?,
+      timedDuration: timedDuration is _Undefined
+          ? this.timedDuration
+          : timedDuration as Duration?,
     );
   }
 
@@ -76,6 +87,7 @@ class ExercisePerformance {
     return ExercisePerformance(
       // ID is null initially, assigned by DB upon saving
       exerciseName: exercise.name,
+      workoutType: exercise.workoutType,
       // Create list of SetPerformance based on Exercise plan
       sets: List.generate(
         exercise.sets.clamp(1, 100), // Ensure 1 to 100 sets
@@ -90,6 +102,7 @@ class ExercisePerformance {
         growable: false, // List length is fixed based on plan
       ),
       restPeriod: plannedRest,
+      timedDuration: exercise.timedDuration,
     );
   }
 
@@ -102,7 +115,7 @@ class ExercisePerformance {
 
   @override
   String toString() {
-    return 'ExercisePerformance(id: $id, name: $exerciseName, sets: ${sets.length}, rest: $restPeriod)';
+    return 'ExercisePerformance(id: $id, name: $exerciseName, type: ${workoutType.name}, sets: ${sets.length}, rest: $restPeriod, timedDuration: $timedDuration)';
   }
 
   // Equality comparison
@@ -116,16 +129,20 @@ class ExercisePerformance {
         runtimeType == other.runtimeType &&
         id == other.id &&
         exerciseName == other.exerciseName &&
+        workoutType == other.workoutType &&
         listEquals(sets, other.sets) && // Deep list comparison is important
-        restPeriod == other.restPeriod;
+        restPeriod == other.restPeriod &&
+        timedDuration == other.timedDuration;
   }
 
   @override
   int get hashCode => Object.hash(
     id,
     exerciseName,
+    workoutType,
     const DeepCollectionEquality().hash(sets), // Use deep hash for list
     restPeriod,
+    timedDuration,
   );
 }
 

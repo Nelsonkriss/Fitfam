@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:workout_planner/models/routine.dart'; // Assuming you'll parse into this
 import 'package:workout_planner/models/main_targeted_body_part.dart';
+import 'package:workout_planner/services/exercise_animation_service.dart';
 
 
 class OpenRouterService {
@@ -18,8 +19,16 @@ class OpenRouterService {
       return null;
     }
 
+    // Get the animation-aware exercise list
+    final availableExercises = ExerciseAnimationService.generateAIExerciseList();
+    
     final systemPrompt = """
-You are an expert fitness coach. Generate a workout routine based on the user's request.
+You are an expert fitness coach with access to a workout app that has 3D animations for specific exercises.
+Generate a workout routine based on the user's request using ONLY exercises that have animations available.
+
+$availableExercises
+
+OUTPUT FORMAT:
 Output the routine ONLY as a JSON object with the following structure and nothing else:
 {
   "routineName": "User's Goal Routine",
@@ -30,22 +39,26 @@ Output the routine ONLY as a JSON object with the following structure and nothin
       "targetedBodyPart": "FullBody",
       "setType": "Regular",
       "exercises": [
-        { "name": "Squats", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
-        { "name": "Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
+        { "name": "Barbell Squat", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
+        { "name": "Barbell Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
       ]
     }
   ]
 }
-Ensure exercise names are common and recognizable.
-'workoutType' can be 'Weight', 'Cardio', 'Timed'.
-'mainTargetedBodyPart' for the routine must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Other.
-'targetedBodyPart' for a part must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep.
-'setType' for a part must be one of: Regular, Drop, Super, Tri, Giant.
-'reps' should be a string, e.g., "8-12" or "15" or "AMRAP" or "30 sec".
-The key for number of sets per exercise MUST be "sets" (plural) and it should be an integer.
-'weight' should be a double, use 0.0 if not applicable or bodyweight.
-Provide a sensible routineName based on the user's request.
-If the user asks for a 3-day routine, the "parts" array should contain 3 part objects, each representing a day.
+
+FIELD REQUIREMENTS:
+- 'workoutType' can be 'Weight', 'Cardio', 'Timed'.
+- 'mainTargetedBodyPart' for the routine must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Other.
+- 'targetedBodyPart' for a part must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep.
+- 'setType' for a part must be one of: Regular, Drop, Super, Tri, Giant.
+- 'reps' should be a string, e.g., "8-12" or "15" or "AMRAP" or "30 sec".
+- The key for number of sets per exercise MUST be "sets" (plural) and it should be an integer.
+- 'weight' should be a double, use 0.0 if not applicable or bodyweight.
+- Provide a sensible routineName based on the user's request.
+- If the user asks for a 3-day routine, the "parts" array should contain 3 part objects, each representing a day.
+
+CRITICAL: Use EXACT exercise names from the available list above. Users will see 3D animations during their workout, so using unavailable exercises will result in no animation display.
+
 Do not include any explanatory text before or after the JSON object.
 """;
 
@@ -179,12 +192,28 @@ Do not include any explanatory text before or after the JSON object.
           }
 
           final String exName = exerciseJson['name'] as String;
+          
+          // Validate that the exercise has animation support
+          if (!ExerciseAnimationService.validateExerciseHasAnimation(exName)) {
+            debugPrint("[OpenRouterService] Warning: Exercise '$exName' does not have animation support. Attempting to find alternative...");
+            
+            final String? alternative = ExerciseAnimationService.getSuggestedAlternative(exName);
+            if (alternative != null) {
+              debugPrint("[OpenRouterService] Using alternative exercise '$alternative' instead of '$exName'");
+              // Update the exercise name to the alternative
+              exerciseJson['name'] = alternative;
+            } else {
+              debugPrint("[OpenRouterService] No suitable alternative found for '$exName'. Skipping exercise.");
+              continue;
+            }
+          }
+          
           // Read "sets" or "set", defaulting to 0 if neither or not an int
           final int exSets = (exerciseJson['sets'] ?? exerciseJson['set']) is int
                            ? (exerciseJson['sets'] ?? exerciseJson['set']) as int
                            : 0;
           if (exSets == 0) {
-            debugPrint("[OpenRouterService] Warning: Exercise '$exName' has 0 sets or invalid 'sets'/'set' field. Value: ${exerciseJson['sets'] ?? exerciseJson['set']}. Skipping exercise.");
+            debugPrint("[OpenRouterService] Warning: Exercise '${exerciseJson['name']}' has 0 sets or invalid 'sets'/'set' field. Value: ${exerciseJson['sets'] ?? exerciseJson['set']}. Skipping exercise.");
             continue;
           }
           final String exReps = exerciseJson['reps'] as String;
@@ -204,7 +233,7 @@ Do not include any explanatory text before or after the JSON object.
 
 
           exercises.add(Exercise(
-            name: exName,
+            name: exerciseJson['name'] as String, // Use the potentially updated name
             sets: exSets,
             reps: exReps,
             weight: exWeight,
