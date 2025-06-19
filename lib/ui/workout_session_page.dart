@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For input formatters in dialog
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -16,7 +15,6 @@ import 'package:workout_planner/resource/db_provider.dart';
 import '../models/exercise_performance.dart';
 import '../models/set_performance.dart'; // Adjust path if needed
 import '../ui/components/exercise_animation_widget.dart';
-import '../ui/components/enhanced_animation_widgets.dart';
 import '../models/exercise_animation_data.dart';
 import '../services/ai_weight_recommendation_service.dart';
 import '../models/user_profile.dart';
@@ -58,25 +56,29 @@ class WorkoutSessionPage extends StatelessWidget {
                 showDialog(
                     context: context,
                     builder: (confirmCtx) => AlertDialog(
-                      title: const Text('Cancel Workout?'),
-                      content: const Text('Are you sure you want to cancel this session? Progress will not be saved.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(confirmCtx), child: const Text('Continue Workout')),
-                        TextButton(
-                            onPressed: () {
-                              Navigator.pop(confirmCtx); // Close dialog
-                              Navigator.pop(context); // Close page
-                            },
-                            child: const Text('Cancel Session', style: TextStyle(color: Colors.red))
-                        ),
-                      ],
-                    )
-                );
+                          title: const Text('Cancel Workout?'),
+                          content: const Text(
+                              'Are you sure you want to cancel this session? Progress will not be saved.'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(confirmCtx),
+                              child: const Text('Continue Workout'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(confirmCtx); // Close dialog
+                                Navigator.pop(context); // Close page
+                              },
+                              child: const Text('Cancel Session',
+                                  style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ));
               },
             ),
           ],
         ),
-        child: BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
+        body: BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
           builder: (context, state) {
             if (state.isLoading && state.session == null) {
               return const Center(child: CircularProgressIndicator());
@@ -84,14 +86,13 @@ class WorkoutSessionPage extends StatelessWidget {
             if (state.session == null && !state.isLoading) {
               return Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      state.errorMessage ?? 'Failed to load workout session.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.red[700]),
-                    ),
-                  )
-              );
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  state.errorMessage ?? 'Failed to load workout session.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.red[700]),
+                ),
+              ));
             }
             if (state.session != null) {
               return Stack(
@@ -105,33 +106,42 @@ class WorkoutSessionPage extends StatelessWidget {
                       _SessionControls(),
                     ],
                   ),
-                  if (state.isLoading && state.isFinished) // Show loading overlay when finishing
+                  if (state.isLoading &&
+                      state.isFinished) // Show loading overlay when finishing
                     Container(
                       color: Colors.black.withOpacity(0.5),
                       child: const Center(
                           child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                CircularProgressIndicator(color: Colors.white),
-                                SizedBox(height: 10),
-                                Text("Finishing...", style: TextStyle(color: Colors.white, fontSize: 16)),
-                              ]
-                          )
-                      ),
+                            CircularProgressIndicator(color: Colors.white),
+                            SizedBox(height: 10),
+                            Text("Finishing...",
+                                style: TextStyle(
+                                    color: Colors.white, fontSize: 16)),
+                          ])),
                     ),
                 ],
               );
             }
-            return const Center(child: Text('An unexpected error occurred.')); // Fallback
+            return const Center(
+                child: Text('An unexpected error occurred.')); // Fallback
           },
         ),
         floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-        floatingActionButton: BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
+        floatingActionButton:
+            BlocBuilder<WorkoutSessionBloc, WorkoutSessionState>(
           builder: (context, state) {
-            if (state.session != null && state.session!.exercises.isNotEmpty && state.session!.currentExerciseIndex < state.session!.exercises.length) {
-              final currentExerciseName = state.session!.exercises[state.session!.currentExerciseIndex].exerciseName;
+            if (state.session != null &&
+                state.session!.exercises.isNotEmpty &&
+                state.session!.currentExerciseIndex <
+                    state.session!.exercises.length) {
+              final currentExerciseName = state
+                  .session!.exercises[state.session!.currentExerciseIndex]
+                  .exerciseName;
               print('[FAB] Current Exercise Name: "$currentExerciseName"');
-              bool hasAnimation = ExerciseAnimationData.hasAnimationForExercise(currentExerciseName);
+              bool hasAnimation = ExerciseAnimationData.hasAnimationForExercise(
+                  currentExerciseName);
               print('[FAB] Has Animation: $hasAnimation');
               Widget fabContent;
 
@@ -148,28 +158,33 @@ class WorkoutSessionPage extends StatelessWidget {
               } else {
                 print('[FAB] Taking fallback path for icon in FAB.');
                 final iconPath = _getExerciseIconPath(currentExerciseName);
-                print('[FAB] Icon path from _getExerciseIconPath for FAB: "$iconPath"');
+                print(
+                    '[FAB] Icon path from _getExerciseIconPath for FAB: "$iconPath"');
                 fabContent = Image.asset(
                   iconPath,
                   width: 24, // Standard icon size
                   height: 24,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
-                    print('[FAB] Error loading icon asset "$iconPath" for FAB: $error');
-                    return const Icon(Icons.fitness_center, size: 24); // Fallback dumbbell
+                    print(
+                        '[FAB] Error loading icon asset "$iconPath" for FAB: $error');
+                    return const Icon(Icons.fitness_center,
+                        size: 24); // Fallback dumbbell
                   },
                 );
               }
 
               return FloatingActionButton(
                 onPressed: () {
-                  _showExerciseAnimationDialogGlobal(context, currentExerciseName);
+                  _showExerciseAnimationDialogGlobal(
+                      context, currentExerciseName);
                 },
-                child: fabContent,
-                mini: true, // Make it a bit smaller
+                mini: true,
+                child: fabContent, // Make it a bit smaller
               );
             }
-            return const SizedBox.shrink(); // Return empty if no current exercise or session
+            return const SizedBox
+                .shrink(); // Return empty if no current exercise or session
           },
         ),
       ),
@@ -365,119 +380,110 @@ class _ExerciseList extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              exercise.exerciseName,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          exercise.exerciseName,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: Theme.of(context).colorScheme.onSurface,
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
-                            ),
-                            const SizedBox(height: 4),
-                            // Debug logging for exercise names
-                            Builder(
-                              builder: (context) {
-                                print('[WorkoutSessionPage] Exercise name from DB: "${exercise.exerciseName}"');
-                                print('[WorkoutSessionPage] Has animation: ${ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName)}');
-                                return const SizedBox.shrink();
-                              },
-                            ),
-                            if (ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName))
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.play_circle_outline,
-                                    size: 16,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      'Animation available',
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 4),
+                        if (ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName))
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.play_circle_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'Animation available',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                         color: Theme.of(context).colorScheme.primary,
                                         fontWeight: FontWeight.w500,
                                       ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName))
-                        Flexible(
-                          flex: 1,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxWidth: 80,
-                              maxHeight: 80,
-                            ),
-                            child: ExerciseAnimationWidget(
-                              exerciseName: exercise.exerciseName,
-                              width: 80,
-                              height: 80,
-                              autoPlay: true,
-                              showControls: false,
-                              showDescription: false,
-                            ),
+                            ],
                           ),
-                        )
-                      else
-                        Container(
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName))
+                    Flexible(
+                      flex: 1,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: 80,
+                          maxHeight: 80,
+                        ),
+                        child: ExerciseAnimationWidget(
+                          exerciseName: exercise.exerciseName,
                           width: 80,
                           height: 80,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.asset(
-                              _getExerciseIconPath(exercise.exerciseName),
-                              width: 80,
-                              height: 80,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.fitness_center,
-                                      size: 24,
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'No Icon',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
+                          autoPlay: true,
+                          showControls: false,
+                          showDescription: false,
                         ),
-                    ],
-                  ),
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.asset(
+                          _getExerciseIconPath(exercise.exerciseName),
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.fitness_center,
+                                  size: 24,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'No Icon',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 12),
-              // Animation button for full view
               if (ExerciseAnimationData.hasAnimationForExercise(exercise.exerciseName))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -501,31 +507,28 @@ class _ExerciseList extends StatelessWidget {
                 itemBuilder: (context, setIndex) {
                   final SetPerformance set = exercise.sets[setIndex];
                   final bool isButtonDisabled = state.isLoading || state.isFinished;
+                  final isTimedExercise = exercise.workoutType == WorkoutType.Timed;
 
-  // Check if this is a timed exercise by workoutType field
-  final isTimedExercise = exercise.workoutType == WorkoutType.Timed;
-  
-  return ListTile(
-    contentPadding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 0),
-    title: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Set ${setIndex + 1}:  ${isTimedExercise ? '${set.targetReps} seconds' : '${set.targetReps} reps'}',
-          style: Theme.of(context).textTheme.bodyMedium
-        ),
-      ],
-    ),
-
+                  return ListTile(
+                    contentPadding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 0),
+                    title: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Set ${setIndex + 1}:  ${isTimedExercise ? '${set.targetReps} seconds' : '${set.targetReps} reps'}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
                     trailing: set.isCompleted
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Flexible(
                                 child: Text(
-                                  isTimedExercise 
-                                    ? '${set.actualReps} seconds'
-                                    : '${set.actualWeight} kg x ${set.actualReps} reps',
+                                  isTimedExercise
+                                      ? '${set.actualReps} seconds'
+                                      : '${set.actualWeight} kg x ${set.actualReps} reps',
                                   style: TextStyle(
                                     color: Colors.green[700],
                                     fontWeight: FontWeight.bold,
@@ -565,20 +568,19 @@ class _ExerciseList extends StatelessWidget {
                                     return Theme.of(context).colorScheme.onSurface.withOpacity(0.38);
                                   }
                                   return Theme.of(context).colorScheme.onPrimary;
-                                }
-                              )
+                                },
+                              ),
                             ),
                             onPressed: isButtonDisabled
                                 ? null
                                 : () => _showSetPreparationDialog(
-                                        context,
-                                        exerciseIndex,
-                                        setIndex,
-                                        exercise.exerciseName,
-                                        set,
-                                      ),
+                                      context,
+                                      exerciseIndex,
+                                      setIndex,
+                                      exercise.exerciseName,
+                                      set,
+                                    ),
                           ),
-
                   );
                 },
                 separatorBuilder: (context, index) => const Divider(height: 1, thickness: 0.5),
@@ -589,157 +591,250 @@ class _ExerciseList extends StatelessWidget {
       },
     );
   }
+}
 
-
-  void _showWeightEditDialog({
-    required BuildContext context,
-    required int exerciseIndex,
-    required int setIndex,
-    required double currentWeight,
-  }) {
-    final controller = TextEditingController(text: currentWeight.toString());
+void _showSetPreparationDialog(
+  BuildContext context,
+  int exerciseIndex,
+    int setIndex,
+    String exerciseName,
+    SetPerformance set,
+  ) {
+    final repsController = TextEditingController(text: set.targetReps.toString());
+    final weightController = TextEditingController(text: set.targetWeight.toString());
     final formKey = GlobalKey<FormState>();
-    final state = context.read<WorkoutSessionBloc>().state;
-    final session = state.session!;
-    final exercise = session.exercises[exerciseIndex];
 
     showDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.fitness_center, size: 20),
-                const SizedBox(width: 8),
-                const Expanded(child: Text('Edit Target Weight')),
-                IconButton(
-                  icon: const Icon(Icons.psychology, size: 20),
-                  onPressed: () => _showAIRecommendationDialog(
-                    dialogContext,
-                    exercise.exerciseName,
-                    currentWeight,
-                    controller,
-                  ),
-                  tooltip: 'Get AI Recommendation',
-                  style: IconButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-                  ),
-                ),
-              ],
-            ),
-            content: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: controller,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Weight (kg)',
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.fitness_center),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter a weight';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.lightbulb_outline,
-                          size: 16,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Tap the AI icon for personalized weight recommendations',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext);
-                  controller.dispose();
-                },
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (formKey.currentState?.validate() ?? false) {
-                    final weight = double.tryParse(controller.text) ?? currentWeight;
-                    context.read<WorkoutSessionBloc>().add(
-                      WorkoutSetTargetWeightChanged(
-                        exerciseIndex: exerciseIndex,
-                        setIndex: setIndex,
-                        targetWeight: weight,
-                      ),
-                    );
-                    Navigator.pop(dialogContext);
-                    controller.dispose();
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Log Set for $exerciseName'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: repsController,
+                decoration: const InputDecoration(labelText: 'Reps'),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty || int.tryParse(value) == null) {
+                    return 'Enter a valid number';
                   }
+                  return null;
                 },
-                child: const Text('Save'),
+              ),
+              TextFormField(
+                controller: weightController,
+                decoration: const InputDecoration(labelText: 'Weight (kg)'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                validator: (value) {
+                  if (value == null || value.isEmpty || double.tryParse(value) == null) {
+                    return 'Enter a valid number';
+                  }
+                  return null;
+                },
               ),
             ],
-          );
-        },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final actualReps = int.parse(repsController.text);
+                final actualWeight = double.parse(weightController.text);
+                context.read<WorkoutSessionBloc>().add(WorkoutSetMarkedComplete(
+                      exerciseIndex: exerciseIndex,
+                      setIndex: setIndex,
+                      actualReps: actualReps,
+                      actualWeight: actualWeight,
+                    ));
+                Navigator.pop(dialogContext);
+              }
+            },
+            child: const Text('Log'),
+          ),
+        ],
       ),
     );
   }
 
-  void _showAIRecommendationDialog(
-    BuildContext context,
-    String exerciseName,
-    double currentWeight,
-    TextEditingController weightController,
-  ) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => const AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Getting AI recommendation...'),
-          ],
-        ),
-      ),
-    );
+void _showWeightEditDialog({
+  required BuildContext context,
+  required int exerciseIndex,
+  required int setIndex,
+  required double currentWeight,
+}) {
+  final controller = TextEditingController(text: currentWeight.toString());
+  final formKey = GlobalKey<FormState>();
+  final state = context.read<WorkoutSessionBloc>().state;
+  final session = state.session!;
+  final exercise = session.exercises[exerciseIndex];
 
-    try {
-      // Get user profile for personalized recommendations
-      final userProfile = await sharedPrefsProvider.getUserProfile();
+  showDialog(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.fitness_center, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Edit Target Weight')),
+              IconButton(
+                icon: const Icon(Icons.psychology, size: 20),
+                onPressed: () => _showAIRecommendationDialog(
+                  dialogContext,
+                  exercise.exerciseName,
+                  currentWeight,
+                  controller,
+                ),
+                tooltip: 'Get AI Recommendation',
+                style: IconButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+              ),
+            ],
+          ),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: controller,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Weight (kg)',
+                    border: OutlineInputBorder(),
+                    suffixIcon: Icon(Icons.fitness_center),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a weight';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.lightbulb_outline,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tap the AI icon for personalized weight recommendations',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                controller.dispose();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  final weight = double.tryParse(controller.text) ?? currentWeight;
+                  context.read<WorkoutSessionBloc>().add(
+                    WorkoutSetTargetWeightChanged(
+                      exerciseIndex: exerciseIndex,
+                      setIndex: setIndex,
+                      targetWeight: weight,
+                    ),
+                  );
+                  Navigator.pop(dialogContext);
+                  controller.dispose();
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+void _showAIRecommendationDialog(
+  BuildContext context,
+  String exerciseName,
+  double currentWeight,
+  TextEditingController weightController,
+) async {
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => const AlertDialog(
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text('Getting AI recommendation...'),
+        ],
+      ),
+    ),
+  );
+
+  try {
+    // Get user profile for personalized recommendations
+    final userProfile = await sharedPrefsProvider.getUserProfile();
+
+    if (userProfile == null) {
+      // Handle case where user profile is not available
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+        showDialog(
+          context: context,
+          builder: (errorContext) => AlertDialog(
+            title: const Text('Error'),
+            content:
+                const Text('User profile not found. Please set up your profile.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(errorContext),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
       
       // Get AI recommendation using instance method
       final aiService = AIWeightRecommendationService();
@@ -873,4 +968,94 @@ class _ExerciseList extends StatelessWidget {
                 if (recommendation.tips.isNotEmpty) ...[
                   Text(
                     'Tips:',
-                    style: Theme.of(context).textTheme.titleSmall
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...recommendation.tips.map((tip) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.check_circle_outline,
+                      size: 18,
+                      color: Theme.of(context).colorScheme.secondary,
+                    ),
+                    title: Text(tip, style: Theme.of(context).textTheme.bodyMedium),
+                  )),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(recommendationContext),
+                child: const Text('Close'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  weightController.text = recommendation.recommendedWeight.toStringAsFixed(1);
+                  Navigator.pop(recommendationContext);
+                },
+                child: const Text('Use this Weight'),
+              ),
+            ],
+          ),
+        );
+      }
+  } catch (e) {
+    // Close loading dialog
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+    // Show error dialog
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        builder: (errorContext) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to get AI recommendation: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(errorContext),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+}
+
+String _generateReasoningText(double recommendedWeight, double currentWeight, UserProfile userProfile) {
+  if (recommendedWeight > currentWeight) {
+    return "Based on your progress and profile, you seem ready for a heavier weight to continue challenging your muscles.";
+  } else if (recommendedWeight < currentWeight) {
+    return "It might be beneficial to lower the weight slightly to focus on form and ensure you can complete all reps effectively.";
+  }
+  return "The current weight seems appropriate for your performance level. Keep up the good work!";
+}
+
+List<String> _generateTips(String exerciseName, double recommendedWeight) {
+  return [
+    "Ensure proper form throughout the exercise.",
+    "Control the movement, both on the way up and down.",
+    "Breathe steadily and don't hold your breath.",
+    "Rest adequately between sets."
+  ];
+}
+class _SessionControls extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: ElevatedButton(
+        onPressed: () {
+          context.read<WorkoutSessionBloc>().add(WorkoutSessionFinishAttempt());
+        },
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 50),
+        ),
+        child: const Text('Finish Workout'),
+      ),
+    );
+  }
+}

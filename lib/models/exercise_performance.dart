@@ -106,6 +106,9 @@ class ExercisePerformance {
     );
   }
 
+  /// Returns true if all sets for this exercise have been marked as completed.
+  bool get isCompleted => sets.every((set) => set.isCompleted);
+
   /*
    * NOTE: toMapForDb and fromMap methods are removed because the DBProviderIO
    * uses a normalized schema. It constructs the map for insertion manually

@@ -1,8 +1,5 @@
 import 'dart:math';
 import '../models/user_profile.dart';
-import '../models/workout_session.dart';
-import '../models/exercise_performance.dart';
-import '../models/set_performance.dart';
 import '../resource/db_provider.dart';
 
 /// Service that provides AI-powered weight recommendations for exercises

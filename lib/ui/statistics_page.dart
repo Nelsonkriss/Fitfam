@@ -13,9 +13,8 @@ import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For get
 // Re-add import statement
 
 // Import Models and UI Components
-import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/workout_session.dart';
-import 'package:workout_planner/models/part.dart'; // Import Part model
+// Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
 

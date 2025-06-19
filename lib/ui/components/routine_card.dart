@@ -4,6 +4,7 @@ import 'package:provider/provider.dart'; // <--- Import Provider package if usin
 
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart Bloc
 import 'package:workout_planner/ui/routine_detail_page.dart';
+import 'package:workout_planner/ui/routine_step_page.dart';
 // ... other imports
 
 class RoutineCard extends StatelessWidget {
@@ -27,101 +28,72 @@ class RoutineCard extends StatelessWidget {
 
     return Card(
       child: InkWell(
-          borderRadius: (theme.cardTheme.shape is RoundedRectangleBorder)
-              ? ((theme.cardTheme.shape as RoundedRectangleBorder).borderRadius as BorderRadius?) // Cast to BorderRadius
-              : BorderRadius.circular(12.0), // Default if not RoundedRectangleBorder or borderRadius is not BorderRadius
-          onTap: () {
+        onTap: () {
+          final int? currentRoutineId = routine.id;
+          if (currentRoutineId == null) {
+            debugPrint("RoutineCard: Attempted to select routine with null ID.");
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Cannot select this routine (missing ID).")),
+            );
+            return;
+          }
 
-            final int? currentRoutineId = routine.id;
-            if (currentRoutineId == null) {
-              debugPrint("RoutineCard: Attempted to select routine with null ID.");
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Cannot select this routine (missing ID).")),
-              );
-              return;
-            }
+          final routinesBlocInstance = context.read<RoutinesBloc>();
+          routinesBlocInstance.selectRoutine(currentRoutineId);
 
-            // Get the BLoC instance using Provider or BlocProvider context extension
-            // Adjust context.read<...> based on how you provided it
-            final routinesBlocInstance = context.read<RoutinesBloc>();
-
-            // Call the PUBLIC METHOD directly on the RxDart BLoC instance
-            routinesBlocInstance.selectRoutine(currentRoutineId);
-
-            debugPrint("RoutineCard: Called selectRoutine for ID $currentRoutineId");
-
-            // --- END: Corrected onTap Logic for RxDart Bloc ---
-
-            // Navigate to the detail page
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => RoutineDetailPage(
-                  key: ValueKey('routine_detail_$currentRoutineId'),
-                  isRecRoutine: isRecRoutine,
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const RoutineDetailPage(),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                routine.routineName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            );
-          },
-          child: Padding( // Add padding inside InkWell
-            padding: const EdgeInsets.all(16.0), // More modern padding
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min, // Allow card to size to content
-              children: [
-                Text(
-                  routine.routineName,
-                  maxLines: 2, // Allow a bit more space for longer names
-                  overflow: TextOverflow.ellipsis,
-                  style: textTheme.titleLarge?.copyWith(
-                    // Use themed text style
-                    fontWeight: FontWeight.bold,
-                    // Color will be inherited from theme (e.g., onSurface)
-                  ),
-                ),
-                if (!isRecRoutine && routine.parts.isNotEmpty) ...[ // Add some spacing if details are shown
-                  const SizedBox(height: 8),
-                  Text(
-                    "${routine.parts.length} part${routine.parts.length == 1 ? '' : 's'}", // Example subtitle
-                    style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.7)),
-                  ),
-                ],
-                if (!isRecRoutine) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start, // Align to start
-                    children: List.generate(7, (index) {
-                      final weekday = index + 1;
-                      final bool isScheduled = routine.weekdays.contains(weekday);
-                      return Flexible(
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 4), // Reduced spacing to prevent overflow
-                          height: 18, // Slightly smaller circles to fit better
-                          width: 18,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isScheduled ? colorScheme.primary : colorScheme.surfaceContainerHighest, // Themed colors
-                            border: isScheduled ? null : Border.all(color: colorScheme.outline.withOpacity(0.5))
-                          ),
-                          child: Center(
-                            child: Text(
-                              ['M', 'T', 'W', 'T', 'F', 'S', 'S'][index],
-                              style: TextStyle(
-                                  color: isScheduled ? colorScheme.onPrimary : colorScheme.onSurfaceVariant, // Themed text colors
-                                  fontSize: 9, // Slightly smaller font to fit better
-                                  fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
+              const SizedBox(height: 8),
+              ...routine.parts.map((part) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.fitness_center, color: colorScheme.primary),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              part.partName,
+                              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                             ),
-                          ),
+                            Text(
+                              '${part.exercises.length} exercises',
+                              style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.7)),
+                            ),
+                          ],
                         ),
-                      );
-                    }),
+                      ),
+                      const Icon(Icons.chevron_right),
+                    ],
                   ),
-                ]
-              ],
-            ),
+                );
+              }).toList(),
+            ],
           ),
         ),
+      ),
     );
   }
 }

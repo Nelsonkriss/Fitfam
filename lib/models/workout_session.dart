@@ -159,6 +159,13 @@ class WorkoutSession {
     }
   }
 
+  /// Finds the index of the first exercise that is not yet fully completed.
+  /// Returns -1 if all exercises are completed.
+  int get currentExerciseIndex {
+    final index = exercises.indexWhere((ex) => !ex.isCompleted);
+    return index; // Returns -1 if not found, which is the desired behavior
+  }
+
   /// Calculates the duration of the workout session.
   /// Returns Duration.zero if ongoing or if data is inconsistent.
   Duration get duration {

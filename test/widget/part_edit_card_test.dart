@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/ui/components/part_edit_card.dart';
-import 'package:workout_planner/models/part.dart';
-import 'package:workout_planner/models/exercise.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 
 void main() {

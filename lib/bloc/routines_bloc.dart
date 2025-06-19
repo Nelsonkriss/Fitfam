@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:rxdart/rxdart.dart';
 import 'package:workout_planner/models/routine.dart'; // Assuming Routine model is immutable with copyWith
+import 'package:workout_planner/models/user_profile.dart';
+import 'package:workout_planner/resource/shared_prefs_provider.dart';
+import 'package:workout_planner/services/ai_routine_generation_service.dart';
 
 // Import the INTERFACE and the global instance factory file
 import 'package:workout_planner/resource/db_provider_interface.dart'; // Import the interface
@@ -21,6 +24,8 @@ export 'package:workout_planner/models/routine.dart';
 class RoutinesBloc {
   // --- Dependencies ---
   final DbProviderInterface _dbProvider = dbProvider; // Use global instance from db_provider.dart
+  final SharedPrefsProvider _sharedPrefsProvider = SharedPrefsProvider();
+  final AIRoutineGenerationService _aiRoutineGenerationService = AIRoutineGenerationService();
   // final FirebaseProvider _firebaseProvider = firebaseProvider; // Uncomment if using Firebase for recommended routines
 
   // --- Stream Controllers ---
@@ -96,6 +101,43 @@ class RoutinesBloc {
       debugPrint("[RoutinesBloc] Error adding routine: $e\n$s");
       if (!_allRoutinesFetcher.isClosed) {
         _allRoutinesFetcher.sink.addError("Failed to add routine.", s);
+      }
+    }
+  }
+
+  /// Adds a list of new routines to the database and updates the stream.
+  Future<void> addRoutines(List<Routine> routinesToAdd) async {
+    debugPrint("[RoutinesBloc] Adding ${routinesToAdd.length} new routines.");
+    try {
+      final userProfile = await _sharedPrefsProvider.getUserProfile();
+      List<Routine> routinesWithIds = [];
+      for (var routine in routinesToAdd) {
+        if (routine.isAiGenerated) {
+          final generatedRoutines = await _aiRoutineGenerationService.generateRoutines(
+            targetedBodyPart: routine.mainTargetedBodyPart,
+            routineName: routine.routineName,
+            userProfile: userProfile,
+          );
+          for (var generatedRoutine in generatedRoutines) {
+            int newId = await _dbProvider.newRoutine(generatedRoutine);
+            routinesWithIds.add(generatedRoutine.copyWith(id: newId));
+          }
+        } else {
+          int newId = await _dbProvider.newRoutine(routine);
+          routinesWithIds.add(routine.copyWith(id: newId));
+        }
+      }
+
+      final updatedList = List<Routine>.from(currentRoutinesList)..addAll(routinesWithIds);
+
+      if (!_allRoutinesFetcher.isClosed) {
+        _allRoutinesFetcher.sink.add(updatedList);
+        debugPrint("[RoutinesBloc] ${routinesToAdd.length} routines added successfully. Stream updated.");
+      }
+    } catch (e, s) {
+      debugPrint("[RoutinesBloc] Error adding routines: $e\n$s");
+      if (!_allRoutinesFetcher.isClosed) {
+        _allRoutinesFetcher.sink.addError("Failed to add routines.", s);
       }
     }
   }

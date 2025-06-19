@@ -1,5 +1,57 @@
 import 'dart:convert';
 
+enum FitnessGoal {
+  buildMuscle,
+  loseWeight,
+  improveStrength,
+  improveEndurance,
+  maintainFitness;
+
+  String get displayName {
+    switch (this) {
+      case FitnessGoal.buildMuscle:
+        return 'Build Muscle';
+      case FitnessGoal.loseWeight:
+        return 'Lose Weight';
+      case FitnessGoal.improveStrength:
+        return 'Improve Strength';
+      case FitnessGoal.improveEndurance:
+        return 'Improve Endurance';
+      case FitnessGoal.maintainFitness:
+        return 'Maintain Fitness';
+    }
+  }
+}
+
+enum AvailableEquipment {
+  barbell,
+  dumbbell,
+  kettlebell,
+  bodyweight,
+  machine,
+  bands,
+  other;
+
+  String get displayName {
+    switch (this) {
+      case AvailableEquipment.barbell:
+        return 'Barbell';
+      case AvailableEquipment.dumbbell:
+        return 'Dumbbell';
+      case AvailableEquipment.kettlebell:
+        return 'Kettlebell';
+      case AvailableEquipment.bodyweight:
+        return 'Bodyweight';
+      case AvailableEquipment.machine:
+        return 'Machine';
+      case AvailableEquipment.bands:
+        return 'Bands';
+      case AvailableEquipment.other:
+        return 'Other';
+    }
+  }
+}
+
 /// Enum representing different fitness levels
 enum FitnessLevel {
   beginner,
@@ -34,6 +86,8 @@ class UserProfile {
   final double height; // in cm
   final double weight; // in kg
   final FitnessLevel fitnessLevel;
+  final FitnessGoal fitnessGoal;
+  final List<AvailableEquipment> availableEquipment;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -41,6 +95,8 @@ class UserProfile {
     required this.height,
     required this.weight,
     required this.fitnessLevel,
+    required this.fitnessGoal,
+    required this.availableEquipment,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -50,6 +106,8 @@ class UserProfile {
     double? height,
     double? weight,
     FitnessLevel? fitnessLevel,
+    FitnessGoal? fitnessGoal,
+    List<AvailableEquipment>? availableEquipment,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -57,6 +115,8 @@ class UserProfile {
       height: height ?? this.height,
       weight: weight ?? this.weight,
       fitnessLevel: fitnessLevel ?? this.fitnessLevel,
+      fitnessGoal: fitnessGoal ?? this.fitnessGoal,
+      availableEquipment: availableEquipment ?? this.availableEquipment,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -145,6 +205,8 @@ class UserProfile {
       'height': height,
       'weight': weight,
       'fitnessLevel': fitnessLevel.name,
+      'fitnessGoal': fitnessGoal.name,
+      'availableEquipment': availableEquipment.map((e) => e.name).toList(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -156,6 +218,10 @@ class UserProfile {
       height: (json['height'] as num).toDouble(),
       weight: (json['weight'] as num).toDouble(),
       fitnessLevel: FitnessLevel.values.byName(json['fitnessLevel'] as String),
+      fitnessGoal: FitnessGoal.values.byName(json['fitnessGoal'] as String),
+      availableEquipment: (json['availableEquipment'] as List<dynamic>)
+          .map((e) => AvailableEquipment.values.byName(e as String))
+          .toList(),
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
     );
@@ -177,12 +243,16 @@ class UserProfile {
     required double height,
     required double weight,
     required FitnessLevel fitnessLevel,
+    required FitnessGoal fitnessGoal,
+    required List<AvailableEquipment> availableEquipment,
   }) {
     final now = DateTime.now();
     return UserProfile(
       height: height,
       weight: weight,
       fitnessLevel: fitnessLevel,
+      fitnessGoal: fitnessGoal,
+      availableEquipment: availableEquipment,
       createdAt: now,
       updatedAt: now,
     );
@@ -193,18 +263,22 @@ class UserProfile {
     double? height,
     double? weight,
     FitnessLevel? fitnessLevel,
+    FitnessGoal? fitnessGoal,
+    List<AvailableEquipment>? availableEquipment,
   }) {
     return copyWith(
       height: height,
       weight: weight,
       fitnessLevel: fitnessLevel,
+      fitnessGoal: fitnessGoal,
+      availableEquipment: availableEquipment,
       updatedAt: DateTime.now(),
     );
   }
 
   @override
   String toString() {
-    return 'UserProfile(height: ${height}cm, weight: ${weight}kg, level: ${fitnessLevel.displayName}, bmi: ${bmi.toStringAsFixed(1)})';
+    return 'UserProfile(height: ${height}cm, weight: ${weight}kg, level: ${fitnessLevel.displayName}, goal: ${fitnessGoal.displayName}, bmi: ${bmi.toStringAsFixed(1)})';
   }
 
   @override
@@ -214,12 +288,14 @@ class UserProfile {
         other.height == height &&
         other.weight == weight &&
         other.fitnessLevel == fitnessLevel &&
+        other.fitnessGoal == fitnessGoal &&
+        other.availableEquipment == availableEquipment &&
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt;
   }
 
   @override
   int get hashCode {
-    return Object.hash(height, weight, fitnessLevel, createdAt, updatedAt);
+    return Object.hash(height, weight, fitnessLevel, fitnessGoal, availableEquipment, createdAt, updatedAt);
   }
 }

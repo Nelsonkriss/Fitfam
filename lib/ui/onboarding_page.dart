@@ -25,6 +25,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   FitnessLevel _selectedFitnessLevel = FitnessLevel.beginner;
+  FitnessGoal _selectedFitnessGoal = FitnessGoal.buildMuscle;
+  final Set<AvailableEquipment> _selectedEquipment = {};
   
   // Form validation
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -39,7 +41,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   void _nextPage() {
-    if (_currentPage < 2) {
+    if (_currentPage < 4) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
@@ -69,6 +71,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
         height: double.parse(_heightController.text),
         weight: double.parse(_weightController.text),
         fitnessLevel: _selectedFitnessLevel,
+        fitnessGoal: _selectedFitnessGoal,
+        availableEquipment: _selectedEquipment.toList(),
       );
 
       // Save to local storage
@@ -127,7 +131,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   ),
                   Expanded(
                     child: LinearProgressIndicator(
-                      value: (_currentPage + 1) / 3,
+                      value: (_currentPage + 1) / 5,
                       backgroundColor: Colors.grey.shade300,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         Theme.of(context).colorScheme.primary,
@@ -135,7 +139,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                     ),
                   ),
                   Text(
-                    '${_currentPage + 1}/3',
+                    '${_currentPage + 1}/5',
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                 ],
@@ -154,6 +158,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
                   _buildWelcomePage(),
                   _buildPhysicalInfoPage(),
                   _buildFitnessLevelPage(),
+                  _buildFitnessGoalPage(),
+                  _buildEquipmentPage(),
                 ],
               ),
             ),
@@ -311,6 +317,86 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ...FitnessLevel.values.map((level) => _buildFitnessLevelCard(level)),
           const SizedBox(height: 32),
           ElevatedButton(
+            onPressed: _nextPage,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFitnessGoalPage() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'What\'s Your Goal?',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Select your primary fitness goal to help us tailor your plan.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 32),
+          ...FitnessGoal.values.map((goal) => _buildFitnessGoalCard(goal)),
+          const SizedBox(height: 32),
+          ElevatedButton(
+            onPressed: _nextPage,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEquipmentPage() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'What Equipment Do You Have?',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Select all that apply. This helps us create routines you can actually do.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 2.5,
+              children: AvailableEquipment.values
+                  .map((equipment) => _buildEquipmentChip(equipment))
+                  .toList(),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
             onPressed: _isLoading ? null : _completeOnboarding,
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
@@ -395,6 +481,80 @@ class _OnboardingPageState extends State<OnboardingPage> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFitnessGoalCard(FitnessGoal goal) {
+    final isSelected = _selectedFitnessGoal == goal;
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedFitnessGoal = goal;
+          });
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: isSelected 
+                  ? Theme.of(context).colorScheme.primary 
+                  : Colors.grey.shade300,
+              width: isSelected ? 2 : 1,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            color: isSelected 
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+                : null,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  goal.displayName,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: isSelected 
+                            ? Theme.of(context).colorScheme.primary 
+                            : null,
+                      ),
+                ),
+              ),
+              if (isSelected)
+                Icon(
+                  Icons.check_circle,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEquipmentChip(AvailableEquipment equipment) {
+    final isSelected = _selectedEquipment.contains(equipment);
+    
+    return FilterChip(
+      label: Text(equipment.displayName),
+      selected: isSelected,
+      onSelected: (bool selected) {
+        setState(() {
+          if (selected) {
+            _selectedEquipment.add(equipment);
+          } else {
+            _selectedEquipment.remove(equipment);
+          }
+        });
+      },
+      checkmarkColor: Theme.of(context).colorScheme.onPrimary,
+      selectedColor: Theme.of(context).colorScheme.primary,
+      labelStyle: TextStyle(
+        color: isSelected ? Theme.of(context).colorScheme.onPrimary : null,
       ),
     );
   }

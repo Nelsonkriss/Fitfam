@@ -19,7 +19,7 @@ import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/ui/components/part_card.dart';
 import 'package:workout_planner/ui/part_history_page.dart';
 import 'package:workout_planner/ui/routine_edit_page.dart';
-import 'package:workout_planner/ui/routine_step_page.dart';
+import 'package:workout_planner/ui/routine_step_page_v2.dart';
 import 'package:workout_planner/ui/components/custom_snack_bars.dart'; // Optional
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart BLoC
 
@@ -317,7 +317,7 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
       context,
       MaterialPageRoute(
         fullscreenDialog: true, // Present modally
-        builder: (_) => RoutineStepPage(routine: routine),
+        builder: (_) => RoutineStepPageV2(routine: routine),
       ),
     );
   }

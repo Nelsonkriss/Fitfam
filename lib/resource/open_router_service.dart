@@ -24,27 +24,38 @@ class OpenRouterService {
     
     final systemPrompt = """
 You are an expert fitness coach with access to a workout app that has 3D animations for specific exercises.
-Generate a workout routine based on the user's request using ONLY exercises that have animations available.
+Generate a workout routine based on the user's request using ONLY exercises that have animations available. The routine should have multiple parts, each targeting different muscle groups or body parts.
 
 $availableExercises
 
 OUTPUT FORMAT:
-Output the routine ONLY as a JSON object with the following structure and nothing else:
-{
-  "routineName": "User's Goal Routine",
-  "mainTargetedBodyPart": "FullBody",
-  "parts": [
-    {
-      "partName": "Day 1: Full Body A",
-      "targetedBodyPart": "FullBody",
-      "setType": "Regular",
-      "exercises": [
-        { "name": "Barbell Squat", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
-        { "name": "Barbell Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
-      ]
-    }
-  ]
-}
+Output the routine ONLY as a JSON object containing a single key "routines" which is a list of routine objects. Each routine should have multiple parts with different exercises.
+[
+  {
+    "routineName": "User's Goal Routine",
+    "mainTargetedBodyPart": "FullBody",
+    "parts": [
+      {
+        "partName": "Day 1: Full Body A",
+        "targetedBodyPart": "FullBody",
+        "setType": "Regular",
+        "exercises": [
+          { "name": "Barbell Squat", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
+          { "name": "Barbell Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
+        ]
+      },
+      {
+        "partName": "Day 1: Full Body B",
+        "targetedBodyPart": "FullBody",
+        "setType": "Regular",
+        "exercises": [
+          { "name": "Dumbbell Lunges", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
+          { "name": "Pull-ups", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
+        ]
+      }
+    ]
+  }
+]
 
 FIELD REQUIREMENTS:
 - 'workoutType' can be 'Weight', 'Cardio', 'Timed'.
@@ -56,6 +67,7 @@ FIELD REQUIREMENTS:
 - 'weight' should be a double, use 0.0 if not applicable or bodyweight.
 - Provide a sensible routineName based on the user's request.
 - If the user asks for a 3-day routine, the "parts" array should contain 3 part objects, each representing a day.
+- Each part should contain only one exercise. If there are 12 exercises in a routine, there should be 12 parts.
 
 CRITICAL: Use EXACT exercise names from the available list above. Users will see 3D animations during their workout, so using unavailable exercises will result in no animation display.
 
@@ -102,6 +114,35 @@ Do not include any explanatory text before or after the JSON object.
       return null;
     }
     return null;
+  }
+
+  List<Routine> parseRoutinesFromJsonString(String jsonString) {
+    try {
+      final Map<String, dynamic> jsonMap = jsonDecode(jsonString);
+      if (!jsonMap.containsKey('routines') || jsonMap['routines'] is! List) {
+        debugPrint("[OpenRouterService] Error: JSON root is not a map with a 'routines' list.");
+        return [];
+      }
+      final List<dynamic> routinesJson = jsonMap['routines'];
+      return routinesJson.map((routineJson) {
+        if (routineJson is! Map<String, dynamic>) return null;
+        return _parseSingleRoutine(routineJson);
+      }).whereType<Routine>().toList();
+    } catch (e, s) {
+      debugPrint("[OpenRouterService] Exception parsing JSON to List<Routine>: $e\n$s");
+      debugPrint("[OpenRouterService] Faulty JSON string was: $jsonString");
+      return [];
+    }
+  }
+
+  Routine? _parseSingleRoutine(Map<String, dynamic> jsonMap) {
+    try {
+      // Reuse the existing parsing logic for a single routine
+      return parseRoutineFromJsonString(jsonEncode(jsonMap));
+    } catch (e) {
+      debugPrint("[OpenRouterService] Error parsing single routine from list: $e");
+      return null;
+    }
   }
 
   // Placeholder for parsing the JSON string into a Routine object
@@ -203,7 +244,7 @@ Do not include any explanatory text before or after the JSON object.
               // Update the exercise name to the alternative
               exerciseJson['name'] = alternative;
             } else {
-              debugPrint("[OpenRouterService] No suitable alternative found for '$exName'. Skipping exercise.");
+              debugPrint("[Open-router_service] No suitable alternative found for '$exName'. Skipping exercise.");
               continue;
             }
           }

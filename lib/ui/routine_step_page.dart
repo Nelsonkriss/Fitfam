@@ -12,7 +12,6 @@ import 'package:workout_planner/bloc/workout_session_bloc.dart';
 import 'package:workout_planner/models/workout_session.dart'; 
 import 'package:workout_planner/models/exercise_performance.dart'; 
 import 'package:workout_planner/models/set_performance.dart'; 
-import 'package:workout_planner/utils/routine_helpers.dart'; 
 import 'package:workout_planner/utils/android_animations.dart';
 import 'package:workout_planner/ui/components/exercise_animation_widget.dart';
 
@@ -144,35 +143,36 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
         case SetType.Giant: exercisesInThisSetGroup = 4; break;
         case SetType.Regular:
         case SetType.Drop:
-        default: exercisesInThisSetGroup = 1; break;
+        default: exercisesInThisSetGroup = part.exercises.length; break;
       }
 
       exercisesInThisSetGroup = min(exercisesInThisSetGroup, part.exercises.length);
       if (exercisesInThisSetGroup == 0) continue;
 
-      final totalSets = part.exercises.first.sets;
-      if (totalSets <= 0) continue; 
+      for (int i = 0; i < exercisesInThisSetGroup; i++) {
+        final currentExerciseFlatIndex = exerciseCounter + i;
+        if (currentExerciseFlatIndex >= _currentExercises.length) {
+          debugPrint("Warning: Exercise index ($currentExerciseFlatIndex) out of bounds during step generation.");
+          continue;
+        }
 
-      for (int setNum = 1; setNum <= totalSets; setNum++) { 
-        for (int i = 0; i < exercisesInThisSetGroup; i++) { 
-          final currentExerciseFlatIndex = exerciseCounter + i; 
+        final exercise = _currentExercises[currentExerciseFlatIndex];
+        final totalSets = exercise.sets;
+        if (totalSets <= 0) continue;
 
-          if (currentExerciseFlatIndex < _currentExercises.length) {
-            _exerciseIndexesInStepOrder.add(currentExerciseFlatIndex);
-            _partIndexesInStepOrder.add(partIdx);
-            _setsTotalInStepOrder.add(totalSets);
-            _setNumberOfStep.add(setNum);
+        for (int setNum = 1; setNum <= totalSets; setNum++) {
+          _exerciseIndexesInStepOrder.add(currentExerciseFlatIndex);
+          _partIndexesInStepOrder.add(partIdx);
+          _setsTotalInStepOrder.add(totalSets);
+          _setNumberOfStep.add(setNum);
 
-            if (!_tickerControllers.containsKey(currentExerciseFlatIndex)) {
-              final exerciseTemplate = _currentExercises[currentExerciseFlatIndex];
-              _tickerControllers[currentExerciseFlatIndex] = NumberTickerController(
-                  initial: exerciseTemplate.lastUsedWeight ?? exerciseTemplate.weight, 
-                  step: 0.5, 
-                  minValue: 0  
-              );
-            }
-          } else {
-            debugPrint("Warning: Exercise index ($currentExerciseFlatIndex) out of bounds during step generation.");
+          if (!_tickerControllers.containsKey(currentExerciseFlatIndex)) {
+            final exerciseTemplate = _currentExercises[currentExerciseFlatIndex];
+            _tickerControllers[currentExerciseFlatIndex] = NumberTickerController(
+                initial: exerciseTemplate.lastUsedWeight ?? exerciseTemplate.weight,
+                step: 0.5,
+                minValue: 0
+            );
           }
         }
       }
@@ -361,12 +361,8 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
 
     return Stack(
       children: [
-        // Background 3D Animation Figure - Enhanced with bigger size and moved up
-        Positioned(
-          top: -50, // Move animation up
-          left: 0,
-          right: 0,
-          bottom: 100,
+        // Background 3D Animation Figure
+        Positioned.fill(
           child: Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -375,18 +371,22 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
                 colors: [Colors.black, Color(0xFF1a1a1a)],
               ),
             ),
-            child: Center(
-              child: Opacity(
-                opacity: 0.50, // Slightly more transparent for better text readability
-                child: ExerciseAnimationWidget(
-                  exerciseName: exercise.name,
-                  width: 400, // Increased from 300
-                  height: 500, // Increased from 400
-                  autoPlay: !_isInRestPeriod && !_isInPreparation,
-                  showControls: false,
-                  showDescription: false,
+            child: Column(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Opacity(
+                    opacity: 0.50,
+                    child: ExerciseAnimationWidget(
+                      exerciseName: exercise.name,
+                      autoPlay: !_isInRestPeriod && !_isInPreparation,
+                      showControls: false,
+                      showDescription: false,
+                    ),
+                  ),
                 ),
-              ),
+                const Expanded(flex: 2, child: SizedBox()),
+              ],
             ),
           ),
         ),
@@ -532,172 +532,186 @@ class _RoutineStepPageState extends State<RoutineStepPage> with TickerProviderSt
   Widget _buildCircularInterface(NumberTickerController controller, Exercise exercise) {
     final setNum = _setNumberOfStep[_currentStepIndex];
     final totalSets = _setsTotalInStepOrder[_currentStepIndex];
-    
-    return Center(
-      child: Container(
-        width: 280,
-        height: 280,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-        ),
-        child: Stack(
-          children: [
-            // Weight adjustment buttons
-            Positioned(
-              left: 20,
-              top: 120,
-              child: GestureDetector(
-                onTap: () => _adjustWeight(-0.5),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: Colors.white24,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.remove, color: Colors.white),
-                ),
-              ),
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = min(constraints.maxWidth, constraints.maxHeight);
+        final repsFontSize = size * 0.25;
+        final kgFontSize = size * 0.1;
+        final buttonSize = size * 0.15;
+        final buttonIconSize = buttonSize * 0.6;
+
+        return Center(
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
             ),
-            Positioned(
-              right: 20,
-              top: 120,
-              child: GestureDetector(
-                onTap: () => _adjustWeight(0.5),
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: Colors.white24,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.add, color: Colors.white),
-                ),
-              ),
-            ),
-            
-            // Center content
-            Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Clickable Weight
-                  GestureDetector(
-                    onTap: () => _showWeightEditDialog(controller),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Weight adjustment buttons
+                Positioned(
+                  left: size * 0.05,
+                  top: size / 2 - buttonSize / 2,
+                  child: GestureDetector(
+                    onTap: () => _adjustWeight(-0.5),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                      width: buttonSize,
+                      height: buttonSize,
+                      decoration: const BoxDecoration(
+                        color: Colors.white24,
+                        shape: BoxShape.circle,
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          NumberTicker(
-                            controller: controller,
-                            textStyle: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            ' kg',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Icon(
-                            Icons.edit,
-                            color: Colors.white.withOpacity(0.7),
-                            size: 16,
-                          ),
-                        ],
-                      ),
+                      child: Icon(Icons.remove, color: Colors.white, size: buttonIconSize),
                     ),
                   ),
-                  
-                  const SizedBox(height: 20),
-                  
-                  // Reps/Seconds
-                  exercise.workoutType == WorkoutType.Timed
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '$_timedExerciseRemainingSeconds',
+                ),
+                Positioned(
+                  right: size * 0.05,
+                  top: size / 2 - buttonSize / 2,
+                  child: GestureDetector(
+                    onTap: () => _adjustWeight(0.5),
+                    child: Container(
+                      width: buttonSize,
+                      height: buttonSize,
+                      decoration: const BoxDecoration(
+                        color: Colors.white24,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.add, color: Colors.white, size: buttonIconSize),
+                    ),
+                  ),
+                ),
+
+                // Center content
+                Padding(
+                  padding: EdgeInsets.all(size * 0.1),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Clickable Weight
+                        GestureDetector(
+                          onTap: () => _showWeightEditDialog(controller),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                NumberTicker(
+                                  controller: controller,
+                                  textStyle: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: kgFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  ' kg',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: kgFontSize,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.edit,
+                                  color: Colors.white.withOpacity(0.7),
+                                  size: kgFontSize,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // Reps/Seconds
+                        exercise.workoutType == WorkoutType.Timed
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$_timedExerciseRemainingSeconds',
+                                    style: TextStyle(
+                                      color: _timedExerciseRemainingSeconds <= 5
+                                          ? Colors.red
+                                          : Colors.white,
+                                      fontSize: repsFontSize,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const Text(
+                                    ' sec',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.normal,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Text(
+                                exercise.reps,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: repsFontSize,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+
+                        const SizedBox(height: 5),
+
+                        // Sets display
+                        Text(
+                          'Set $setNum of $totalSets',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+                        // Done button
+                        GestureDetector(
+                          onTap: _handleStepContinue,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white24,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Done',
                               style: TextStyle(
-                                color: _timedExerciseRemainingSeconds <= 5 
-                                    ? Colors.red 
-                                    : Colors.white,
-                                fontSize: 72,
+                                color: Colors.white,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const Text(
-                              ' sec',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 24,
-                                fontWeight: FontWeight.normal,
-                              ),
-                            ),
-                          ],
-                        )
-                      : Text(
-                          exercise.reps,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 72,
-                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                  
-                  const SizedBox(height: 10),
-                  
-                  // Sets display
-                  Text(
-                    'Set $setNum of $totalSets',
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
+                      ],
                     ),
                   ),
-                  
-                  const SizedBox(height: 15),
-                  
-                  // Done button
-                  GestureDetector(
-                    onTap: _handleStepContinue,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'Done',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

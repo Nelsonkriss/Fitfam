@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:workout_planner/bloc/workout_session_bloc.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/ui/routine_step_page.dart';
-import 'package:workout_planner/models/part.dart';
-import 'package:workout_planner/models/exercise.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 import 'package:workout_planner/resource/db_provider_interface.dart';
 
@@ -46,10 +44,8 @@ void main() {
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          Provider<WorkoutSessionBloc>.value(value: workoutSessionBloc),
-        ],
+      BlocProvider.value(
+        value: workoutSessionBloc,
         child: MaterialApp(
           home: RoutineStepPage(
             routine: routine,
@@ -106,10 +102,8 @@ void main() {
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          Provider<WorkoutSessionBloc>.value(value: workoutSessionBloc),
-        ],
+      BlocProvider.value(
+        value: workoutSessionBloc,
         child: MaterialApp(
           home: RoutineStepPage(
             routine: routine,
@@ -166,10 +160,8 @@ void main() {
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          Provider<WorkoutSessionBloc>.value(value: workoutSessionBloc),
-        ],
+      BlocProvider.value(
+        value: workoutSessionBloc,
         child: MaterialApp(
           home: RoutineStepPage(
             routine: routine,
@@ -224,10 +216,8 @@ void main() {
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
-      MultiProvider(
-        providers: [
-          Provider<WorkoutSessionBloc>.value(value: workoutSessionBloc),
-        ],
+      BlocProvider.value(
+        value: workoutSessionBloc,
         child: MaterialApp(
           home: RoutineStepPage(
             routine: routine,
@@ -277,10 +267,8 @@ void main() {
       MaterialApp(
         home: MediaQuery(
           data: const MediaQueryData(size: Size(400, 800)), // Simulate phone screen
-          child: MultiProvider(
-            providers: [
-              Provider<WorkoutSessionBloc>.value(value: workoutSessionBloc),
-            ],
+          child: BlocProvider.value(
+            value: workoutSessionBloc,
             child: RoutineStepPage(
               routine: routine,
             ),

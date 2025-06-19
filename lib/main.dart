@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'dart:async' show unawaited;
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Local imports
@@ -161,7 +160,7 @@ class _InitializationLoaderState extends State<InitializationLoader> {
               print('[MAIN] DB initialized successfully');
               break;
             } catch (e) {
-              if (i == 2) throw e; // Throw on final attempt
+              if (i == 2) rethrow; // Throw on final attempt
               print('[MAIN] DB init attempt ${i + 1} failed, retrying...');
               await Future.delayed(Duration(seconds: 1));
             }

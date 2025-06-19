@@ -44,15 +44,15 @@ void main() {
       expect(find.byType(CupertinoSlidingSegmentedControl<SetType>), findsOneWidget);
       expect(find.byType(SegmentedButton<WorkoutType>), findsOneWidget);
 
-      // Verify the SegmentedButton has 3 segments with correct tooltips
+      // Verify the SegmentedButton has 3 segments with correct labels
       final weightSegment = find.byWidgetPredicate((widget) =>
-        widget is ButtonSegment<WorkoutType> && widget.tooltip == 'Weight'
+        widget is ButtonSegment<WorkoutType> && widget is Widget && widget.toString().contains('Weight')
       );
       final timedSegment = find.byWidgetPredicate((widget) =>
-        widget is ButtonSegment<WorkoutType> && widget.tooltip == 'Timed'
+        widget is ButtonSegment<WorkoutType> && widget is Widget && widget.toString().contains('Timed')
       );
       final cardioSegment = find.byWidgetPredicate((widget) =>
-        widget is ButtonSegment<WorkoutType> && widget.tooltip == 'Cardio'
+        widget is ButtonSegment<WorkoutType> && widget is Widget && widget.toString().contains('Cardio')
       );
 
       expect(weightSegment, findsOneWidget);
@@ -80,7 +80,7 @@ void main() {
 
       // Find and tap the Timed segment
       final timedButton = find.byWidgetPredicate((widget) =>
-        widget is ButtonSegment<WorkoutType> && widget.tooltip == 'Timed'
+        widget is ButtonSegment<WorkoutType> && widget is Widget && widget.toString().contains('Timed')
       );
       await tester.tap(timedButton);
       await tester.pumpAndSettle();
@@ -91,7 +91,7 @@ void main() {
 
       // Find and tap the Cardio segment
       final cardioButton = find.byWidgetPredicate((widget) =>
-        widget is ButtonSegment<WorkoutType> && widget.tooltip == 'Cardio'
+        widget is ButtonSegment<WorkoutType> && widget is Widget && widget.toString().contains('Cardio')
       );
       await tester.tap(cardioButton);
       await tester.pumpAndSettle();

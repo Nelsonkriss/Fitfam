@@ -3,6 +3,7 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
@@ -40,8 +41,8 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyCEmH4kvdk9gC0YawUiJYZBSHCN1joZmlw',
+  static final FirebaseOptions web = FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:831897287544:web:faa7f4a5d2eaee3b7fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -50,16 +51,16 @@ class DefaultFirebaseOptions {
     measurementId: 'G-X1NV3D3N4F',
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDbzPAnIXLlmkAzdF3xANLkzJ7B7lr4aL0',
+  static final FirebaseOptions android = FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_ANDROID_API_KEY']!,
     appId: '1:831897287544:android:1a20fedd003520907fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
     storageBucket: 'fitfam-c61fb.firebasestorage.app',
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBSzRU-O1fheBeMzxXw5gz4iqURFA_697Q',
+  static final FirebaseOptions ios = FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_IOS_API_KEY']!,
     appId: '1:831897287544:ios:289dbdd6b6af76127fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -67,8 +68,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.dumbbellNew',
   );
 
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBSzRU-O1fheBeMzxXw5gz4iqURFA_697Q',
+  static final FirebaseOptions macos = FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_MACOS_API_KEY']!,
     appId: '1:831897287544:ios:289dbdd6b6af76127fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -76,8 +77,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.dumbbellNew',
   );
 
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyCEmH4kvdk9gC0YawUiJYZBSHCN1joZmlw',
+  static final FirebaseOptions windows = FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WINDOWS_API_KEY']!,
     appId: '1:831897287544:web:6142d30cca5f844f7fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',

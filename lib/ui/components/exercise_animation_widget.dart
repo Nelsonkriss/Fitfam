@@ -36,7 +36,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
   bool _isLoading = true;
   String? _errorMessage;
   
-  // Enhanced animation controllers
   late AnimationController _fadeController;
   late AnimationController _scaleController;
   late Animation<double> _fadeAnimation;
@@ -89,27 +88,21 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
       _errorMessage = null;
     });
 
-    print('[ExerciseAnimationWidget] Loading animation for: "${widget.exerciseName}"');
-    
     _animationData = ExerciseAnimationData.getExerciseAnimation(widget.exerciseName);
     
     if (_animationData == null) {
-      print('[ExerciseAnimationWidget] No animation found for: "${widget.exerciseName}"');
       setState(() {
         _isLoading = false;
         _errorMessage = 'No animation available for this exercise';
       });
       return;
     }
-
-    print('[ExerciseAnimationWidget] Animation found! Images: ${_animationData!.imagePaths}');
     
     setState(() {
       _isLoading = false;
       _currentImageIndex = 0;
     });
 
-    // Start entrance animations
     _scaleController.forward();
     _fadeController.forward();
 
@@ -123,15 +116,17 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
   void _startAnimation() {
     if (_animationData == null || _isPlaying) return;
     
-    // Safety check: Don't start animation if no images available
-    if (_animationData!.imagePaths.isEmpty) {
-      print('[ExerciseAnimationWidget] Cannot start animation: No images available');
+    if (!_animationData!.isAnimated && _animationData!.imagePaths.isEmpty) {
       return;
     }
 
     setState(() {
       _isPlaying = true;
     });
+
+    if (_animationData!.isAnimated) {
+      return;
+    }
 
     _animationTimer = Timer.periodic(_animationData!.frameDuration, (timer) {
       if (!mounted) {
@@ -172,14 +167,14 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
   }
 
   void _nextStep() {
-    if (_animationData == null || _animationData!.imagePaths.isEmpty) return;
+    if (_animationData == null || _animationData!.isAnimated || _animationData!.imagePaths.isEmpty) return;
     setState(() {
       _currentImageIndex = (_currentImageIndex + 1) % _animationData!.imagePaths.length;
     });
   }
 
   void _previousStep() {
-    if (_animationData == null || _animationData!.imagePaths.isEmpty) return;
+    if (_animationData == null || _animationData!.isAnimated || _animationData!.imagePaths.isEmpty) return;
     setState(() {
       _currentImageIndex = _currentImageIndex == 0 
           ? _animationData!.imagePaths.length - 1 
@@ -220,33 +215,9 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
     }
 
     if (_errorMessage != null) {
-      return Container(
+      return SizedBox(
         width: widget.width ?? 300,
         height: widget.height ?? 200,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.fitness_center,
-                size: 48,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
       );
     }
 
@@ -272,14 +243,11 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                // Handle both animated and frame-based animations
                 if (_animationData!.isAnimated)
-                  // Single animated .webp file - Flutter natively supports WebP
                   Image.asset(
                     _animationData!.animatedImagePath!,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
-                      print('Error loading animated WEBP: $error');
                       return Container(
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const Center(
@@ -289,7 +257,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
                     },
                   )
                 else
-                  // Frame-based animation
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
                     child: Image.asset(
@@ -307,7 +274,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
                     ),
                   ),
                 
-                // Step indicator (only for frame-based animations)
                 if (!_animationData!.isAnimated)
                   Positioned(
                     top: 8,
@@ -329,7 +295,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
                     ),
                   ),
                 
-                // Animated indicator for single animated files
                 if (_animationData!.isAnimated)
                   Positioned(
                     top: 8,
@@ -362,7 +327,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
                     ),
                   ),
                 
-                // Play overlay (only for frame-based animations when not playing)
                 if (!_animationData!.isAnimated && !_isPlaying && widget.showControls)
                   Positioned.fill(
                     child: Container(
@@ -456,239 +420,6 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Compact version of the Exercise Animation Widget for smaller spaces
-class CompactExerciseAnimationWidget extends StatefulWidget {
-  final String exerciseName;
-  final double size;
-  final bool autoPlay;
-
-  const CompactExerciseAnimationWidget({
-    super.key,
-    required this.exerciseName,
-    this.size = 120,
-    this.autoPlay = true,
-  });
-
-  @override
-  State<CompactExerciseAnimationWidget> createState() => _CompactExerciseAnimationWidgetState();
-}
-
-class _CompactExerciseAnimationWidgetState extends State<CompactExerciseAnimationWidget>
-    with TickerProviderStateMixin {
-  ExerciseAnimationData? _animationData;
-  int _currentImageIndex = 0;
-  Timer? _animationTimer;
-  bool _isPlaying = false;
-  bool _isLoading = true;
-  
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializePulseController();
-    _loadAnimation();
-  }
-  
-  void _initializePulseController() {
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void didUpdateWidget(CompactExerciseAnimationWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.exerciseName != widget.exerciseName) {
-      _loadAnimation();
-    }
-  }
-
-  @override
-  void dispose() {
-    _animationTimer?.cancel();
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  void _loadAnimation() {
-    setState(() {
-      _isLoading = true;
-    });
-
-    _animationData = ExerciseAnimationData.getExerciseAnimation(widget.exerciseName);
-    
-    setState(() {
-      _isLoading = false;
-      _currentImageIndex = 0;
-    });
-
-    if (widget.autoPlay && _animationData != null) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) _startAnimation();
-      });
-    }
-  }
-
-  void _startAnimation() {
-    if (_animationData == null || _isPlaying) return;
-    
-    // Safety check: Don't start animation if no images available
-    if (_animationData!.imagePaths.isEmpty) {
-      print('[CompactExerciseAnimationWidget] Cannot start animation: No images available');
-      return;
-    }
-
-    setState(() {
-      _isPlaying = true;
-    });
-
-    _pulseController.repeat(reverse: true);
-
-    _animationTimer = Timer.periodic(_animationData!.frameDuration, (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      setState(() {
-        _currentImageIndex = (_currentImageIndex + 1) % _animationData!.imagePaths.length;
-      });
-    });
-  }
-
-  void _stopAnimation() {
-    _animationTimer?.cancel();
-    _pulseController.stop();
-    setState(() {
-      _isPlaying = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-    }
-
-    if (_animationData == null) {
-      return Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: Icon(
-            Icons.fitness_center,
-            size: widget.size * 0.4,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      );
-    }
-
-    return ScaleTransition(
-      scale: _pulseAnimation,
-      child: Container(
-        width: widget.size,
-        height: widget.size,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: Theme.of(context).shadowColor.withOpacity(0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Handle both animated and frame-based animations
-              if (_animationData!.isAnimated)
-                // Single animated .webp file - Flutter natively supports WebP
-                Image.asset(
-                  _animationData!.animatedImagePath!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    print('Error loading compact animated WEBP: $error');
-                    return Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: Icon(
-                          Icons.broken_image,
-                          size: widget.size * 0.3,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    );
-                  },
-                )
-              else
-                // Frame-based animation
-                Image.asset(
-                  _animationData!.imagePaths[_currentImageIndex],
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: Icon(
-                          Icons.broken_image,
-                          size: widget.size * 0.3,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              
-              // Animated indicator for single animated files
-              if (_animationData!.isAnimated)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.8),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.play_circle_filled,
-                      color: Colors.white,
-                      size: 10,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -103,23 +103,23 @@ class _RecommendPageState extends State<RecommendPage> {
       if (!mounted) return;
 
       if (routineJsonString != null) {
-        final Routine? newRoutine = _openRouterService.parseRoutineFromJsonString(routineJsonString);
-        if (newRoutine != null) {
+        final List<Routine> newRoutines = _openRouterService.parseRoutinesFromJsonString(routineJsonString);
+        if (newRoutines.isNotEmpty) {
           if (mounted) {
             // Show notification immediately
             final notificationService = NotificationService(); // Get instance
             await notificationService.showNotification(
-              // ID can be based on routine hash or a timestamp to be unique enough for immediate notifications
-              id: DateTime.now().millisecondsSinceEpoch % 100000, // Simple unique ID
-              title: "New AI Routine Created!",
-              body: "Your new routine '${newRoutine.routineName}' is ready.",
-              payload: "ai_routine_created_${newRoutine.id ?? 'new'}" // Optional: payload for navigation
-            );
+                // ID can be based on routine hash or a timestamp to be unique enough for immediate notifications
+                id: DateTime.now().millisecondsSinceEpoch % 100000, // Simple unique ID
+                title: "New AI Routines Created!",
+                body: "Your new routines are ready.",
+                payload: "ai_routines_created" // Optional: payload for navigation
+                );
 
-            await context.read<RoutinesBloc>().addRoutine(newRoutine);
+            await context.read<RoutinesBloc>().addRoutines(newRoutines);
             _aiPromptController.clear();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("AI routine generated, saved, and you've been notified!"), backgroundColor: Colors.green),
+              const SnackBar(content: Text("AI routines generated and saved!"), backgroundColor: Colors.green),
             );
           }
         } else {

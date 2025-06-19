@@ -545,7 +545,7 @@ class _PartEditPageState extends State<PartEditPage> {
                   style: ButtonStyle(
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding: MaterialStateProperty.all(EdgeInsets.zero),
+                    padding: WidgetStateProperty.all(EdgeInsets.zero),
                   ),
                 ),
               ),
@@ -850,7 +850,7 @@ class _PartEditPageState extends State<PartEditPage> {
                   leading: CircleAvatar(
                     backgroundColor: isCurrentReps 
                         ? theme.colorScheme.primary 
-                        : theme.colorScheme.surfaceVariant,
+                        : theme.colorScheme.surfaceContainerHighest,
                     child: Text(
                       '$reps',
                       style: TextStyle(
@@ -874,7 +874,7 @@ class _PartEditPageState extends State<PartEditPage> {
                   },
                 ),
               );
-            }).toList(),
+            }),
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
