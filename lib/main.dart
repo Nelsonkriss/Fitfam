@@ -24,6 +24,7 @@ import 'ui/setting_page.dart';
 import 'ui/recommend_page.dart';
 import 'ui/onboarding_page.dart';
 import 'models/workout_session.dart';
+import 'ui/loading_screen.dart';
 
 // Global provider instances are created in their respective files
 // (e.g., final dbProvider = createDbProvider(); in db_provider.dart)
@@ -213,13 +214,7 @@ class _InitializationLoaderState extends State<InitializationLoader> {
     }
 
     if (!_isInitialized) {
-      return const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      );
+      return const LoadingScreen();
     }
 
     print('[MAIN] Running App with MultiProvider...');
@@ -303,13 +298,7 @@ class _MyAppState extends State<MyApp> {
     print("[BUILD] MyApp, ThemeMode from Provider: ${themeProvider.themeMode}");
 
     if (_isCheckingOnboarding) {
-      return MaterialApp(
-        home: const Scaffold(
-          body: Center(
-            child: CircularProgressIndicator(),
-          ),
-        ),
-      );
+      return const LoadingScreen();
     }
 
     // Define a light theme
