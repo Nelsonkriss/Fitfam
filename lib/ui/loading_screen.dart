@@ -44,9 +44,18 @@ class _LoadingScreenState extends State<LoadingScreen>
               FadeTransition(
                 opacity: _animation,
                 child: Image.asset(
-                  'assets/app_icon.png',
-                  width: 100.0,
-                  height: 100.0,
+                  // Prefer the exact Android mipmap-xxxhdpi launcher icon
+                  'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',
+                  width: 120.0,
+                  height: 120.0,
+                  errorBuilder: (context, error, stack) {
+                    // Fallback to bundled asset for non-Android platforms or if path changes
+                    return Image.asset(
+                      'assets/ic_launcher.png',
+                      width: 120.0,
+                      height: 120.0,
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 20),

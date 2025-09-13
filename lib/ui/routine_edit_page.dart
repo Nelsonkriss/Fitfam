@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -380,6 +380,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         ),
         body: Column(
           children: [
+            _buildHeroHeader(),
             _buildRoutineNameCard(),
             _buildWeekdaySelectorCard(),
             Expanded(
@@ -396,6 +397,35 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
           icon: const Icon(Icons.add),
           label: const Text('ADD PART'),
           onPressed: _onAddPartPressed,
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async { if (await _onWillPop()) { if (mounted) Navigator.maybePop(context); } },
+                    icon: const Icon(Icons.close),
+                    label: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _onDonePressed,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Save Routine'),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -434,18 +464,21 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Card(
-        elevation: 4,
+        elevation: 0,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
           child: Form(
             key: _formKey,
             child: TextFormField(
               controller: _nameEditingController,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: Theme.of(context).colorScheme.onSurface,
               ),
               decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.edit_rounded),
                 labelText: 'Routine Title *',
                 hintText: 'e.g., Push Day',
                 border: InputBorder.none,
@@ -485,33 +518,20 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     // Get current time
     final now = DateTime.now();
     
-    // Schedule notification for each selected weekday
+    // Weekly recurring notifications at 9:00 for selected weekdays
     for (int weekday in routine.weekdays) {
-      // Convert weekday to DateTime (1 = Monday, 7 = Sunday)
-      var scheduledTime = tz.TZDateTime(
-        tz.local,
-        now.year,
-        now.month,
-        now.day,
-        9, // 9 AM default time
-        0,
-      );
-
-      // Adjust to next occurrence of weekday
-      while (scheduledTime.weekday != weekday || scheduledTime.isBefore(now)) {
-        scheduledTime = scheduledTime.add(const Duration(days: 1));
-      }
-
       try {
-        await notificationService.scheduleDailyNotification(
-          id: (routine.id ?? 0) * 10 + weekday, // Unique ID for each weekday
+        await notificationService.scheduleWeeklyNotification(
+          id: (routine.id ?? 0) * 10 + weekday,
           title: 'Workout Reminder',
           body: 'Time for your ${routine.routineName} workout!',
-          scheduledTime: scheduledTime,
+          weekday: weekday,
+          hour: 9,
+          minute: 0,
         );
-        debugPrint('Scheduled notification for ${routine.routineName} on weekday $weekday');
+        debugPrint('Scheduled weekly notification for ${routine.routineName} on weekday $weekday');
       } catch (e) {
-        debugPrint('Failed to schedule notification: $e');
+        debugPrint('Failed to schedule weekly notification: $e');
       }
     }
   }
@@ -521,7 +541,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       child: Card(
-        elevation: 2,
+        elevation: 0,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
           child: Column(
@@ -570,6 +592,55 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroHeader() {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.primaryContainer.withOpacity(0.9),
+              cs.secondaryContainer.withOpacity(0.9),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.view_agenda_rounded, color: cs.onPrimaryContainer, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Build Your Routine',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.w900,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Name it, pick days, then add parts. You can reorder parts anytime.',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: cs.onPrimaryContainer.withOpacity(0.95),
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

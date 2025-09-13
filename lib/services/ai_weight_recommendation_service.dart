@@ -1,12 +1,20 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import '../models/user_profile.dart';
 import '../resource/db_provider.dart';
+import '../models/workout_session.dart';
+import '../resource/shared_prefs_provider.dart';
 
 /// Service that provides AI-powered weight recommendations for exercises
 class AIWeightRecommendationService {
   static final AIWeightRecommendationService _instance = AIWeightRecommendationService._internal();
   factory AIWeightRecommendationService() => _instance;
   AIWeightRecommendationService._internal();
+  
+  // Cache workout sessions to avoid repeated DB hits when recommending
+  // weights for multiple exercises in one flow (e.g., AI routine creation).
+  List<WorkoutSession>? _sessionsCache;
+  final Map<String, List<ExerciseHistoryData>> _historyCache = {};
 
   /// Gets recommended weight for an exercise based on user profile and workout history
   Future<double> getRecommendedWeight({
@@ -15,36 +23,70 @@ class AIWeightRecommendationService {
     int targetReps = 10,
   }) async {
     try {
+      // Load personalization settings
+      final unit = await sharedPrefsProvider.getWeightUnit();
+      final increment = await sharedPrefsProvider.getWeightIncrement();
+      final learn = await sharedPrefsProvider.getLearnFromHistory();
+      final progressionRule = await sharedPrefsProvider.getProgressionRule();
+      final targetRpe = await sharedPrefsProvider.getTargetRPE();
+      final deloadEnabled = await sharedPrefsProvider.getDeloadEnabled();
+      final deloadWeeks = await sharedPrefsProvider.getDeloadEveryWeeks();
+      final deloadPercent = await sharedPrefsProvider.getDeloadPercent();
+
+      // Convert display increment to kg base if needed
+      final double incrementKg = unit == 'lb' ? (increment / 2.20462) : increment;
+
       // Get workout history for this exercise
-      final workoutHistory = await _getExerciseHistory(exerciseName);
+      final workoutHistory = learn ? await _getExerciseHistory(exerciseName) : <ExerciseHistoryData>[];
       
       // If user has history with this exercise, use progressive recommendation
       if (workoutHistory.isNotEmpty) {
-        return _calculateProgressiveRecommendation(workoutHistory, targetReps);
+        double rec = _calculateProgressiveRecommendation(workoutHistory, targetReps);
+        rec = _applyProgressionRule(rec, workoutHistory, targetReps, progressionRule, targetRpe);
+        rec = _applyDeload(rec, deloadEnabled, deloadWeeks, deloadPercent);
+        rec = _roundToIncrement(rec, incrementKg);
+        return rec;
       }
       
       // If no history but user profile exists, use profile-based recommendation
       if (userProfile != null) {
-        return _calculateProfileBasedRecommendation(exerciseName, userProfile, targetReps);
+        double rec = _calculateProfileBasedRecommendation(exerciseName, userProfile, targetReps);
+        rec = _applyProgressionRule(rec, workoutHistory, targetReps, progressionRule, targetRpe);
+        rec = _applyDeload(rec, deloadEnabled, deloadWeeks, deloadPercent);
+        rec = _roundToIncrement(rec, incrementKg);
+        return rec;
       }
       
       // Fallback to basic exercise-specific defaults
-      return _getDefaultWeight(exerciseName, targetReps);
+      double rec = _getDefaultWeight(exerciseName, targetReps);
+      rec = _applyProgressionRule(rec, workoutHistory, targetReps, progressionRule, targetRpe);
+      rec = _applyDeload(rec, deloadEnabled, deloadWeeks, deloadPercent);
+      rec = _roundToIncrement(rec, incrementKg);
+      return rec;
     } catch (e) {
-      print('Error getting weight recommendation: $e');
-      return _getDefaultWeight(exerciseName, targetReps);
+      debugPrint('Error getting weight recommendation: $e');
+      double rec = _getDefaultWeight(exerciseName, targetReps);
+      // best-effort rounding
+      final unit = await sharedPrefsProvider.getWeightUnit();
+      final increment = await sharedPrefsProvider.getWeightIncrement();
+      final incrementKg = unit == 'lb' ? (increment / 2.20462) : increment;
+      return _roundToIncrement(rec, incrementKg);
     }
   }
 
   /// Gets exercise history from workout sessions
   Future<List<ExerciseHistoryData>> _getExerciseHistory(String exerciseName) async {
+    final key = _normalizeExerciseName(exerciseName);
+    if (_historyCache.containsKey(key)) {
+      return _historyCache[key]!;
+    }
     try {
-      final sessions = await dbProvider.getWorkoutSessions();
+      _sessionsCache ??= await dbProvider.getWorkoutSessions();
+      final sessions = _sessionsCache!;
       final List<ExerciseHistoryData> history = [];
-      
       for (final session in sessions) {
         for (final exercise in session.exercises) {
-          if (_normalizeExerciseName(exercise.exerciseName) == _normalizeExerciseName(exerciseName)) {
+          if (_normalizeExerciseName(exercise.exerciseName) == key) {
             for (final set in exercise.sets) {
               if (set.isCompleted) {
                 history.add(ExerciseHistoryData(
@@ -58,9 +100,8 @@ class AIWeightRecommendationService {
           }
         }
       }
-      
-      // Sort by date (most recent first)
       history.sort((a, b) => b.date.compareTo(a.date));
+      _historyCache[key] = history;
       return history;
     } catch (e) {
       print('Error fetching exercise history: $e');
@@ -101,6 +142,50 @@ class AIWeightRecommendationService {
     // If no similar rep range, use rep conversion
     final mostRecentData = recentHistory.first;
     return _convertWeightForReps(mostRecentData.weight, mostRecentData.reps, targetReps);
+  }
+
+  double _applyProgressionRule(
+    double baseKg,
+    List<ExerciseHistoryData> history,
+    int targetReps,
+    String progressionRule,
+    int targetRpe,
+  ) {
+    switch (progressionRule) {
+      case 'fixed':
+        // Always add a small 2% bump as a baseline fixed rule
+        return baseKg * 1.02;
+      case 'rpe':
+        // Without explicit RPE history, apply conservative bump
+        // toward target RPE: if target is 8–9, add ~1%; else none.
+        final adj = (targetRpe >= 8) ? 1.01 : 1.0;
+        return baseKg * adj;
+      case 'reps':
+      default:
+        // Already handled inside progressive calc; just return base
+        return baseKg;
+    }
+  }
+
+  double _applyDeload(double kg, bool enabled, int everyWeeks, double percent) {
+    if (!enabled) return kg;
+    try {
+      final now = DateTime.now();
+      // Rough ISO week-of-year
+      final weekOfYear = int.parse("${now.year}${((now.difference(DateTime(now.year)).inDays) / 7).floor().toString().padLeft(2, '0')}");
+      final weekModulo = (weekOfYear % everyWeeks);
+      if (weekModulo == 0) {
+        return kg * percent;
+      }
+      return kg;
+    } catch (_) {
+      return kg;
+    }
+  }
+
+  double _roundToIncrement(double kg, double incKg) {
+    if (incKg <= 0) return kg;
+    return (kg / incKg).roundToDouble() * incKg;
   }
 
   /// Calculates progression factor based on recent performance trends

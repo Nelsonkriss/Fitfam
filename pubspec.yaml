@@ -98,9 +98,12 @@ flutter:
     - database/data.db
     - assets/ic_launcher.png
     - assets/app_icon.png
+    # Use the exact Android launcher icon from highest density as loading icon
+    - android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
     # Exercise animation images
     - assets/extraExercises/
     - assets/exercise_images/
+    - assets/hero/
 
   # in this "flutter" section. Each entry in this list should have a
   # "family" key with the font family name, and a "fonts" key with a

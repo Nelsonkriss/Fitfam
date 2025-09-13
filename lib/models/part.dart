@@ -4,13 +4,10 @@ import 'package:flutter/material.dart'; // Still needed for @immutable
 import 'package:flutter/foundation.dart'; // For debugPrint
 
 import 'exercise.dart'; // Import the corrected Exercise class
+import 'targeted_body_part.dart';
 
 export 'exercise.dart'; // Keep export if needed
-
-// Enums can stay here or be moved to a central location
-enum TargetedBodyPart {
-  Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep,
-}
+export 'targeted_body_part.dart';
 
 enum SetType { Regular, Drop, Super, Tri, Giant }
 

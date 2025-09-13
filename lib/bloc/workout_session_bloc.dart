@@ -21,6 +21,12 @@ class WorkoutSessionStartNew extends WorkoutSessionEvent {
   WorkoutSessionStartNew(this.routine);
 }
 
+/// Event to start or resume the latest incomplete session for a routine
+class WorkoutSessionStartOrResume extends WorkoutSessionEvent {
+  final Routine routine;
+  WorkoutSessionStartOrResume(this.routine);
+}
+
 /// Event to load an existing, possibly ongoing, session.
 class WorkoutSessionLoadExisting extends WorkoutSessionEvent {
   final String sessionId;
@@ -171,6 +177,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_TimedExerciseEnded>(_onTimedExerciseEnded);
     on<WorkoutSetTargetWeightChanged>(_onWorkoutSetTargetWeightChanged);
     on<WorkoutSetActualWeightChanged>(_onWorkoutSetActualWeightChanged);
+    on<WorkoutSessionStartOrResume>(_onWorkoutSessionStartOrResume);
   }
 
   /// Allows UI to explicitly trigger a refresh of the historical session list.
@@ -193,6 +200,8 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
         displayDuration: Duration.zero,
         isLoading: false, isResting: false, isFinished: false, errorMessage: null,
       ));
+      // Persist immediately for autosave/resume
+      _safeAutosave(newSession);
       _startSessionTimer();
       debugPrint("[WorkoutSessionBloc] New session started. State emitted. Timer started.");
     } catch (e, s) {
@@ -269,6 +278,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       final updatedSession = currentSession.copyWith(exercises: updatedExercises);
       emit(state.copyWith(session: updatedSession, isResting: false, errorMessage: null));
       debugPrint("[WorkoutSessionBloc] Session state updated with completed set.");
+      _safeAutosave(updatedSession);
 
       Duration? restDuration = targetExercise.restPeriod;
       bool isLastSetOfExercise = event.setIndex == targetExercise.sets.length - 1;
@@ -390,6 +400,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
 
       final updatedSession = currentSession.copyWith(exercises: updatedExercises);
       emit(state.copyWith(session: updatedSession, errorMessage: null));
+      _safeAutosave(updatedSession);
       debugPrint("[WorkoutSessionBloc] Session state updated with changed actual weight.");
     } catch (e, s) {
       debugPrint("[WorkoutSessionBloc] Error updating actual weight: $e\n$s");
@@ -423,6 +434,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
 
       final updatedSession = currentSession.copyWith(exercises: updatedExercises);
       emit(state.copyWith(session: updatedSession, errorMessage: null));
+      _safeAutosave(updatedSession);
       debugPrint("[WorkoutSessionBloc] Session state updated with changed target weight.");
     } catch (e, s) {
       debugPrint("[WorkoutSessionBloc] Error updating target weight: $e\n$s");
@@ -589,7 +601,33 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
         ));
         _startSessionTimer();
       }
+      _safeAutosave(updatedSession);
     }
+  }
+
+  // Start or resume latest incomplete session for this routine
+  void _onWorkoutSessionStartOrResume(WorkoutSessionStartOrResume event, Emitter<WorkoutSessionState> emit) async {
+    emit(state.copyWith(isLoading: true, errorMessage: null));
+    try {
+      final existing = await dbProvider.getLatestIncompleteSession(routineId: event.routine.id);
+      if (existing != null) {
+        debugPrint("[WorkoutSessionBloc] Resuming session ${existing.id}");
+        emit(state.copyWith(session: existing, isLoading: false, isResting: false, displayDuration: DateTime.now().difference(existing.startTime)));
+        _startSessionTimer();
+        return;
+      }
+      final newSession = WorkoutSession.startNew(routine: event.routine);
+      await dbProvider.saveWorkoutSession(newSession);
+      emit(state.copyWith(session: newSession, isLoading: false, isResting: false, displayDuration: Duration.zero));
+      _startSessionTimer();
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] Error startOrResume: $e\n$s");
+      emit(state.copyWith(isLoading: false, errorMessage: "Failed to start or resume session."));
+    }
+  }
+
+  Future<void> _safeAutosave(WorkoutSession session) async {
+    try { await dbProvider.saveWorkoutSession(session); } catch (e) { debugPrint("[WorkoutSessionBloc] Autosave failed: $e"); }
   }
 
   void _startExerciseTimer(Duration duration, int exerciseIndex, int setIndex) {

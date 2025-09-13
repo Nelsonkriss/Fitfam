@@ -1,177 +1,393 @@
+﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-
 import 'package:workout_planner/bloc/routines_bloc.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/models/routine.dart';
+import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/resource/open_router_service.dart';
-import 'package:workout_planner/resource/shared_prefs_provider.dart';
-import 'package:workout_planner/services/notification_service.dart';
-import 'routine_edit_page.dart';
-import 'package:workout_planner/services/curated_templates.dart';
+import 'package:workout_planner/services/notification_service.dart'; // Import NotificationService
+import 'components/routine_card.dart';
+import 'package:flutter/foundation.dart'; // For kDebugMode
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
+// For optional prompt templates
 
 class RecommendPage extends StatefulWidget {
   final MainTargetedBodyPart? initialPart;
   const RecommendPage({super.key, this.initialPart});
 
   @override
-  State<RecommendPage> createState() => _RecommendPageState();
+  _RecommendPageState createState() => _RecommendPageState();
 }
 
 class _RecommendPageState extends State<RecommendPage> {
   final ScrollController _scrollController = ScrollController();
+  bool _showAppBarShadow = false;
+
+  // --- AI Routine Generation State ---
   final TextEditingController _aiPromptController = TextEditingController();
+  bool _isGeneratingAiRoutine = false;
+  String? _aiError;
   late final OpenRouterService _openRouterService;
   bool _apiKeyMissing = false;
-  bool _isGenerating = false;
-  String? _aiError;
+  // --- End AI State ---
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
+
     final apiKey = dotenv.env['OPENROUTER_API_KEY'];
     if (apiKey == null || apiKey.isEmpty) {
       _apiKeyMissing = true;
+      _aiError =
+          "OpenRouter API Key is missing. Please set it in your .env file and restart the app.";
       _openRouterService = OpenRouterService(apiKey: '');
+      debugPrint("[RecommendPage] API Key missing in initState.");
     } else {
       _openRouterService = OpenRouterService(apiKey: apiKey);
+      debugPrint(
+        "[RecommendPage] API Key loaded, OpenRouterService initialized.",
+      );
     }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      context.read<RoutinesBloc>().fetchAllRoutines();
-      setState(() {});
+      if (mounted) {
+        context.read<RoutinesBloc>().fetchAllRoutines();
+        if (_apiKeyMissing) {
+          setState(() {});
+        }
+      }
     });
+  }
+
+  void _handleScroll() {
+    if (!mounted) return;
+    final bool shouldShowShadow = _scrollController.offset > 0;
+    if (shouldShowShadow != _showAppBarShadow) {
+      setState(() {
+        _showAppBarShadow = shouldShowShadow;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _aiPromptController.dispose();
     super.dispose();
   }
 
+  Future<void> _generateAndSaveAiRoutine() async {
+    if (_aiPromptController.text.trim().isEmpty) {
+      if (mounted) {
+        setState(() {
+          _aiError = "Please enter a description for the routine you want.";
+        });
+      }
+      return;
+    }
+
+    if (_apiKeyMissing) {
+      if (mounted) {
+        setState(() {
+          _aiError =
+              "OpenRouter API Key is missing. Cannot generate routine. Please set it in .env and restart.";
+        });
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingAiRoutine = true;
+      _aiError = null;
+    });
+
+    try {
+      final String? routineJsonString = await _openRouterService
+          .getAiGeneratedRoutineDescription(_aiPromptController.text.trim());
+
+      if (!mounted) return;
+
+      if (routineJsonString != null) {
+        final List<Routine> newRoutines = _openRouterService
+            .parseRoutinesFromJsonString(routineJsonString);
+        if (newRoutines.isNotEmpty) {
+          if (mounted) {
+            // Show notification immediately
+            final notificationService = NotificationService(); // Get instance
+            await notificationService.showNotification(
+              // ID can be based on routine hash or a timestamp to be unique enough for immediate notifications
+              id:
+                  DateTime.now().millisecondsSinceEpoch %
+                  100000, // Simple unique ID
+              title: "New AI Routines Created!",
+              body: "Your new routines are ready.",
+              payload:
+                  "ai_routines_created", // Optional: payload for navigation
+            );
+
+            await context.read<RoutinesBloc>().addRoutines(newRoutines);
+            _aiPromptController.clear();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("AI routines generated and saved!"),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _aiError =
+                  "AI generated a routine, but it couldn't be understood. Please try a different prompt.";
+            });
+          }
+          debugPrint(
+            "[RecommendPage] Failed to parse AI JSON into Routine object. JSON: $routineJsonString",
+          );
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _aiError =
+                "Failed to get a response from the AI. Check connection/API key.";
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _aiError = "An error occurred: ${e.toString()}";
+        });
+      }
+      debugPrint("[RecommendPage] Error generating AI routine: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGeneratingAiRoutine = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final routinesBlocInstance = context.watch<RoutinesBloc>();
+
     return Scaffold(
-      appBar: AppBar(title: const Text('AI Routine Coach')),
+      appBar: AppBar(
+        title: const Text("AI Routine Coach"),
+        elevation: _showAppBarShadow ? 4.0 : 0.0,
+        shadowColor: Colors.black.withOpacity(0.3),
+      ),
       body: ListView(
+        controller: _scrollController,
+        padding: const EdgeInsets.only(bottom: 24),
         children: [
+          // Featured and quick picks (restored design)
+          _buildFeaturedForStudents(context),
+          _buildQuickPicks(context),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Curated Templates', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Generate with AI",
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _aiPromptController,
+                  decoration: InputDecoration(
+                    hintText: "e.g., 3-day full body for beginners",
+                    // border: const OutlineInputBorder(), // Will pick up from InputDecorationTheme
+                    errorText: _aiError,
+                  ),
+                  minLines: 2,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted:
+                      (_) =>
+                          (_isGeneratingAiRoutine || _apiKeyMissing)
+                              ? null
+                              : _generateAndSaveAiRoutine(),
+                  readOnly: _apiKeyMissing,
+                ),
+                const SizedBox(height: 12),
+                if (_apiKeyMissing)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      _aiError ??
+                          "API Key is missing. Configure .env file and restart.",
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                _isGeneratingAiRoutine
+                    ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                    : ElevatedButton.icon(
+                      icon: const Icon(Icons.auto_awesome),
+                      label: const Text("Generate Routine"),
+                      onPressed:
+                          _apiKeyMissing ? null : _generateAndSaveAiRoutine,
+                      style: ElevatedButton.styleFrom(
+                        // Theme will provide base, this makes it full width
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                    ),
+              ],
+            ),
           ),
-          _buildCuratedTemplates(context, cs),
-          const SizedBox(height: 24),
+          const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Or write your own', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "AI-Generated Routines",
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+              ),
+            ),
           ),
-          _buildPromptCard(cs),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Latest AI routines', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          StreamBuilder<List<Routine>>(
+            stream: routinesBlocInstance.allRoutinesStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text('Error loading routines: ${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  ),
+                );
+              }
+              final aiGeneratedRoutines = snapshot.data?.where((r) => r.isAiGenerated).toList() ?? [];
+              if (aiGeneratedRoutines.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(child: Text('No AI-generated routines yet. Try creating one above!')),
+                );
+              }
+              final count = _calculateListItemCount(aiGeneratedRoutines);
+              return Column(
+                children: List.generate(count, (index) => _buildListItem(context, aiGeneratedRoutines, index)),
+              );
+            },
           ),
-          _buildLatestAiRoutines(),
-          const SizedBox(height: 32),
         ],
       ),
     );
   }
 
-  Widget _buildPromptCard(ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Card(
-        color: cs.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Column(
-            children: [
-              TextField(
-                controller: _aiPromptController,
-                minLines: 3,
-                maxLines: 6,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.edit_note_rounded),
-                  border: InputBorder.none,
-                  hintText: _apiKeyMissing ? 'OpenRouter API Key is missing in .env' : 'Describe your goal, days, equipment...'
-                ),
-                readOnly: _apiKeyMissing,
-              ),
-              const SizedBox(height: 8),
-              if (_aiError != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0),
-                  child: Text(_aiError!, style: TextStyle(color: cs.error)),
-                ),
-              FilledButton.icon(
-                onPressed: _apiKeyMissing || _isGenerating ? null : _generateFromInput,
-                icon: const Icon(Icons.auto_awesome),
-                label: Text(_isGenerating ? 'Generating...' : 'Generate Routine'),
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              ),
-            ],
+  // --------------------- Restored Featured + Quick Picks ---------------------
+  Widget _buildFeaturedForStudents(BuildContext context) {
+    final items = _featuredItems();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text(
+            'Featured for Students',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
           ),
         ),
-      ),
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemBuilder:
+                (_, i) => _FeaturedCard(
+                  data: items[i],
+                  onTap:
+                      () => _generateFromPrompt(
+                        items[i].prompt,
+                        title: items[i].title,
+                      ),
+                ),
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemCount: items.length,
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildLatestAiRoutines() {
-    final bloc = context.read<RoutinesBloc>();
-    return StreamBuilder<List<Routine>>(
-      stream: bloc.allRoutinesStream,
-      builder: (context, snapshot) {
-        final items = (snapshot.data ?? []).where((r) => r.isAiGenerated).toList();
-        if (items.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text('No AI routines yet. Try the prompt above.'),
-          );
-        }
-        return Column(
-          children: items.map((r) => Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: ListTile(
-              title: Text(r.routineName, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text('${r.parts.length} parts · ${r.mainTargetedBodyPart.name}'),
-              trailing: TextButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => RoutineEditPage.edit(routine: r)));
-                },
-                child: const Text('Open'),
-              ),
+  Widget _buildQuickPicks(BuildContext context) {
+    final items = _quickPickItems();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text('Quick Picks', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+        ),
+        SizedBox(
+          height: 180,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemBuilder: (_, i) => _FeaturedCard(
+              data: items[i],
+              onTap: () => _generateFromPrompt(items[i].prompt, title: items[i].title),
             ),
-          )).toList(),
-        );
-      },
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemCount: items.length,
+          ),
+        ),
+      ],
     );
   }
 
-  Future<void> _generateFromInput() async {
-    final prompt = _aiPromptController.text.trim();
-    if (prompt.isEmpty) {
-      setState(() => _aiError = 'Please enter a prompt');
+  Future<void> _generateFromPrompt(
+    String prompt, {
+    required String title,
+  }) async {
+    if (_apiKeyMissing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _aiError ?? 'Missing API Key. Configure .env to use AI.',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
       return;
     }
-    await _generateFromPrompt(prompt, title: 'Custom');
-  }
-
-  Future<void> _generateFromPrompt(String prompt, {required String title}) async {
     final routinesBloc = context.read<RoutinesBloc>();
     final messenger = ScaffoldMessenger.of(context);
-    setState(() { _isGenerating = true; _aiError = null; });
+    setState(() {
+      _isGeneratingAiRoutine = true;
+      _aiError = null;
+    });
     try {
-      final String? routineJsonString = await _openRouterService.getAiGeneratedRoutineDescription(prompt);
+      final String? routineJsonString = await _openRouterService
+          .getAiGeneratedRoutineDescription(prompt);
       if (!mounted) return;
       if (routineJsonString != null) {
-        final List<Routine> routines = _openRouterService.parseRoutinesFromJsonString(routineJsonString);
+        final List<Routine> routines = _openRouterService
+            .parseRoutinesFromJsonString(routineJsonString);
         if (routines.isNotEmpty) {
-          await sharedPrefsProvider.addAiPromptToHistory(prompt);
           await routinesBloc.addRoutines(routines);
           await NotificationService().showNotification(
             id: DateTime.now().millisecondsSinceEpoch % 100000,
@@ -180,78 +396,481 @@ class _RecommendPageState extends State<RecommendPage> {
             payload: 'ai_routines_created',
           );
           messenger.showSnackBar(
-            SnackBar(content: Text('Generated: $title'), backgroundColor: Colors.green),
+            SnackBar(
+              content: Text('Generated: $title'),
+              backgroundColor: Colors.green,
+            ),
           );
         } else {
-          setState(() => _aiError = 'AI returned something we could not parse. Try a different prompt.');
+          setState(
+            () =>
+                _aiError =
+                    'AI returned something we could not parse. Try a different pick.',
+          );
         }
       } else {
-        setState(() => _aiError = 'No response from AI. Check connection/API key.');
+        setState(
+          () => _aiError = 'No response from AI. Check connection/API key.',
+        );
       }
     } catch (e) {
       setState(() => _aiError = 'Error: $e');
     } finally {
-      if (mounted) setState(() { _isGenerating = false; });
+      if (mounted)
+        setState(() {
+          _isGeneratingAiRoutine = false;
+        });
     }
   }
 
-  Widget _buildCuratedTemplates(BuildContext context, ColorScheme cs) {
-    final routinesBloc = context.read<RoutinesBloc>();
-    final groups = <String, List<Routine>>{
-      'Hypertrophy': CuratedTemplates.hypertrophy(),
-      'Strength': CuratedTemplates.strength(),
-      'Fat Loss': CuratedTemplates.fatLoss(),
-    };
+  // --------------------- UI Models and Cards ---------------------
+  // --------------------- UI Models and Cards ---------------------
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: groups.entries.map((entry) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(entry.key, style: Theme.of(context).textTheme.titleSmall?.copyWith(color: cs.onSurfaceVariant)),
+  /*  List<_RecoData> _featuredItems() {
+    return [
+      _RecoData(
+        title: 'Science-Based Workout',
+        subtitle: 'Evidence > ego',
+        gradient: [Colors.deepPurple.shade600, Colors.teal.shade400],
+        prompt: 'Science-based hypertrophy routine for students; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
+        assetOverlay: 'assets/exercise_images/app_bodybuilding.webp',
+        emojis: '💪📈',
+      ),
+      _RecoData(
+        title: 'After-School Lazy',
+        subtitle: 'Low energy, low friction',
+        gradient: [Colors.blueGrey.shade700, Colors.indigo.shade400],
+        prompt: 'Ultra low-friction after-school workout for tired students; 15-20 minutes; minimal equipment; low DOMS; mood-boost focus; bodyweight + bands; simple timer-based sets.',
+        assetOverlay: 'assets/dumbbells.png',
+        emojis: '😌🧘',
+      ),
+      _RecoData(
+        title: 'Bro Chest Day',
+        subtitle: 'Pump + fun',
+        gradient: [Colors.pink.shade400, Colors.redAccent.shade200],
+        prompt: 'Classic bro chest workout for students; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
+        assetOverlay: 'assets/chest-96.png',
+        emojis: '🏋️🔥',
+      ),
+      _RecoData(
+        title: 'Exam Stress Fix',
+        subtitle: 'Reset + breathe',
+        gradient: [Colors.cyan.shade400, Colors.greenAccent.shade400],
+        prompt: 'Stress-reduction routine for exam weeks; 25 minutes; full body mobility + light circuits; nasal breathing cues; end with 3-minute box breathing; low sweat, high calm.',
+        assetOverlay: 'assets/exercise_images/app_yoga.webp',
+        emojis: '🧘🌿',
+      ),
+    ];
+  }
+
+  List<_RecoData> _quickPickItems() {
+    final picks = <_RecoData>[
+      _RecoData(
+        title: 'Dorm Room 15', subtitle: 'No equipment',
+        gradient: [Colors.orange.shade400, Colors.amber.shade600],
+        prompt: '15-minute dorm-friendly bodyweight circuit for students; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
+        assetOverlay: 'assets/exercise_images/app_abdominal.webp', emojis: '🏠⏱️',
+      ),
+      _RecoData(
+        title: 'Glute & Legs', subtitle: 'Power hour',
+        gradient: [Colors.purple.shade400, Colors.deepPurple.shade700],
+        prompt: 'Glutes & legs strength + pump for students; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
+        assetOverlay: 'assets/leg-96.png', emojis: '🍑🦵',
+      ),
+      _RecoData(
+        title: 'Pull Day', subtitle: 'Back + biceps',
+        gradient: [Colors.blue.shade400, Colors.indigo.shade700],
+        prompt: 'Pull day for students; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
+        assetOverlay: 'assets/back-96.png', emojis: '🧲💪',
+      ),
+      _RecoData(
+        title: 'Push Day', subtitle: 'Chest + shoulders',
+        gradient: [Colors.red.shade400, Colors.deepOrange.shade600],
+        prompt: 'Push day for students; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
+        assetOverlay: 'assets/chest-96.png', emojis: '➡️🏋️',
+      ),
+      _RecoData(
+        title: '5x5 Basics', subtitle: 'Strength first',
+        gradient: [Colors.grey.shade700, Colors.blueGrey.shade500],
+        prompt: 'Science-based 5x5 strength routine for students; 3 days/week full body; linear progression; safety cues; optional accessories.',
+        assetOverlay: 'assets/exercise_images/app_barbell.webp', emojis: '📊🏗️',
+      ),
+      _RecoData(
+        title: 'Bro Arm Blast', subtitle: 'Biceps + triceps',
+        gradient: [Colors.pinkAccent.shade200, Colors.deepPurple.shade400],
+        prompt: 'High-pump arm workout for students; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
+        assetOverlay: 'assets/muscle-96.png', emojis: '💥💪',
+      ),
+    ];
+    picks.shuffle(math.Random());
+    return picks;
+  }
+*/
+}
+
+class _RecoData {
+  final String title;
+  final String subtitle;
+  final List<Color> gradient;
+  final String prompt;
+  final String? assetOverlay;
+  final String? emojis;
+  _RecoData({
+    required this.title,
+    required this.subtitle,
+    required this.gradient,
+    required this.prompt,
+    this.assetOverlay,
+    this.emojis,
+  });
+}
+
+List<_RecoData> _featuredItems() {
+  return [
+    _RecoData(
+      title: 'Science-Based Workout',
+      subtitle: 'Evidence > ego',
+      gradient: [Colors.deepPurple.shade600, Colors.teal.shade400],
+      prompt:
+          'Science-based hypertrophy routine for students; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
+      assetOverlay: 'assets/exercise_images/app_bodybuilding.webp',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'After-School Lazy',
+      subtitle: 'Low energy, low friction',
+      gradient: [Colors.blueGrey.shade700, Colors.indigo.shade400],
+      prompt:
+          'Ultra low-friction after-school workout for tired students; 15-20 minutes; minimal equipment; low DOMS; mood-boost focus; bodyweight + bands; simple timer-based sets.',
+      assetOverlay: 'assets/dumbbells.png',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Bro Chest Day',
+      subtitle: 'Pump + fun',
+      gradient: [Colors.pink.shade400, Colors.redAccent.shade200],
+      prompt:
+          'Classic bro chest workout for students; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
+      assetOverlay: 'assets/chest-96.png',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Exam Stress Fix',
+      subtitle: 'Reset + breathe',
+      gradient: [Colors.cyan.shade400, Colors.greenAccent.shade400],
+      prompt:
+          'Stress-reduction routine for exam weeks; 25 minutes; full body mobility + light circuits; nasal breathing cues; end with 3-minute box breathing; low sweat, high calm.',
+      assetOverlay: 'assets/exercise_images/app_yoga.webp',
+      emojis: '',
+    ),
+  ];
+}
+
+List<_RecoData> _quickPickItems() {
+  final picks = <_RecoData>[
+    _RecoData(
+      title: 'Dorm Room 15',
+      subtitle: 'No equipment',
+      gradient: [Colors.orange.shade400, Colors.amber.shade600],
+      prompt:
+          '15-minute dorm-friendly bodyweight circuit for students; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
+      assetOverlay: 'assets/exercise_images/app_abdominal.webp',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Glute & Legs',
+      subtitle: 'Power hour',
+      gradient: [Colors.purple.shade400, Colors.deepPurple.shade700],
+      prompt:
+          'Glutes & legs strength + pump for students; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
+      assetOverlay: 'assets/leg-96.png',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Pull Day',
+      subtitle: 'Back + biceps',
+      gradient: [Colors.blue.shade400, Colors.indigo.shade700],
+      prompt:
+          'Pull day for students; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
+      assetOverlay: 'assets/back-96.png',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Push Day',
+      subtitle: 'Chest + shoulders',
+      gradient: [Colors.red.shade400, Colors.deepOrange.shade600],
+      prompt:
+          'Push day for students; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
+      assetOverlay: 'assets/chest-96.png',
+      emojis: '',
+    ),
+    _RecoData(
+      title: '5x5 Basics',
+      subtitle: 'Strength first',
+      gradient: [Colors.grey.shade700, Colors.blueGrey.shade500],
+      prompt:
+          'Science-based 5x5 strength routine for students; 3 days/week full body; linear progression; safety cues; optional accessories.',
+      assetOverlay: 'assets/exercise_images/app_barbell.webp',
+      emojis: '',
+    ),
+    _RecoData(
+      title: 'Bro Arm Blast',
+      subtitle: 'Biceps + triceps',
+      gradient: [Colors.pinkAccent.shade200, Colors.deepPurple.shade400],
+      prompt:
+          'High-pump arm workout for students; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
+      assetOverlay: 'assets/muscle-96.png',
+      emojis: '',
+    ),
+  ];
+  picks.shuffle(math.Random());
+  return picks;
+}
+
+class _FeaturedCard extends StatelessWidget {
+  final _RecoData data;
+  final VoidCallback onTap;
+  const _FeaturedCard({required this.data, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 280,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: data.gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
-            const SizedBox(height: 8),
-            ...entry.value.map((tmpl) => Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    title: Text(tmpl.routineName, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('${tmpl.parts.length} parts · ${tmpl.weekdays.isEmpty ? 'Flexible' : 'Days: ${tmpl.weekdays.join(', ')}'}'),
-                    trailing: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Row(children: [
-                        TextButton(
-                          onPressed: () async {
-                            await routinesBloc.addRoutine(tmpl.copyWith(createdDate: DateTime.now(), isAiGenerated: false));
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Template added')));
-                            }
-                          },
-                          child: const Text('Add'),
-                        ),
-                        const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => RoutineEditPage.edit(routine: tmpl.copyWith()),
-                              ),
-                            );
-                          },
-                          child: const Text('Clone & Tweak'),
-                        ),
-                      ]),
+          ],
+        ),
+        child: Stack(
+          children: [
+            if (data.assetOverlay != null)
+              Positioned(
+                right: 8,
+                bottom: 8,
+                child: Opacity(
+                  opacity: 0.85,
+                  child: Image.asset(
+                    data.assetOverlay!,
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            Positioned(
+              right: 12,
+              top: 12,
+              child: Text(
+                data.emojis ?? '',
+                style: const TextStyle(fontSize: 24, color: Colors.white),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    data.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                )),
-            const SizedBox(height: 8),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 220,
+                    child: Text(
+                      data.subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.95),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Generate',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
-        );
-      }).toList(),
+        ),
+      ),
     );
   }
+}
+
+class _QuickPickCard extends StatelessWidget {
+  final _RecoData data;
+  final VoidCallback onTap;
+  const _QuickPickCard({required this.data, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 165,
+        height: 66,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: data.gradient,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        padding: const EdgeInsets.all(8),
+        child: Stack(
+          children: [
+            if (data.assetOverlay != null)
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: Opacity(
+                  opacity: 0.85,
+                  child: Image.asset(data.assetOverlay!, width: 32, height: 32),
+                ),
+              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.max,
+              children: [
+                Text(
+                  data.emojis ?? '',
+                  style: const TextStyle(fontSize: 14, color: Colors.white),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  data.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  data.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.95),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Map<MainTargetedBodyPart, List<Routine>> _groupRoutines(
+  List<Routine> routines,
+) {
+  final map = {for (var v in MainTargetedBodyPart.values) v: <Routine>[]};
+  for (final routine in routines) {
+    if (map.containsKey(routine.mainTargetedBodyPart)) {
+      map[routine.mainTargetedBodyPart]!.add(routine);
+    } else {
+      if (kDebugMode) {
+        print(
+          "Warning: Routine '${routine.routineName}' has unknown MainTargetedBodyPart: ${routine.mainTargetedBodyPart}",
+        );
+      }
+    }
+  }
+  map.removeWhere((key, value) => value.isEmpty);
+  return map;
+}
+
+int _calculateListItemCount(List<Routine> routines) {
+  final grouped = _groupRoutines(routines);
+  int count = 0;
+  grouped.forEach((key, value) {
+    if (value.isNotEmpty) {
+      count++;
+      count += value.length;
+    }
+  });
+  return count;
+}
+
+Widget _buildListItem(BuildContext context, List<Routine> routines, int index) {
+  final grouped = _groupRoutines(routines);
+  final categoriesWithRoutines = grouped.entries.toList();
+
+  int currentIndex = 0;
+  for (var entry in categoriesWithRoutines) {
+    final bodyPart = entry.key;
+    final categoryRoutines = entry.value;
+
+    if (index == currentIndex) {
+      return _buildCategoryHeader(context, bodyPart);
+    }
+    currentIndex++;
+
+    if (index < currentIndex + categoryRoutines.length) {
+      final routineIndexInCategory = index - currentIndex;
+      final routine = categoryRoutines[routineIndexInCategory];
+      return RoutineCard(routine: routine, isRecRoutine: false);
+    }
+    currentIndex += categoryRoutines.length;
+  }
+  return const SizedBox.shrink();
+}
+
+Widget _buildCategoryHeader(
+  BuildContext context,
+  MainTargetedBodyPart bodyPart,
+) {
+  final style = Theme.of(
+    context,
+  ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold);
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(mainTargetedBodyPartToStringConverter(bodyPart), style: style),
+  );
 }

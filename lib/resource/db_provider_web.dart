@@ -253,6 +253,35 @@ class DBProviderWeb implements DbProviderInterface {
     }
   }
 
+  @override
+  Future<WorkoutSession?> getLatestIncompleteSession({int? routineId}) async {
+    final prefs = await _prefs;
+    try {
+      final maps = await _getAllSessionMaps(prefs);
+      if (maps.isEmpty) return null;
+      final filtered = maps.where((m) {
+        final completed = (m['isCompleted'] is int) ? (m['isCompleted'] == 1) : (m['isCompleted'] == true);
+        if (completed) return false;
+        if (routineId != null) {
+          final rid = _parseToInt(m['routineId']);
+          return rid == routineId;
+        }
+        return true;
+      }).toList();
+      if (filtered.isEmpty) return null;
+      filtered.sort((a, b) => (b['startTime'] ?? '').toString().compareTo((a['startTime'] ?? '').toString()));
+      final sel = filtered.first;
+      // Need routine to construct WorkoutSession
+      final rid = _parseToInt(sel['routineId']);
+      if (rid == null) return null;
+      final routine = (await getAllRoutines()).firstWhere((r) => r.id == rid, orElse: () => throw StateError('Routine not found'));
+      return WorkoutSession.fromMap(sel, routine);
+    } catch (e, s) {
+      debugPrint("[DBProviderWeb] Error getLatestIncompleteSession: $e\n$s");
+      return null;
+    }
+  }
+
   // --- Helper Methods ---
 
   Future<void> _saveRoutinesList(SharedPreferences prefs, List<Routine> routines) async {

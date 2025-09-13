@@ -4,6 +4,8 @@ import 'dart:async'; // For Future
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart'; // For weekly progress
+import 'package:fl_chart/fl_chart.dart'; // Trend chart
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart'; // To access BLoCs
 
 // Import BLoCs and Providers (Adjust paths if needed)
@@ -17,6 +19,7 @@ import 'package:workout_planner/models/workout_session.dart';
 // Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
+import 'package:workout_planner/services/exercise_muscle_map.dart';
 
 // Default text styles for cards are now replaced by theme-aware styles below.
 
@@ -33,6 +36,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
   String _firstRunDate = 'loading...'; // State variable for async data
   Set<int> _selectedWeeklyProgressRoutineIds = {}; // State variable for selected routine IDs for weekly progress
   int? _selectedWeeklyAmount; // State variable for weekly workout amount
+  // Dashboard range selection
+  DashboardRange _range = DashboardRange.week;
+  bool _useTonnage = false;
 
   @override
   void initState() {
@@ -40,6 +46,19 @@ class _StatisticsPageState extends State<StatisticsPage> {
     _loadFirstRunDate(); // Load async data once when state initializes
     _loadSelectedWeeklyProgressRoutines(); // Load selected routines for weekly progress
     _loadWeeklyAmount(); // Load weekly workout amount
+    _loadSavedRange(); // Load persisted dashboard range
+  }
+
+  Future<void> _loadSavedRange() async {
+    final saved = await sharedPrefsProvider.getStatsDashboardRange();
+    final tonnage = await sharedPrefsProvider.getStatsUseTonnage();
+    if (!mounted) return;
+    if (saved != null) {
+      setState(() {
+        _range = saved == 1 ? DashboardRange.days30 : DashboardRange.week;
+        _useTonnage = tonnage;
+      });
+    }
   }
 
   /// Asynchronously loads the first run date from SharedPreferences.
@@ -136,32 +155,36 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
                 // --- Build Layout ---
                 // Use CustomScrollView to combine slivers and regular widgets easily
-                return CustomScrollView(
-                  slivers: <Widget>[
-                    // 1. Statistics Grid (uses routine data and session data)
-                    _buildStatisticsGrid(context, routines, sessions), // Pass both routines and sessions
-
-                    // 2. Calendar Section Header
-                    SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                          child: Text(
-                              "Workout Calendar",
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600)
-                          ),
-                        )
-                    ),
-
-                    // 3. Calendar Page (Assumes it fetches its own session data)
-                    // Wrap CalendarPage (if it's not a Sliver itself)
-                    const SliverToBoxAdapter(
-                      child: CalenderPage(), // CalendarPage needs to handle its own data source
-                    ),
-
-                    // Add bottom padding inside the scroll view
-                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
-                  ],
-                );
+                            // --- Build Modern Dashboard Layout ---
+            return CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildHeader(context, routines, sessions),
+                      const SizedBox(height: 16),
+                      _buildHighlights(context, routines, sessions),
+                      const SizedBox(height: 16),
+                      _buildTrend(context, sessions),
+                      const SizedBox(height: 16),
+                      _buildBodyPartSplit(context, routines, sessions),
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'Workout Calendar',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const CalenderPage(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ],
+            );
               },
             );
           },
@@ -170,137 +193,359 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 
-  /// Builds the 2x2 grid of statistics cards as a Sliver.
-  Widget _buildStatisticsGrid(BuildContext context, List<Routine> routines, List<WorkoutSession> sessions) {
-    // Calculate stats based on the received routines list
-    final totalCompletionCount = _getTotalWorkoutCount(routines);
-    final weeklyRatio = _calculateWeeklyRatio(routines); // Renamed for clarity
-    final String displayFirstRunDate = _firstRunDate; // Use state variable
-    int daysSince = 0;
-    if (displayFirstRunDate != 'loading...' && displayFirstRunDate != 'Unknown') {
-      final parsedDate = DateTime.tryParse(displayFirstRunDate);
-      if (parsedDate != null) {
-        daysSince = DateTime.now().difference(parsedDate).inDays.clamp(0, 99999); // Prevent negative days
-      }
-    }
+  // Old grid removed in favor of modern dashboard
 
-    return SliverPadding(
-      padding: const EdgeInsets.all(16.0), // Padding around the entire grid
-      sliver: SliverGrid.count(
-        crossAxisCount: 2,      // Two columns
-        mainAxisSpacing: 12.0,  // Vertical spacing between cards
-        crossAxisSpacing: 12.0, // Horizontal spacing between cards
-        childAspectRatio: 1.0,  // Make cells roughly square
-        children: <Widget>[
-          // --- Card 1: Days Since First Run ---
-          _buildInfoCard(
-            context: context,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                Text('Using since', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
-                Text(displayFirstRunDate, textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
-                const Spacer(flex: 2),
-                Expanded(
-                    flex: 5,
-                    child: FittedBox(fit: BoxFit.contain, child: Text('$daysSince', textAlign: TextAlign.center, style: Theme.of(context).textTheme.displaySmall))
-                ),
-                const Spacer(flex: 1),
-                Text('Days Ago', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
-                const SizedBox(height: 8),
-              ],
-            ),
+  // Old helper removed; new UI uses _sectionCard/_kpiCard
+
+  // --- Modern dashboard helpers ---
+  Widget _buildHeader(BuildContext context, List<Routine> routines, List<WorkoutSession> sessions) {
+    final weeklyTarget = _selectedWeeklyAmount ?? 0;
+    final completedThisWeek = _countWorkoutsThisWeek(routines);
+    final ratio = _calculateWeeklyRatio(routines);
+    final since = _firstRunDate == 'loading...' ? '' : 'Since $_firstRunDate';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
+              Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.22),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-
-          // --- Card 2: Total Completion Count ---
-          _buildInfoCard(
-            context: context,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Total Workouts\nCompleted', textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
-                const Spacer(flex: 2),
-                Expanded(
-                  flex: 5,
-                  child: FittedBox(fit: BoxFit.contain, child: Text( totalCompletionCount.toString(), textAlign: TextAlign.center, style: Theme.of(context).textTheme.displaySmall)),
-                ),
-                const Spacer(flex: 3),
-              ],
-            ),
-          ),
-
-          // --- Card 3: Body Parts Trained (Donut Chart) ---
-          _buildInfoCard(
-            context: context,
-            child: Padding(
-              padding: const EdgeInsets.all(6.0), // Reduced padding
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Body Parts Trained", style: Theme.of(context).textTheme.labelMedium),
-                  const SizedBox(height: 8), // Reduced spacing
-                  Expanded(
-                    child: Builder(
-                      builder: (context) {
-                        // Extract body parts from completed workout sessions instead of routine templates
-                        final List<Part> trainedParts = _extractTrainedBodyParts(sessions, routines);
-                        return (trainedParts.isEmpty)
-                            ? Center(child: Text("No completed\nworkouts", textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall))
-                            : Padding(
-                                padding: const EdgeInsets.all(4.0), // Small padding around chart
-                                child: DonutAutoLabelChart(trainedParts, animate: true),
-                              );
-                      }
+                  Text('Your Progress', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(since, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    _chip(
+                      context,
+                      'This Week',
+                      selected: _range == DashboardRange.week,
+                      onTap: () {
+                        setState(() => _range = DashboardRange.week);
+                        sharedPrefsProvider.setStatsDashboardRange(0);
+                      },
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    _chip(
+                      context,
+                      '30 Days',
+                      selected: _range == DashboardRange.days30,
+                      onTap: () {
+                        setState(() => _range = DashboardRange.days30);
+                        sharedPrefsProvider.setStatsDashboardRange(1);
+                      },
+                    ),
+                  ])
                 ],
               ),
             ),
-          ),
-
-          // --- Card 4: Weekly Goal Progress ---
-          _buildInfoCard(
-              context: context,
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text("Weekly Progress", textAlign: TextAlign.center, style: Theme.of(context).textTheme.labelMedium),
-                      const Spacer(flex: 1), // Reduced flex
-                      CircularPercentIndicator(
-                        radius: 45.0, // Slightly reduced radius
-                        lineWidth: 9.0, // Slightly reduced line width
-                        animation: true,
-                        animationDuration: 800,
-                        percent: weeklyRatio,
-                        center: Text( "${(weeklyRatio * 100).toStringAsFixed(0)}%",
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold), // Slightly smaller text
-                        ),
-                        circularStrokeCap: CircularStrokeCap.round,
-                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-                        progressColor: Theme.of(context).colorScheme.secondary,
-                      ),
-                      const Spacer(flex: 2), // Reduced flex
-                    ]
+            SizedBox(
+              width: 110,
+              height: 110,
+              child: CircularPercentIndicator(
+                radius: 50,
+                lineWidth: 10,
+                percent: ratio,
+                animation: true,
+                circularStrokeCap: CircularStrokeCap.round,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                progressColor: Theme.of(context).colorScheme.primary,
+                center: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('${(ratio * 100).toStringAsFixed(0)}%', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('$completedThisWeek/${weeklyTarget > 0 ? weeklyTarget : '—'}', style: Theme.of(context).textTheme.labelMedium),
+                  ],
                 ),
-              )
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHighlights(BuildContext context, List<Routine> routines, List<WorkoutSession> sessions) {
+    final totalWorkouts = _getTotalWorkoutCount(routines);
+    final totalMinutes = _sumCompletedMinutes(sessions);
+    final completedSessions = sessions.where((s) => s.isCompleted && s.endTime != null).length;
+    final avgDuration = completedSessions > 0 ? (totalMinutes / completedSessions).round() : 0;
+    final streak = _calculateCurrentStreakDays(sessions);
+
+    return SizedBox(
+      height: 140,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _kpiCard(
+            context,
+            icon: Icons.sports_gymnastics_rounded,
+            label: 'Total Workouts',
+            gradient: _kpiGradient(context, 0),
+            valueWidget: CountUp(value: totalWorkouts, suffix: ''),
+          ),
+          _kpiCard(
+            context,
+            icon: Icons.timer_rounded,
+            label: 'Minutes Trained',
+            gradient: _kpiGradient(context, 1),
+            valueWidget: CountUp(value: totalMinutes, suffix: ''),
+          ),
+          _kpiCard(
+            context,
+            icon: Icons.speed_rounded,
+            label: 'Avg Duration',
+            gradient: _kpiGradient(context, 2),
+            valueWidget: CountUp(value: avgDuration, suffix: 'm'),
+          ),
+          _kpiCard(
+            context,
+            icon: Icons.local_fire_department_rounded,
+            label: 'Streak',
+            gradient: _kpiGradient(context, 3),
+            valueWidget: CountUp(value: streak, suffix: 'd'),
           ),
         ],
       ),
     );
   }
 
-  /// Helper widget to build the standard card appearance.
-  Widget _buildInfoCard({required BuildContext context, required Widget child}) {
-    return Card(
-      // Card properties like shape, elevation, and color will be inherited from CardTheme in main.dart
-      // color: Theme.of(context).cardTheme.color ?? Theme.of(context).colorScheme.surface, // Example if CardTheme didn't set color
-      child: Padding(
-        padding: const EdgeInsets.all(12.0), // Increased padding for content within card
-        child: child,
+  Widget _buildTrend(BuildContext context, List<WorkoutSession> sessions) {
+    final rangeDays = _range == DashboardRange.week ? 7 : 30;
+    final data = _buildDailyCountSeries(sessions, days: rangeDays);
+    if (data.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: _sectionCard(
+          context,
+          title: 'Activity Trend',
+          child: const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('Complete some workouts to see your trend.'),
+          ),
+        ),
+      );
+    }
+
+    final spots = <FlSpot>[];
+    for (int i = 0; i < data.length; i++) {
+      spots.add(FlSpot(i.toDouble(), data[i].value.toDouble()));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sectionCard(
+        context,
+        title: 'Activity Trend',
+        child: SizedBox(
+          height: 180,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (v) => FlLine(color: Theme.of(context).dividerColor.withValues(alpha: 0.5), strokeWidth: .5)),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 30, interval: 1, getTitlesWidget: (v, m) => Text(v.toInt().toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10)))),
+                bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, interval: (data.length / 5).clamp(1, 7).toDouble(), getTitlesWidget: (v, m) {
+                  final idx = v.toInt();
+                  if (idx < 0 || idx >= data.length) return const SizedBox.shrink();
+                  return Text(DateFormat.Md().format(data[idx].key), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10));
+                })),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: Theme.of(context).colorScheme.primary,
+                  barWidth: 3,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [
+                    Theme.of(context).colorScheme.primary.withValues(alpha: 0.35),
+                    Colors.transparent,
+                  ], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
+  }
+
+  Widget _buildBodyPartSplit(BuildContext context, List<Routine> routines, List<WorkoutSession> sessions) {
+    final now = DateUtils.dateOnly(DateTime.now());
+    final fromDate = _range == DashboardRange.week ? now.subtract(Duration(days: now.weekday - 1)) : now.subtract(const Duration(days: 29));
+    final parts = _extractTrainedBodyParts(sessions, routines, fromDate: fromDate);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sectionCard(
+        context,
+        title: 'Body Part Split',
+        child: SizedBox(
+          height: 180,
+          child: DonutAutoLabelChart(parts, animate: true),
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionCard(BuildContext context, {String? title, required Widget child}) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title != null) ...[
+              Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+            ],
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _kpiCard(BuildContext context, {required IconData icon, required String label, required Gradient gradient, Widget? valueWidget, String? value}) {
+    return Container(
+      width: 180,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: gradient,
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: Theme.of(context).colorScheme.onPrimaryContainer.withValues(alpha: 0.9)),
+          const Spacer(),
+          valueWidget ?? Text(value ?? '', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text(label, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  Gradient _kpiGradient(BuildContext context, int index) {
+    final cs = Theme.of(context).colorScheme;
+    final list = [
+      LinearGradient(colors: [cs.primaryContainer.withValues(alpha: 0.65), cs.secondaryContainer.withValues(alpha: 0.55)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [cs.tertiaryContainer.withValues(alpha: 0.65), cs.primary.withValues(alpha: 0.40)], begin: Alignment.topRight, end: Alignment.bottomLeft),
+      LinearGradient(colors: [cs.secondary.withValues(alpha: 0.45), cs.surfaceTint.withValues(alpha: 0.35)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [cs.errorContainer.withValues(alpha: 0.50), cs.tertiary.withValues(alpha: 0.40)], begin: Alignment.topRight, end: Alignment.bottomLeft),
+    ];
+    return list[index % list.length];
+  }
+
+  Widget _chip(BuildContext context, String text, {bool selected = false, VoidCallback? onTap}) {
+    final cs = Theme.of(context).colorScheme;
+    final bg = selected ? cs.primaryContainer : cs.surfaceContainerHighest;
+    final brd = selected ? cs.primary : Theme.of(context).dividerColor.withValues(alpha: 0.3);
+    final style = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: selected ? cs.onPrimaryContainer : null,
+      fontWeight: selected ? FontWeight.w600 : null,
+    );
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: brd),
+        ),
+        child: Text(text, style: style),
+      ),
+    );
+  }
+
+  int _countWorkoutsThisWeek(List<Routine> routines) {
+    if (_selectedWeeklyAmount == null) return 0;
+    final selectedIds = _selectedWeeklyProgressRoutineIds;
+    final now = DateTime.now();
+    final startOfWeek = DateUtils.dateOnly(now.subtract(Duration(days: now.weekday - 1)));
+    int count = 0;
+    for (final r in routines) {
+      if (r.id == null || !selectedIds.contains(r.id!)) continue;
+      for (final ts in r.routineHistory) {
+        final d = DateUtils.dateOnly(DateTime.fromMillisecondsSinceEpoch(ts));
+        if (!d.isBefore(startOfWeek)) count++;
+      }
+    }
+    return count;
+  }
+
+  int _sumCompletedMinutes(List<WorkoutSession> sessions) {
+    int total = 0;
+    for (final s in sessions) {
+      if (s.isCompleted && s.endTime != null) {
+        total += s.endTime!.difference(s.startTime).inMinutes.clamp(0, 100000);
+      }
+    }
+    return total;
+  }
+
+  int _calculateCurrentStreakDays(List<WorkoutSession> sessions) {
+    final completedDates = <DateTime>{};
+    for (final s in sessions) {
+      if (s.isCompleted && s.endTime != null) {
+        completedDates.add(DateUtils.dateOnly(s.endTime!.toLocal()));
+      }
+    }
+    if (completedDates.isEmpty) return 0;
+    DateTime day = DateUtils.dateOnly(DateTime.now());
+    int streak = 0;
+    if (!completedDates.contains(day)) {
+      day = day.subtract(const Duration(days: 1));
+      if (!completedDates.contains(day)) return 0;
+    }
+    while (completedDates.contains(day)) {
+      streak++;
+      day = day.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
+
+  List<MapEntry<DateTime, int>> _buildDailyCountSeries(List<WorkoutSession> sessions, {int days = 30}) {
+    final now = DateUtils.dateOnly(DateTime.now());
+    final start = now.subtract(Duration(days: days - 1));
+    final counts = <DateTime, int>{};
+    for (int i = 0; i < days; i++) {
+      counts[start.add(Duration(days: i))] = 0;
+    }
+    for (final s in sessions) {
+      if (s.isCompleted && s.endTime != null) {
+        final d = DateUtils.dateOnly(s.endTime!.toLocal());
+        if (!d.isBefore(start) && !d.isAfter(now)) {
+          counts[d] = (counts[d] ?? 0) + 1;
+        }
+      }
+    }
+    final list = counts.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    return list;
   }
 
   /// Calculates the weekly completion ratio based on the number of completed workouts this week
@@ -351,75 +596,144 @@ class _StatisticsPageState extends State<StatisticsPage> {
     return ratio.clamp(0.0, 1.0);
   }
 
-  /// Determines font size for the large count display based on string length.
-  double _getFontSizeForCount(String displayText) {
-    // Adjust thresholds for better visual balance in FittedBox
-    final len = displayText.length;
-    if (len <= 1) return 64;
-    if (len == 2) return 56;
-    if (len == 3) return 48;
-    return 40; // For 4+ digits
-  }
+  // Font sizing helper removed (not used in new UI)
 
   /// Calculates the total completion count across all routines.
   int _getTotalWorkoutCount(List<Routine> routines) {
-    // Use fold for a concise sum, handling potential null for completionCount
-    return routines.fold<int>(0, (sum, routine) => sum + (routine.completionCount ?? 0));
+    // completionCount is non-nullable in model
+    return routines.fold<int>(0, (sum, routine) => sum + routine.completionCount);
   }
 
-  /// Extracts body parts from completed workout sessions.
-  /// Maps exercise names back to their original body part classifications using routine data.
-  List<Part> _extractTrainedBodyParts(List<WorkoutSession> sessions, List<Routine> routines) {
+  /// Extracts body parts from completed workout sessions using per-exercise targets.
+  /// Uses a weighted approach based on reps volume per exercise.
+  List<Part> _extractTrainedBodyParts(List<WorkoutSession> sessions, List<Routine> routines, {DateTime? fromDate}) {
     if (sessions.isEmpty) return [];
 
-    // Create a map of exercise names to their targeted body parts from routine templates
-    final Map<String, TargetedBodyPart> exerciseToBodyPartMap = {};
-    for (final routine in routines) {
-      for (final part in routine.parts) {
-        for (final exercise in part.exercises) {
-          exerciseToBodyPartMap[exercise.name] = part.targetedBodyPart;
-        }
-      }
-    }
+    // Weighted volume per body part across sessions
+    final Map<TargetedBodyPart, double> volumeByPart = {};
 
-    // Process completed sessions to count trained body parts
-    final Map<TargetedBodyPart, int> bodyPartCounts = {};
-    
-    // Only consider completed sessions
-    final completedSessions = sessions.where((session) => session.isCompleted && session.endTime != null);
-    
-    for (final session in completedSessions) {
-      // Track unique body parts per session to avoid counting multiple exercises
-      // targeting the same body part within one session
-      final Set<TargetedBodyPart> sessionBodyParts = {};
-      
-      for (final exercisePerf in session.exercises) {
-        // Look up the body part for this exercise
-        final bodyPart = exerciseToBodyPartMap[exercisePerf.exerciseName];
-        if (bodyPart != null) {
-          sessionBodyParts.add(bodyPart);
-        }
-      }
-      
-      // Count each unique body part trained in this session
-      for (final bodyPart in sessionBodyParts) {
-        bodyPartCounts[bodyPart] = (bodyPartCounts[bodyPart] ?? 0) + 1;
-      }
-    }
-
-    // Convert counts back to Part objects for the chart
-    final List<Part> trainedParts = [];
-    bodyPartCounts.forEach((bodyPart, count) {
-      // Create a Part for each body part that was trained
-      for (int i = 0; i < count; i++) {
-        trainedParts.add(Part(
-          targetedBodyPart: bodyPart,
-          setType: SetType.Regular, // Default set type as it's not relevant for the chart
-          exercises: [], // Empty exercises list as it's not needed for the chart
-        ));
-      }
+    // Only consider completed sessions within optional range
+    final completedSessions = sessions.where((session) {
+      if (!session.isCompleted || session.endTime == null) return false;
+      if (fromDate == null) return true;
+      final d = DateUtils.dateOnly(session.endTime!.toLocal());
+      final f = DateUtils.dateOnly(fromDate);
+      return !d.isBefore(f);
     });
 
+    for (final session in completedSessions) {
+      for (final exPerf in session.exercises) {
+        // Estimate volume (reps or tonnage)
+        double volume = 0;
+        if (exPerf.sets.isNotEmpty) {
+          for (final s in exPerf.sets) {
+            final reps = (s.actualReps > 0 ? s.actualReps : s.targetReps).toDouble();
+            if (_useTonnage && exPerf.workoutType == WorkoutType.Weight) {
+              final wt = (s.actualWeight > 0 ? s.actualWeight : s.targetWeight);
+              volume += reps * wt;
+            } else {
+              volume += reps;
+            }
+          }
+        } else {
+          volume = _useTonnage ? 10.0 /* unknown */ : 10.0;
+        }
+
+        // Prefer explicit exercise targets saved on the routine, fallback to mapper
+        Map<TargetedBodyPart, double> targets = _lookupExerciseTargetsFromRoutines(routines, exPerf.exerciseName);
+        if (targets.isEmpty) targets = ExerciseMuscleMap.targetsFor(exPerf.exerciseName);
+        targets.forEach((bp, w) {
+          volumeByPart[bp] = (volumeByPart[bp] ?? 0) + volume * w;
+        });
+      }
+    }
+
+    if (volumeByPart.isEmpty) return [];
+
+    // Convert weighted volumes to token Parts for the existing pie chart component
+    final total = volumeByPart.values.fold(0.0, (a, b) => a + b);
+    if (total <= 0) return [];
+    final List<Part> trainedParts = [];
+    volumeByPart.forEach((bp, vol) {
+      final tokens = (vol / total * 100).round().clamp(0, 100);
+      for (int i = 0; i < tokens; i++) {
+        trainedParts.add(Part(targetedBodyPart: bp, setType: SetType.Regular, exercises: const []));
+      }
+    });
+    if (trainedParts.isEmpty) {
+      trainedParts.add(Part(targetedBodyPart: TargetedBodyPart.FullBody, setType: SetType.Regular, exercises: const []));
+    }
     return trainedParts;
   }
+
+  Map<TargetedBodyPart, double> _lookupExerciseTargetsFromRoutines(List<Routine> routines, String exerciseName) {
+    for (final r in routines) {
+      for (final p in r.parts) {
+        for (final e in p.exercises) {
+          if (e.name.toLowerCase() == exerciseName.toLowerCase()) {
+            final Map<TargetedBodyPart, double> m = {};
+            if (e.primaryTarget != null) m[e.primaryTarget!] = 1.0;
+            if (e.secondaryTargets.isNotEmpty) {
+              final add = 0.3; // give some credit to secondary targets
+              for (final s in e.secondaryTargets) {
+                m[s] = (m[s] ?? 0) + add;
+              }
+            }
+            // normalize
+            final sum = m.values.fold(0.0, (a,b)=>a+b);
+            if (sum > 0) return m.map((k,v)=>MapEntry(k, v/sum));
+            return m;
+          }
+        }
+      }
+    }
+    return {};
+  }
 } // End of _StatisticsPageState
+
+// Dashboard range options
+enum DashboardRange { week, days30 }
+
+// Animated count-up text for KPI values
+class CountUp extends StatefulWidget {
+  final num value;
+  final Duration duration;
+  final TextStyle? style;
+  final String suffix;
+  final int fractionDigits;
+
+  const CountUp({super.key, required this.value, this.duration = const Duration(milliseconds: 700), this.style, this.suffix = '', this.fractionDigits = 0});
+
+  @override
+  State<CountUp> createState() => _CountUpState();
+}
+
+class _CountUpState extends State<CountUp> {
+  late num _old;
+
+  @override
+  void initState() {
+    super.initState();
+    _old = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant CountUp oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _old = oldWidget.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: _old.toDouble(), end: widget.value.toDouble()),
+      duration: widget.duration,
+      builder: (context, val, child) {
+        final formatted = widget.fractionDigits > 0 ? val.toStringAsFixed(widget.fractionDigits) : val.toStringAsFixed(0);
+        return Text('$formatted${widget.suffix}', style: widget.style ?? Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800));
+      },
+    );
+  }
+}
+
+

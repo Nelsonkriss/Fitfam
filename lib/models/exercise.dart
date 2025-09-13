@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart'; // For debugPrint
+import 'package:workout_planner/models/targeted_body_part.dart';
 // For potential mapEquals if needed
 
 /// Represents the type of workout an exercise belongs to.
@@ -17,6 +18,9 @@ class Exercise {
   final Map<String, dynamic> exHistory; // Keys: Date String, Values: String or Map
   final double? lastUsedWeight; // New field for last used weight
   final Duration? timedDuration; // Duration for timed exercises
+  // New: explicit body part targeting
+  final TargetedBodyPart? primaryTarget; // Uses enum from part.dart
+  final List<TargetedBodyPart> secondaryTargets;
 
   /// Creates an immutable instance of [Exercise].
   const Exercise({ // Make constructor const
@@ -28,7 +32,10 @@ class Exercise {
     Map<String, dynamic>? exHistory,
     this.lastUsedWeight, // Initialize with null by default
     this.timedDuration, // Duration for timed exercises
-  }) : exHistory = exHistory ?? const {}; // Use const empty map
+    this.primaryTarget,
+    List<TargetedBodyPart>? secondaryTargets,
+  }) : exHistory = exHistory ?? const {}, // Use const empty map
+       secondaryTargets = secondaryTargets ?? const [];
 
   /// Creates a new Exercise instance with specified fields updated.
   Exercise copyWith({
@@ -41,6 +48,9 @@ class Exercise {
     double? lastUsedWeight, // Allow nullable for explicit reset or no change
     bool setLastUsedWeightToNull = false, // Flag to explicitly set lastUsedWeight to null
     Duration? timedDuration,
+    TargetedBodyPart? primaryTarget,
+    bool setPrimaryTargetToNull = false,
+    List<TargetedBodyPart>? secondaryTargets,
   }) {
     return Exercise(
       name: name ?? this.name,
@@ -51,6 +61,8 @@ class Exercise {
       exHistory: exHistory ?? Map<String, dynamic>.from(this.exHistory),
       lastUsedWeight: setLastUsedWeightToNull ? null : (lastUsedWeight ?? this.lastUsedWeight),
       timedDuration: timedDuration ?? this.timedDuration,
+      primaryTarget: setPrimaryTargetToNull ? null : (primaryTarget ?? this.primaryTarget),
+      secondaryTargets: secondaryTargets ?? this.secondaryTargets,
     );
   }
 
@@ -90,6 +102,29 @@ class Exercise {
     // --- End Helper ---
 
 
+    // Helper to parse TargetedBodyPart from dynamic
+    TargetedBodyPart? parseTarget(dynamic v) {
+      if (v == null) return null;
+      try {
+        final s = v.toString();
+        return TargetedBodyPart.values.firstWhere((e) => e.name.toLowerCase() == s.toLowerCase());
+      } catch (_) { return null; }
+    }
+
+    List<TargetedBodyPart> parseSecondary(dynamic v) {
+      try {
+        if (v is String && v.isNotEmpty) {
+          final decoded = jsonDecode(v);
+          if (decoded is List) {
+            return decoded.map((e) => parseTarget(e)).whereType<TargetedBodyPart>().toList();
+          }
+        } else if (v is List) {
+          return v.map((e) => parseTarget(e)).whereType<TargetedBodyPart>().toList();
+        }
+      } catch (_) {}
+      return const [];
+    }
+
     return Exercise(
       name: map['name'] as String? ?? '',
       // Use tryParse for robust number conversion, provide defaults
@@ -106,6 +141,8 @@ class Exercise {
       timedDuration: map['timedDuration'] != null 
           ? Duration(seconds: int.tryParse(map['timedDuration'].toString()) ?? 0) 
           : null,
+      primaryTarget: parseTarget(map['primaryTarget'] ?? map['primaryTargetedBodyPart']),
+      secondaryTargets: parseSecondary(map['secondaryTargets']),
     );
   }
 
@@ -121,6 +158,8 @@ class Exercise {
     'history': jsonEncode(exHistory),
     'lastUsedWeight': lastUsedWeight, // Add to map, will be null if not set
     'timedDuration': timedDuration?.inSeconds, // Store duration in seconds
+    'primaryTarget': primaryTarget?.name,
+    'secondaryTargets': jsonEncode(secondaryTargets.map((e) => e.name).toList()),
   };
 
   /// Creates a copy of an Exercise instance without its history.
@@ -134,6 +173,8 @@ class Exercise {
       exHistory: const {}, // Use const empty map
       lastUsedWeight: other.lastUsedWeight, // Copy this field as well
       timedDuration: other.timedDuration,
+      primaryTarget: other.primaryTarget,
+      secondaryTargets: List<TargetedBodyPart>.from(other.secondaryTargets),
     );
   }
 
@@ -156,7 +197,9 @@ class Exercise {
         other.reps == reps &&
         other.workoutType == workoutType &&
         other.lastUsedWeight == lastUsedWeight && // Compare new field
-        other.timedDuration == timedDuration;
+        other.timedDuration == timedDuration &&
+        other.primaryTarget == primaryTarget &&
+        listEquals(other.secondaryTargets, secondaryTargets);
   }
 
   // Hash code based on core fields
@@ -169,6 +212,8 @@ class Exercise {
     workoutType,
     lastUsedWeight, // Add to hash
     timedDuration,
+    primaryTarget,
+    Object.hashAll(secondaryTargets),
     // Use DeepCollectionEquality().hash(exHistory) if history is included in ==
   );
 }

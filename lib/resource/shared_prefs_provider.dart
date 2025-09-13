@@ -13,12 +13,24 @@ const String weeklyAmountKey = "weeklyAmount";   // Example: User preference
 const String DailyRankKey = "dailyRankInfo"; // Stores string like "YYYY-MM-DD/rank"
 const String weeklyProgressRoutineIdsKey = "weeklyProgressRoutineIds"; // Key for selected routine IDs
 const String themeModeKey = "themeMode"; // Key for storing theme preference (light, dark, system)
+const String statsDashboardRangeKey = "statsDashboardRange"; // 0=week, 1=30days
+const String statsUseTonnageKey = "statsUseTonnage"; // bool: weight workouts use tonnage in stats
 // AI prompt history
 const String aiPromptHistoryKey = "aiPromptHistory";
 
 // User Profile related keys
 const String userProfileKey = "userProfile"; // Key for storing user profile JSON
 const String onboardingCompletedKey = "onboardingCompleted"; // Key for tracking onboarding completion
+
+// Personalization / Training Settings
+const String weightUnitKey = "weightUnit"; // 'kg' or 'lb'
+const String weightIncrementKey = "weightIncrement"; // double increment step in display unit
+const String learnFromHistoryKey = "learnFromHistory"; // bool toggle for AI recommendations
+const String targetRpeKey = "targetRPE"; // int target RPE (6-10 typical)
+const String deloadEnabledKey = "deloadEnabled"; // bool
+const String deloadEveryWeeksKey = "deloadEveryWeeks"; // int weeks interval
+const String deloadPercentKey = "deloadPercent"; // double percentage (0.5-0.95)
+const String progressionRuleKey = "progressionRule"; // 'reps' | 'rpe' | 'fixed'
 
 // Authentication related keys
 const String signInMethodKey = "signInMethod"; // Stores the enum name (e.g., "google", "apple")
@@ -79,6 +91,15 @@ class SharedPrefsProvider {
         // Set initial default values
         await prefs.setBool(databaseStatusKey, false); // Example: DB needs setup
         await prefs.setInt(weeklyAmountKey, 3); // Example default
+        // Initialize personalization defaults
+        await prefs.setString(weightUnitKey, 'kg');
+        await prefs.setDouble(weightIncrementKey, 2.5);
+        await prefs.setBool(learnFromHistoryKey, true);
+        await prefs.setInt(targetRpeKey, 8);
+        await prefs.setBool(deloadEnabledKey, false);
+        await prefs.setInt(deloadEveryWeeksKey, 4);
+        await prefs.setDouble(deloadPercentKey, 0.85);
+        await prefs.setString(progressionRuleKey, 'reps');
       }
 
       // Check for first run after app update (or install)
@@ -360,6 +381,204 @@ class SharedPrefsProvider {
       await prefs.setString(DailyRankKey, dailyRankInfo);
     } catch (e) {
       debugPrint("SharedPrefsProvider: Error setting daily rank info: $e");
+    }
+  }
+
+  // --- Statistics Dashboard Range Persistence ---
+  Future<int?> getStatsDashboardRange() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getInt(statsDashboardRangeKey);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting stats range: $e");
+      return null;
+    }
+  }
+
+  Future<void> setStatsDashboardRange(int value) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setInt(statsDashboardRangeKey, value);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting stats range: $e");
+    }
+  }
+
+  // --- Stats: Tonnage weighting toggle ---
+  Future<bool> getStatsUseTonnage() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getBool(statsUseTonnageKey) ?? false;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting stats tonnage toggle: $e");
+      return false;
+    }
+  }
+
+  Future<void> setStatsUseTonnage(bool value) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setBool(statsUseTonnageKey, value);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting stats tonnage toggle: $e");
+    }
+  }
+
+  // --- Personalization Getters/Setters ---
+  Future<String> getWeightUnit() async {
+    try {
+      final prefs = await _prefs;
+      final v = prefs.getString(weightUnitKey);
+      return (v == 'lb') ? 'lb' : 'kg';
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting weight unit: $e");
+      return 'kg';
+    }
+  }
+
+  Future<void> setWeightUnit(String unit) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setString(weightUnitKey, (unit == 'lb') ? 'lb' : 'kg');
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting weight unit: $e");
+    }
+  }
+
+  Future<double> getWeightIncrement() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getDouble(weightIncrementKey) ?? 2.5;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting weight increment: $e");
+      return 2.5;
+    }
+  }
+
+  Future<void> setWeightIncrement(double inc) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setDouble(weightIncrementKey, inc);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting weight increment: $e");
+    }
+  }
+
+  Future<bool> getLearnFromHistory() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getBool(learnFromHistoryKey) ?? true;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting learn-from-history: $e");
+      return true;
+    }
+  }
+
+  Future<void> setLearnFromHistory(bool v) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setBool(learnFromHistoryKey, v);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting learn-from-history: $e");
+    }
+  }
+
+  Future<int> getTargetRPE() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getInt(targetRpeKey) ?? 8;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting target RPE: $e");
+      return 8;
+    }
+  }
+
+  Future<void> setTargetRPE(int rpe) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setInt(targetRpeKey, rpe.clamp(6, 10));
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting target RPE: $e");
+    }
+  }
+
+  Future<bool> getDeloadEnabled() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getBool(deloadEnabledKey) ?? false;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting deload enabled: $e");
+      return false;
+    }
+  }
+
+  Future<void> setDeloadEnabled(bool enabled) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setBool(deloadEnabledKey, enabled);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting deload enabled: $e");
+    }
+  }
+
+  Future<int> getDeloadEveryWeeks() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getInt(deloadEveryWeeksKey) ?? 4;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting deloadEveryWeeks: $e");
+      return 4;
+    }
+  }
+
+  Future<void> setDeloadEveryWeeks(int weeks) async {
+    try {
+      final prefs = await _prefs;
+      await prefs.setInt(deloadEveryWeeksKey, weeks.clamp(1, 12));
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting deloadEveryWeeks: $e");
+    }
+  }
+
+  Future<double> getDeloadPercent() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getDouble(deloadPercentKey) ?? 0.85;
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting deloadPercent: $e");
+      return 0.85;
+    }
+  }
+
+  Future<void> setDeloadPercent(double percent) async {
+    try {
+      final prefs = await _prefs;
+      final clamped = percent.clamp(0.5, 0.95);
+      await prefs.setDouble(deloadPercentKey, clamped);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting deloadPercent: $e");
+    }
+  }
+
+  Future<String> getProgressionRule() async {
+    try {
+      final prefs = await _prefs;
+      final v = prefs.getString(progressionRuleKey) ?? 'reps';
+      if (v == 'rpe' || v == 'fixed') return v;
+      return 'reps';
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting progressionRule: $e");
+      return 'reps';
+    }
+  }
+
+  Future<void> setProgressionRule(String rule) async {
+    try {
+      final prefs = await _prefs;
+      final normalized = (rule == 'rpe' || rule == 'fixed') ? rule : 'reps';
+      await prefs.setString(progressionRuleKey, normalized);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error setting progressionRule: $e");
     }
   }
 

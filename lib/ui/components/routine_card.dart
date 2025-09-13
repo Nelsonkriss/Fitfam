@@ -5,6 +5,7 @@ import 'package:provider/provider.dart'; // <--- Import Provider package if usin
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart Bloc
 import 'package:workout_planner/ui/routine_detail_page.dart';
 import 'package:workout_planner/ui/routine_step_page.dart';
+import 'package:workout_planner/ui/routine_edit_page.dart';
 // ... other imports
 
 class RoutineCard extends StatelessWidget {
@@ -48,18 +49,26 @@ class RoutineCard extends StatelessWidget {
             ),
           );
         },
+        onLongPress: () => _showRoutineOptions(context),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                routine.routineName,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Hero(
+                tag: 'routine_title_${routine.id}',
+                flightShuttleBuilder: (context, animation, direction, fromContext, toContext) => DefaultTextStyle(
+                  style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold) ?? const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  child: Text(routine.routineName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+                child: Text(
+                  routine.routineName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -94,6 +103,66 @@ class RoutineCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showRoutineOptions(BuildContext context) async {
+    final routinesBlocInstance = context.read<RoutinesBloc>();
+    final int? rid = routine.id;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit Routine'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RoutineEditPage.edit(routine: routine),
+                    ),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text('Delete Routine'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (rid == null) return;
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (dctx) => AlertDialog(
+                      title: const Text('Delete routine?'),
+                      content: Text('Delete "${routine.routineName}" permanently?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel')),
+                        FilledButton(onPressed: () => Navigator.pop(dctx, true), child: const Text('Delete')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    await routinesBlocInstance.deleteRoutine(rid);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Routine deleted')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

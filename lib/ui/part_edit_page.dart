@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -87,22 +87,30 @@ class PartEditPageHelper {
 }
 
 class _ExerciseEditState {
+  final String uid;
   final TextEditingController nameController;
   final TextEditingController weightController;
   final TextEditingController setsController;
   final TextEditingController repsController;
   WorkoutType workoutType;
+  TargetedBodyPart primaryTarget;
+  List<TargetedBodyPart> secondaryTargets;
 
   _ExerciseEditState({
+    String? uid,
     required String name,
     required double weight,
     required int sets,
     required String reps,
     required this.workoutType,
-  }) : nameController = TextEditingController(text: name),
+    required this.primaryTarget,
+    List<TargetedBodyPart>? secondaryTargets,
+  }) : uid = uid ?? UniqueKey().toString(),
+       nameController = TextEditingController(text: name),
        weightController = TextEditingController(text: StringHelper.weightToString(weight)),
        setsController = TextEditingController(text: sets > 0 ? sets.toString() : ''),
-       repsController = TextEditingController(text: reps);
+       repsController = TextEditingController(text: reps),
+       secondaryTargets = secondaryTargets ?? <TargetedBodyPart>[];
 
   factory _ExerciseEditState.fromExercise(Exercise ex) {
     return _ExerciseEditState(
@@ -111,16 +119,20 @@ class _ExerciseEditState {
       sets: ex.sets,
       reps: ex.reps,
       workoutType: ex.workoutType,
+      primaryTarget: ex.primaryTarget ?? TargetedBodyPart.FullBody,
+      secondaryTargets: List<TargetedBodyPart>.from(ex.secondaryTargets),
     );
   }
 
-  factory _ExerciseEditState.empty() {
+  factory _ExerciseEditState.empty({TargetedBodyPart defaultTarget = TargetedBodyPart.FullBody}) {
     return _ExerciseEditState(
       name: '',
       weight: 0,
       sets: 3,
       reps: '10',
       workoutType: WorkoutType.Weight,
+      primaryTarget: defaultTarget,
+      secondaryTargets: const [],
     );
   }
 
@@ -132,6 +144,8 @@ class _ExerciseEditState {
       reps: repsController.text.trim(),
       workoutType: workoutType,
       exHistory: {},
+      primaryTarget: primaryTarget,
+      secondaryTargets: secondaryTargets,
     );
   }
 
@@ -167,6 +181,9 @@ class _PartEditPageState extends State<PartEditPage> {
   late List<_ExerciseEditState> _exerciseEditStates;
 
   final List<FocusNode> _focusNodes = [];
+  // Personalization
+  String _weightUnit = 'kg';
+  double _weightIncrement = 2.5;
 
   @override
   void initState() {
@@ -181,20 +198,59 @@ class _PartEditPageState extends State<PartEditPage> {
     _additionalNotesController.text = initialPart.additionalNotes;
 
     _exerciseEditStates = [];
-    int exerciseCount = setTypeToExerciseCountConverter(_selectedSetType);
+    // Prefer showing all existing exercises from the part (AI may return
+    // multiple exercises even when setType is Regular). Fit setType if needed.
+    final int originalCount = initialPart.exercises.length;
+    final int setTypeCount = setTypeToExerciseCountConverter(_selectedSetType);
+    int exerciseCount = originalCount > 0 ? originalCount : setTypeCount;
+    // If there are more exercises than the selected set type typically allows,
+    // auto-fit the visible set type so the UI matches what the user sees.
+    if (originalCount > setTypeCount) {
+      if (originalCount >= 4) {
+        _selectedSetType = SetType.Giant;
+      } else if (originalCount == 3) {
+        _selectedSetType = SetType.Tri;
+      } else if (originalCount == 2) {
+        _selectedSetType = SetType.Super;
+      } else {
+        _selectedSetType = SetType.Regular;
+      }
+    }
 
     for (int i = 0; i < exerciseCount; i++) {
       if (i < initialPart.exercises.length) {
         _exerciseEditStates.add(_ExerciseEditState.fromExercise(initialPart.exercises[i]));
       } else {
-        _exerciseEditStates.add(_ExerciseEditState.empty());
+        _exerciseEditStates.add(_ExerciseEditState.empty(defaultTarget: _selectedTargetedBodyPart));
       }
     }
 
     _focusNodes.clear();
-    for (int i = 0; i < 4 * 4; i++) {
+    // Create focus nodes sized to number of exercises (4 fields per exercise)
+    for (int i = 0; i < 4 * exerciseCount; i++) {
       _focusNodes.add(FocusNode());
     }
+    // Load personalization
+    _loadPersonalization();
+  }
+
+  Future<void> _loadPersonalization() async {
+    try {
+      final unit = await sharedPrefsProvider.getWeightUnit();
+      final inc = await sharedPrefsProvider.getWeightIncrement();
+      if (mounted) {
+        setState(() {
+          _weightUnit = unit; _weightIncrement = inc;
+          if (_weightUnit == 'lb') {
+            for (final s in _exerciseEditStates) {
+              final kg = double.tryParse(s.weightController.text) ?? 0.0;
+              final lb = kg * 2.20462;
+              s.weightController.text = StringHelper.weightToString(lb);
+            }
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -235,6 +291,18 @@ class _PartEditPageState extends State<PartEditPage> {
     });
   }
 
+  void _adjustSetTypeByCount() {
+    final count = _exerciseEditStates.length;
+    SetType newType;
+    if (count <= 1) newType = SetType.Regular;
+    else if (count == 2) newType = SetType.Super;
+    else if (count == 3) newType = SetType.Tri;
+    else newType = SetType.Giant;
+    if (newType != _selectedSetType) {
+      setState(() { _selectedSetType = newType; });
+    }
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
@@ -249,7 +317,12 @@ class _PartEditPageState extends State<PartEditPage> {
       return;
     }
 
-    final List<Exercise> finalExercises = _exerciseEditStates.map((editState) => editState.toExercise()).toList();
+    // Convert display unit to kg for storage
+    double toKg(double v) => _weightUnit == 'lb' ? (v / 2.20462) : v;
+    final List<Exercise> finalExercises = _exerciseEditStates.map((editState) {
+      final ex = editState.toExercise();
+      return ex.copyWith(weight: toKg(ex.weight));
+    }).toList();
     if (finalExercises.isEmpty) {
       _showSnackBar("Please add at least one exercise.");
       return;
@@ -368,7 +441,24 @@ class _PartEditPageState extends State<PartEditPage> {
                 child: _buildSectionCard(
                   title: 'Exercise Details',
                   icon: Icons.fitness_center_rounded,
-                  child: _buildSetDetailsList(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildSetDetailsList(),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _exerciseEditStates.add(_ExerciseEditState.empty(defaultTarget: _selectedTargetedBodyPart));
+                            for (int i = 0; i < 4; i++) { _focusNodes.add(FocusNode()); }
+                            _adjustSetTypeByCount();
+                          });
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Exercise'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               _buildSectionCard(
@@ -381,6 +471,35 @@ class _PartEditPageState extends State<PartEditPage> {
             ],
           ),
         ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _onDone,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Save Part'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -391,48 +510,50 @@ class _PartEditPageState extends State<PartEditPage> {
     required Widget child,
     bool initiallyExpanded = true,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
-      elevation: 2,
-      child: ExpansionTile(
-        leading: Icon(icon, color: Theme.of(context).colorScheme.secondary),
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w500),
+      elevation: 0,
+      color: cs.surfaceContainerHighest,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          leading: CircleAvatar(
+            radius: 16,
+            backgroundColor: cs.primaryContainer,
+            child: Icon(icon, color: cs.onPrimaryContainer, size: 18),
+          ),
+          title: Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          initiallyExpanded: initiallyExpanded,
+          childrenPadding: const EdgeInsets.all(16.0).copyWith(top: 0),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+          iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          collapsedIconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          children: [child],
         ),
-        initiallyExpanded: initiallyExpanded,
-        childrenPadding: const EdgeInsets.all(16.0).copyWith(top: 0),
-        tilePadding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-        iconColor: Theme.of(context).colorScheme.onSurfaceVariant,
-        collapsedIconColor: Theme.of(context).colorScheme.onSurfaceVariant,
-        children: [child],
       ),
     );
   }
 
   Widget _buildTargetedBodyPartRadioList() {
-    int currentRadioValue = PartEditPageHelper.targetedBodyPartToRadioValue(_selectedTargetedBodyPart);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
+    // Modernized as chips for compact, touch-friendly selection
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
       children: TargetedBodyPart.values.map((bodyPart) {
-        int radioValue = PartEditPageHelper.targetedBodyPartToRadioValue(bodyPart);
-        return RadioListTile<int>(
-          title: Text(
-            targetedBodyPartToStringConverter(bodyPart),
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-          value: radioValue,
-          groupValue: currentRadioValue,
-          onChanged: (newValue) {
-            if (newValue != null) {
-              setState(() {
-                _selectedTargetedBodyPart = PartEditPageHelper.radioValueToTargetedBodyPartConverter(newValue);
-              });
-            }
-          },
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          activeColor: Theme.of(context).colorScheme.primary,
+        final selected = _selectedTargetedBodyPart == bodyPart;
+        return ChoiceChip(
+          label: Text(targetedBodyPartToStringConverter(bodyPart)),
+          selected: selected,
+          onSelected: (_) => setState(() => _selectedTargetedBodyPart = bodyPart),
+          selectedColor: Theme.of(context).colorScheme.primaryContainer,
+          showCheckmark: false,
         );
       }).toList(),
     );
@@ -479,15 +600,29 @@ class _PartEditPageState extends State<PartEditPage> {
   }
 
   Widget _buildSetDetailsList() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(_exerciseEditStates.length, (index) {
-        return _buildSingleExerciseEditor(index);
-      }),
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      itemCount: _exerciseEditStates.length,
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (newIndex > oldIndex) newIndex -= 1;
+          final item = _exerciseEditStates.removeAt(oldIndex);
+          _exerciseEditStates.insert(newIndex, item);
+        });
+      },
+      itemBuilder: (context, index) {
+        final state = _exerciseEditStates[index];
+        return Container(
+          key: ValueKey(state.uid),
+          child: _buildSingleExerciseEditor(index, showDragHandle: true),
+        );
+      },
     );
   }
 
-  Widget _buildSingleExerciseEditor(int index) {
+  Widget _buildSingleExerciseEditor(int index, {bool showDragHandle = false}) {
     if (index >= _exerciseEditStates.length) return const SizedBox.shrink();
 
     final exerciseState = _exerciseEditStates[index];
@@ -504,15 +639,46 @@ class _PartEditPageState extends State<PartEditPage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Card(
+        elevation: 0,
+        color: colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: colorScheme.surfaceContainerHighest),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Exercise ${index + 1}', style: textTheme.titleMedium),
-              SizedBox(
-                width: 180, // Fixed width to prevent overflow
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  'Exercise ${index + 1}',
+                  style: textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'Remove',
+                onPressed: () {
+                  setState(() {
+                    if (_exerciseEditStates.length > 1) {
+                      _exerciseEditStates.removeAt(index);
+                      _focusNodes.clear();
+                      for (int i = 0; i < 4 * _exerciseEditStates.length; i++) { _focusNodes.add(FocusNode()); }
+                      _adjustSetTypeByCount();
+                    }
+                  });
+                },
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                fit: FlexFit.loose,
                 child: SegmentedButton<WorkoutType>(
                   segments: [
                     ButtonSegment<WorkoutType>(
@@ -549,6 +715,17 @@ class _PartEditPageState extends State<PartEditPage> {
                   ),
                 ),
               ),
+              if (showDragHandle) ...[
+                const SizedBox(width: 8),
+                ReorderableDragStartListener(
+                  index: index,
+                  child: IconButton(
+                    icon: const Icon(Icons.drag_indicator),
+                    tooltip: 'Reorder',
+                    onPressed: null,
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -562,6 +739,7 @@ class _PartEditPageState extends State<PartEditPage> {
                   decoration: InputDecoration(
                     labelText: 'Exercise Name *',
                     isDense: true,
+                    prefixIcon: const Icon(Icons.fitness_center_outlined),
                     suffixIcon: ExerciseAnimationData.hasAnimationForExercise(exerciseState.nameController.text)
                         ? Icon(
                             Icons.play_circle_outline,
@@ -607,18 +785,53 @@ class _PartEditPageState extends State<PartEditPage> {
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         decoration: InputDecoration(
-                          labelText: 'Wt (kg)',
+                          labelText: 'Wt (' + _weightUnit + ')',
                           isDense: true,
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              Icons.auto_awesome,
-                              size: 18,
-                              color: colorScheme.primary,
+                          suffixIconConstraints: const BoxConstraints.tightFor(width: 96, height: 40),
+                          suffixIcon: SizedBox(
+                            width: 96,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove, size: 18),
+                                  visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+                                  tooltip: 'Decrement',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                                  onPressed: () {
+                                    final v = double.tryParse(exerciseState.weightController.text) ?? 0.0;
+                                    final newV = (v - _weightIncrement).clamp(0.0, double.infinity);
+                                    setState(() { exerciseState.weightController.text = StringHelper.weightToString(newV); });
+                                  },
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add, size: 18),
+                                  visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+                                  tooltip: 'Increment',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                                  onPressed: () {
+                                    final v = double.tryParse(exerciseState.weightController.text) ?? 0.0;
+                                    final newV = v + _weightIncrement;
+                                    setState(() { exerciseState.weightController.text = StringHelper.weightToString(newV); });
+                                  },
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.auto_awesome,
+                                    size: 18,
+                                    color: colorScheme.primary,
+                                  ),
+                                  visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+                                  onPressed: () => _showWeightRecommendationDialog(index),
+                                  tooltip: 'AI Weight Recommendation',
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+                                ),
+                              ],
                             ),
-                            onPressed: () => _showWeightRecommendationDialog(index),
-                            tooltip: 'AI Weight Recommendation',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
                           ),
                         ),
                         validator: (value) => (value != null && value.isNotEmpty && double.tryParse(value) == null)
@@ -671,15 +884,50 @@ class _PartEditPageState extends State<PartEditPage> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: DropdownButton<TargetedBodyPart>(
+              value: exerciseState.primaryTarget,
+              onChanged: (bp) {
+                if (bp == null) return;
+                setState(() => exerciseState.primaryTarget = bp);
+              },
+              items: TargetedBodyPart.values.map((bp) => DropdownMenuItem(
+                value: bp,
+                child: Text('Target: ${bp.name}'),
+              )).toList(),
+            ),
+          ),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: TargetedBodyPart.values.where((bp) => bp != exerciseState.primaryTarget).map((bp) {
+              final selected = exerciseState.secondaryTargets.contains(bp);
+              return FilterChip(
+                label: Text(bp.name),
+                selected: selected,
+                onSelected: (v) {
+                  setState(() {
+                    if (v) {
+                      exerciseState.secondaryTargets = [...exerciseState.secondaryTargets, bp];
+                    } else {
+                      exerciseState.secondaryTargets = exerciseState.secondaryTargets.where((e) => e != bp).toList();
+                    }
+                  });
+                },
+              );
+            }).toList(),
+          ),
           if (index < _exerciseEditStates.length - 1)
             Divider(
-              height: 32,
+              height: 24,
               thickness: 0.5,
-              indent: 8,
-              endIndent: 8,
               color: theme.dividerColor,
             ),
         ],
+          ),
+        ),
       ),
     );
   }
@@ -714,7 +962,8 @@ class _PartEditPageState extends State<PartEditPage> {
         
         if (recommendedWeight > 0 && mounted) {
           setState(() {
-            exerciseState.weightController.text = StringHelper.weightToString(recommendedWeight);
+            final display = _weightUnit == 'lb' ? (recommendedWeight * 2.20462) : recommendedWeight;
+            exerciseState.weightController.text = StringHelper.weightToString(display);
           });
           debugPrint('Weight set to: ${exerciseState.weightController.text}');
         } else {
@@ -842,6 +1091,7 @@ class _PartEditPageState extends State<PartEditPage> {
             ...recommendations.entries.map((entry) {
               final reps = entry.key;
               final weight = entry.value;
+              final display = _weightUnit == 'lb' ? (weight * 2.20462) : weight;
               final isCurrentReps = int.tryParse(exerciseState.repsController.text) == reps;
               
               return Card(
@@ -861,13 +1111,13 @@ class _PartEditPageState extends State<PartEditPage> {
                       ),
                     ),
                   ),
-                  title: Text('${StringHelper.weightToString(weight)} kg'),
+                  title: Text('${StringHelper.weightToString(display)} $_weightUnit'),
                   subtitle: Text('$reps reps'),
                   trailing: isCurrentReps 
                       ? Icon(Icons.star, color: theme.colorScheme.primary)
                       : null,
                   onTap: () {
-                    exerciseState.weightController.text = StringHelper.weightToString(weight);
+                    exerciseState.weightController.text = StringHelper.weightToString(display);
                     exerciseState.repsController.text = reps.toString();
                     Navigator.pop(context);
                     _showSnackBar('Weight recommendation applied!');

@@ -384,6 +384,57 @@ class DBProviderIO implements DbProviderInterface {
     } catch (e, s) { debugPrint("[DBProviderIO] Error deleting session $id: $e\n$s"); rethrow; }
   }
 
+  @override
+  Future<WorkoutSession?> getLatestIncompleteSession({int? routineId}) async {
+    final dbClient = await db;
+    try {
+      final where = routineId != null ? 'isCompleted = 0 AND routineId = ?' : 'isCompleted = 0';
+      final whereArgs = routineId != null ? [routineId] : null;
+      final maps = await dbClient.query(
+        'WorkoutSessions',
+        where: where,
+        whereArgs: whereArgs,
+        orderBy: 'startTime DESC',
+        limit: 1,
+      );
+      if (maps.isEmpty) return null;
+      final map = maps.first;
+      final routine = await getRoutineById(map['routineId'] as int);
+      if (routine == null) return null;
+      var session = WorkoutSession.fromMap(map, routine);
+      // Populate exercises and sets
+      final exerciseMaps = await dbClient.query('ExercisePerformances', where: 'sessionId = ?', whereArgs: [session.id], orderBy: 'id ASC');
+      final List<ExercisePerformance> exercisesForThisSession = [];
+      for (var exerciseMap in exerciseMaps) {
+        final exerciseId = exerciseMap['id'] as int;
+        final setMaps = await dbClient.query('SetPerformances', where: 'exerciseId = ?', whereArgs: [exerciseId], orderBy: 'id ASC');
+        final List<SetPerformance> setsForThisExercise = setMaps.map((setMap) => SetPerformance(
+          targetReps: setMap['targetReps'] as int? ?? 0,
+          targetWeight: (setMap['targetWeight'] as num?)?.toDouble() ?? 0.0,
+          actualReps: setMap['actualReps'] as int? ?? 0,
+          actualWeight: (setMap['actualWeight'] as num?)?.toDouble() ?? 0.0,
+          isCompleted: (setMap['isCompleted'] as int? ?? 0) == 1,
+        )).toList();
+        final exercisePerformance = ExercisePerformance(
+          id: exerciseId,
+          exerciseName: exerciseMap['exerciseName'] as String? ?? '',
+          sets: setsForThisExercise,
+          restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null,
+          workoutType: WorkoutType.values.firstWhere(
+            (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
+            orElse: () => WorkoutType.Weight,
+          ),
+        );
+        exercisesForThisSession.add(exercisePerformance);
+      }
+      session = session.copyWith(exercises: exercisesForThisSession);
+      return session;
+    } catch (e, s) {
+      debugPrint("[DBProviderIO] Error getLatestIncompleteSession: $e\n$s");
+      return null;
+    }
+  }
+
   // --- Add other DB methods as needed (deleteAllRoutines, addAllRoutines etc) ---
   @override
   Future<List<Routine>> getAllRecRoutines() async { return []; } // Placeholder

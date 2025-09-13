@@ -36,6 +36,16 @@ class _SettingPageState extends State<SettingPage> {
   // State for weekly amount preference
   int? _selectedWeeklyAmount; // Use nullable int
   Set<int> _selectedRoutineIds = {}; // State variable for selected routine IDs
+  bool _useTonnage = false;
+  // Personalization state
+  String _weightUnit = 'kg';
+  double _weightIncrement = 2.5;
+  bool _learnFromHistory = true;
+  int _targetRpe = 8;
+  bool _deloadEnabled = false;
+  int _deloadEveryWeeks = 4;
+  double _deloadPercent = 0.85;
+  String _progressionRule = 'reps';
 
   // Access global providers (assuming they exist)
   // final FirebaseProvider firebaseProvider = firebaseProvider; // Already global
@@ -51,10 +61,28 @@ class _SettingPageState extends State<SettingPage> {
 
   Future<void> _loadInitialSettings() async {
     final amount = await sharedPrefsProvider.getWeeklyAmount();
+    final useTonnage = await sharedPrefsProvider.getStatsUseTonnage();
+    final unit = await sharedPrefsProvider.getWeightUnit();
+    final inc = await sharedPrefsProvider.getWeightIncrement();
+    final learn = await sharedPrefsProvider.getLearnFromHistory();
+    final rpe = await sharedPrefsProvider.getTargetRPE();
+    final deloadEn = await sharedPrefsProvider.getDeloadEnabled();
+    final deloadW = await sharedPrefsProvider.getDeloadEveryWeeks();
+    final deloadP = await sharedPrefsProvider.getDeloadPercent();
+    final prog = await sharedPrefsProvider.getProgressionRule();
     if (mounted) {
       setState(() {
         // Default to 3 if not set in prefs
         _selectedWeeklyAmount = amount ?? 3;
+        _useTonnage = useTonnage;
+        _weightUnit = unit;
+        _weightIncrement = inc;
+        _learnFromHistory = learn;
+        _targetRpe = rpe;
+        _deloadEnabled = deloadEn;
+        _deloadEveryWeeks = deloadW;
+        _deloadPercent = deloadP;
+        _progressionRule = prog;
       });
     }
   }
@@ -336,8 +364,8 @@ class _SettingPageState extends State<SettingPage> {
           final firebaseUser = snapshot.data;
           // *** Removed: firebaseProvider.firebaseUser = firebaseUser; ***
 
-          return ListView(
-            children: [
+      return ListView(
+        children: [
               // --- Sync Section ---
               _buildSectionHeader(context, "Cloud Sync"),
               ListTile(
@@ -348,12 +376,205 @@ class _SettingPageState extends State<SettingPage> {
                 onTap: firebaseUser != null ? () => _handleBackup(routinesBlocInstance) : null,
               ),
               _buildDivider(),
+
+              // --- Stats weight calculation ---
+              _buildSectionHeader(context, "Statistics"),
+              SwitchListTile(
+                title: const Text('Use tonnage for body-part stats (sets × reps × weight)'),
+                subtitle: const Text('If off, stats use reps volume only'),
+                value: _useTonnage,
+                onChanged: (v) async {
+                  await sharedPrefsProvider.setStatsUseTonnage(v);
+                  if (mounted) setState(() => _useTonnage = v);
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.cloud_download_outlined),
                 title: const Text("Restore Routines"),
                 subtitle: const Text("Replace local routines with cloud backup"),
                 enabled: firebaseUser != null, // Disable if not signed in
                 onTap: firebaseUser != null ? () => _handleRestore(routinesBlocInstance) : null,
+              ),
+
+              // --- Personalization ---
+              _buildSectionHeader(context, "Personalization"),
+              ListTile(
+                leading: const Icon(Icons.scale),
+                title: const Text('Weight Unit'),
+                subtitle: Text(_weightUnit.toUpperCase()),
+                onTap: () async {
+                  final unit = await showDialog<String>(
+                    context: context,
+                    builder: (_) => SimpleDialog(
+                      title: const Text('Select Unit'),
+                      children: [
+                        SimpleDialogOption(child: const Text('KG'), onPressed: () => Navigator.pop(context, 'kg')),
+                        SimpleDialogOption(child: const Text('LB'), onPressed: () => Navigator.pop(context, 'lb')),
+                      ],
+                    ),
+                  );
+                  if (unit != null) {
+                    await sharedPrefsProvider.setWeightUnit(unit);
+                    if (mounted) setState(() => _weightUnit = unit);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.exposure_plus_1),
+                title: const Text('Weight Increment'),
+                subtitle: Text('${_weightIncrement.toStringAsFixed(2)} ${_weightUnit.toUpperCase()}'),
+                onTap: () async {
+                  final controller = TextEditingController(text: _weightIncrement.toString());
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Set Weight Increment'),
+                      content: TextField(
+                        controller: controller,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(hintText: 'e.g. ${_weightUnit == 'kg' ? '2.5' : '5.0'}'),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    final v = double.tryParse(controller.text);
+                    if (v != null && v > 0) {
+                      await sharedPrefsProvider.setWeightIncrement(v);
+                      if (mounted) setState(() => _weightIncrement = v);
+                    }
+                  }
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Learn from history for auto-weight'),
+                value: _learnFromHistory,
+                onChanged: (v) async {
+                  await sharedPrefsProvider.setLearnFromHistory(v);
+                  if (mounted) setState(() => _learnFromHistory = v);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.speed),
+                title: const Text('Target RPE'),
+                subtitle: Text('$_targetRpe'),
+                onTap: () async {
+                  int tmp = _targetRpe;
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Set Target RPE'),
+                      content: StatefulBuilder(
+                        builder: (ctx, setState) => Slider(
+                          min: 6,
+                          max: 10,
+                          divisions: 4,
+                          value: tmp.toDouble(),
+                          label: tmp.toString(),
+                          onChanged: (val) => setState(() => tmp = val.round()),
+                        ),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    await sharedPrefsProvider.setTargetRPE(tmp);
+                    if (mounted) setState(() => _targetRpe = tmp);
+                  }
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Enable deload weeks'),
+                value: _deloadEnabled,
+                onChanged: (v) async {
+                  await sharedPrefsProvider.setDeloadEnabled(v);
+                  if (mounted) setState(() => _deloadEnabled = v);
+                },
+              ),
+              if (_deloadEnabled) ...[
+                ListTile(
+                  leading: const Icon(Icons.calendar_today),
+                  title: const Text('Deload interval (weeks)'),
+                  subtitle: Text('$_deloadEveryWeeks'),
+                  onTap: () async {
+                    final controller = TextEditingController(text: _deloadEveryWeeks.toString());
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Deload every N weeks'),
+                        content: TextField(keyboardType: TextInputType.number, controller: controller),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      final v = int.tryParse(controller.text) ?? _deloadEveryWeeks;
+                      await sharedPrefsProvider.setDeloadEveryWeeks(v);
+                      if (mounted) setState(() => _deloadEveryWeeks = v);
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.percent),
+                  title: const Text('Deload percent'),
+                  subtitle: Text('${(_deloadPercent * 100).round()}%'),
+                  onTap: () async {
+                    final controller = TextEditingController(text: (_deloadPercent * 100).toStringAsFixed(0));
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Deload percent (50-95)'),
+                        content: TextField(keyboardType: TextInputType.number, controller: controller),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      final raw = double.tryParse(controller.text);
+                      if (raw != null) {
+                        final pct = (raw / 100.0).clamp(0.5, 0.95);
+                        await sharedPrefsProvider.setDeloadPercent(pct);
+                        if (mounted) setState(() => _deloadPercent = pct);
+                      }
+                    }
+                  },
+                ),
+              ],
+              ListTile(
+                leading: const Icon(Icons.auto_graph),
+                title: const Text('Progression rule'),
+                subtitle: Text({
+                  'reps': 'Reps-based',
+                  'rpe': 'RPE-based',
+                  'fixed': 'Fixed increment',
+                }[_progressionRule] ?? 'Reps-based'),
+                onTap: () async {
+                  final rule = await showDialog<String>(
+                    context: context,
+                    builder: (_) => SimpleDialog(
+                      title: const Text('Select progression rule'),
+                      children: [
+                        SimpleDialogOption(child: const Text('Reps-based'), onPressed: () => Navigator.pop(context, 'reps')),
+                        SimpleDialogOption(child: const Text('RPE-based'), onPressed: () => Navigator.pop(context, 'rpe')),
+                        SimpleDialogOption(child: const Text('Fixed increment'), onPressed: () => Navigator.pop(context, 'fixed')),
+                      ],
+                    ),
+                  );
+                  if (rule != null) {
+                    await sharedPrefsProvider.setProgressionRule(rule);
+                    if (mounted) setState(() => _progressionRule = rule);
+                  }
+                },
               ),
 
               // --- Account Section ---

@@ -43,9 +43,26 @@ class WorkoutSessionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<WorkoutSessionBloc>( // Explicitly type BlocProvider
-      create: (context) => WorkoutSessionBloc(dbProvider: dbProvider) // Pass dbProvider
-        ..add(WorkoutSessionStartNew(routine)), // Instantiate and add correct event
-      child: Scaffold(
+      create: (context) => WorkoutSessionBloc(dbProvider: dbProvider)
+        ..add(WorkoutSessionStartOrResume(routine)),
+      child: BlocListener<WorkoutSessionBloc, WorkoutSessionState>(
+        listenWhen: (prev, curr) => prev.isFinished != curr.isFinished && curr.isFinished,
+        listener: (context, state) async {
+          if (state.isFinished && context.mounted) {
+            showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Session Complete'),
+                content: Text('Duration: ' + (state.displayDuration.inMinutes).toString() + ' min'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                  TextButton(onPressed: () { Navigator.pop(context); Navigator.pop(context); }, child: const Text('Done')),
+                ],
+              ),
+            );
+          }
+        },
+        child: Scaffold(
         appBar: AppBar(
           title: Text(routine.routineName),
           actions: [
@@ -186,6 +203,7 @@ class WorkoutSessionPage extends StatelessWidget {
             return const SizedBox
                 .shrink(); // Return empty if no current exercise or session
           },
+        ),
         ),
       ),
     );
@@ -593,15 +611,17 @@ class _ExerciseList extends StatelessWidget {
   }
 }
 
-void _showSetPreparationDialog(
+Future<void> _showSetPreparationDialog(
   BuildContext context,
   int exerciseIndex,
-    int setIndex,
-    String exerciseName,
-    SetPerformance set,
-  ) {
+  int setIndex,
+  String exerciseName,
+  SetPerformance set,
+) async {
+    final unit = await sharedPrefsProvider.getWeightUnit();
+    final displayWeight = unit == 'lb' ? (set.targetWeight * 2.20462) : set.targetWeight;
     final repsController = TextEditingController(text: set.targetReps.toString());
-    final weightController = TextEditingController(text: set.targetWeight.toString());
+    final weightController = TextEditingController(text: displayWeight.toString());
     final formKey = GlobalKey<FormState>();
 
     showDialog(
@@ -626,7 +646,7 @@ void _showSetPreparationDialog(
               ),
               TextFormField(
                 controller: weightController,
-                decoration: const InputDecoration(labelText: 'Weight (kg)'),
+                decoration: InputDecoration(labelText: 'Weight ($unit)'),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (value) {
                   if (value == null || value.isEmpty || double.tryParse(value) == null) {
@@ -647,7 +667,8 @@ void _showSetPreparationDialog(
             onPressed: () {
               if (formKey.currentState!.validate()) {
                 final actualReps = int.parse(repsController.text);
-                final actualWeight = double.parse(weightController.text);
+                final inputWeight = double.parse(weightController.text);
+                final actualWeight = unit == 'lb' ? (inputWeight / 2.20462) : inputWeight;
                 context.read<WorkoutSessionBloc>().add(WorkoutSetMarkedComplete(
                       exerciseIndex: exerciseIndex,
                       setIndex: setIndex,
@@ -664,13 +685,15 @@ void _showSetPreparationDialog(
     );
   }
 
-void _showWeightEditDialog({
+Future<void> _showWeightEditDialog({
   required BuildContext context,
   required int exerciseIndex,
   required int setIndex,
   required double currentWeight,
-}) {
-  final controller = TextEditingController(text: currentWeight.toString());
+}) async {
+  final unit = await sharedPrefsProvider.getWeightUnit();
+  final displayCurrent = unit == 'lb' ? (currentWeight * 2.20462) : currentWeight;
+  final controller = TextEditingController(text: displayCurrent.toString());
   final formKey = GlobalKey<FormState>();
   final state = context.read<WorkoutSessionBloc>().state;
   final session = state.session!;
@@ -713,10 +736,10 @@ void _showWeightEditDialog({
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*'))],
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Weight (kg)',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.fitness_center),
+                  decoration: InputDecoration(
+                    labelText: 'Weight ($unit)',
+                    border: const OutlineInputBorder(),
+                    suffixIcon: const Icon(Icons.fitness_center),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -768,7 +791,8 @@ void _showWeightEditDialog({
             ElevatedButton(
               onPressed: () {
                 if (formKey.currentState?.validate() ?? false) {
-                  final weight = double.tryParse(controller.text) ?? currentWeight;
+                  final entered = double.tryParse(controller.text) ?? displayCurrent;
+                  final weight = unit == 'lb' ? (entered / 2.20462) : entered;
                   context.read<WorkoutSessionBloc>().add(
                     WorkoutSetTargetWeightChanged(
                       exerciseIndex: exerciseIndex,

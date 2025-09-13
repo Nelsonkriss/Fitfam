@@ -121,9 +121,14 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
           key: _scaffoldKey,
           appBar: AppBar(
             centerTitle: true,
-            title: Text(
-              mainTargetedBodyPartToStringConverter(currentRoutine.mainTargetedBodyPart),
-              // style will be inherited from AppBarTheme.titleTextStyle
+            title: Hero(
+              tag: 'routine_title_${currentRoutine.id}',
+              child: Material(
+                type: MaterialType.transparency,
+                child: Text(
+                  currentRoutine.routineName,
+                ),
+              ),
             ),
             actions: _buildAppBarActions(context, currentRoutine),
           ),

@@ -200,6 +200,72 @@ class NotificationService {
      print("Scheduled notification $id for $scheduledTime daily.");
   }
 
+  // --- Weekly (day-of-week) repeating notification ---
+  Future<void> scheduleWeeklyNotification({
+    required int id,
+    required String title,
+    required String body,
+    required int weekday, // 1=Mon ... 7=Sun
+    int hour = 9,
+    int minute = 0,
+    String? payload,
+  }) async {
+    if (kIsWeb) return;
+
+    final now = tz.TZDateTime.now(tz.local);
+    tz.TZDateTime scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    // advance to desired weekday/time
+    while (scheduled.weekday != weekday || scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 1));
+    }
+
+    await flutterLocalNotificationsPlugin.zonedSchedule(
+      id,
+      title,
+      body,
+      scheduled,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'weekly_workout_channel',
+          'Weekly Workout Reminders',
+          channelDescription: 'Channel for weekly scheduled workout reminders',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(presentSound: true, presentBadge: true, presentAlert: true),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+      payload: payload ?? 'Weekly Payload $id',
+    );
+    print("Scheduled weekly notification $id for weekday $weekday at ${hour.toString().padLeft(2,'0')}:${minute.toString().padLeft(2,'0')}");
+  }
+
+  Future<void> scheduleWeeklyForWeekdays({
+    required int baseId,
+    required String title,
+    required String body,
+    required List<int> weekdays,
+    int hour = 9,
+    int minute = 0,
+    String? payloadPrefix,
+  }) async {
+    if (kIsWeb) return;
+    for (final wd in weekdays) {
+      final id = baseId * 10 + wd;
+      await scheduleWeeklyNotification(
+        id: id,
+        title: title,
+        body: body,
+        weekday: wd,
+        hour: hour,
+        minute: minute,
+        payload: '${payloadPrefix ?? 'routine'}_$baseId",$wd',
+      );
+    }
+  }
+
   // Helper to calculate the next instance of a specific time
   // tz.TZDateTime _nextInstanceOfTime(Time time) {
   //   final tz.TZDateTime now = tz.TZDateTime.now(tz.local);

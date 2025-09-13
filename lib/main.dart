@@ -77,54 +77,33 @@ class _InitializationLoaderState extends State<InitializationLoader> {
   // Notification helper methods are now part of NotificationService
 
   Future<void> _scheduleDailyWorkoutReminders() async {
-    print("[MAIN] Scheduling daily workout reminders...");
+    print("[MAIN] Scheduling weekly workout reminders based on routine weekdays...");
     try {
       final List<Routine> routines = await dbProvider.getAllRoutines();
-      final List<WorkoutSession> allSessions = await dbProvider.getWorkoutSessions();
-      final DateTime now = DateTime.now();
-      final int todayWeekday = now.weekday; // 1 for Monday, 7 for Sunday
-
-      // Define a fixed time for the reminder, e.g., 9:00 AM
-      final tz.TZDateTime nowZoned = tz.TZDateTime.from(now, tz.getLocation('Asia/Shanghai'));
-      final tz.TZDateTime reminderTime = tz.TZDateTime(tz.getLocation('Asia/Shanghai'), nowZoned.year, nowZoned.month, nowZoned.day, 9, 0, 0);
-      // Unique ID base for daily reminders to avoid clashes with other notifications
-      const int dailyReminderIdBase = 10000;
-
+      const int weeklyReminderIdBase = 20000;
+      const defaultHour = 9;
+      const defaultMinute = 0;
 
       for (final routine in routines) {
-        if (routine.id == null) continue; // Skip routines without an ID
+        if (routine.id == null) continue;
+        if (routine.weekdays.isEmpty) continue;
 
-        // Check if the routine is scheduled for today
-        if (routine.weekdays.contains(todayWeekday)) {
-          // Check if this routine has been completed today
-          bool completedToday = allSessions.any((session) =>
-              session.routine.id == routine.id &&
-              session.isCompleted &&
-              session.startTime.year == now.year &&
-              session.startTime.month == now.month &&
-              session.startTime.day == now.day);
-
-          if (!completedToday) {
-            final int notificationId = dailyReminderIdBase + routine.id!;
-            print("[MAIN] Scheduling reminder for '${routine.routineName}' (ID: ${routine.id}) at $reminderTime. Notification ID: $notificationId");
-            await notificationService.scheduleDailyNotification(
-              id: notificationId, // Unique ID for this routine's daily reminder
-              title: 'Workout Reminder',
-              body: "Don't forget your '${routine.routineName}' workout today!",
-              scheduledTime: reminderTime,
-              payload: 'routine_reminder_${routine.id}',
-            );
-          } else {
-            print("[MAIN] Routine '${routine.routineName}' (ID: ${routine.id}) already completed today. No reminder scheduled.");
-             // Optionally, cancel any existing notification for this routine if it was scheduled before completion
-            final int notificationId = dailyReminderIdBase + routine.id!;
-            await notificationService.cancelNotification(notificationId);
-          }
+        for (final wd in routine.weekdays) {
+          final id = weeklyReminderIdBase + routine.id! * 10 + wd;
+          await notificationService.scheduleWeeklyNotification(
+            id: id,
+            title: 'Workout Reminder',
+            body: "Time for your '${routine.routineName}' workout!",
+            weekday: wd,
+            hour: defaultHour,
+            minute: defaultMinute,
+            payload: 'routine_reminder_${routine.id}_$wd',
+          );
         }
       }
-      print("[MAIN] Daily workout reminder scheduling complete.");
+      print("[MAIN] Weekly workout reminder scheduling complete.");
     } catch (e, s) {
-      print("[MAIN] Error scheduling daily workout reminders: $e\n$s");
+      print("[MAIN] Error scheduling weekly workout reminders: $e\n$s");
     }
   }
 

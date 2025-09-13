@@ -12,7 +12,7 @@ class OpenRouterService {
 
   OpenRouterService({required this.apiKey});
 
-  Future<String?> getAiGeneratedRoutineDescription(String userPrompt, {String model = "deepseek/deepseek-chat-v3-0324:free"}) async {
+  Future<String?> getAiGeneratedRoutineDescription(String userPrompt, {String model = "deepseek/deepseek-chat-v3.1:free"}) async {
     // API key is now passed via constructor and stored in this.apiKey
     if (apiKey.isEmpty) { // Check if the passed key is empty
       debugPrint("OpenRouter API key is empty.");
@@ -28,36 +28,38 @@ Generate a workout routine based on the user's request using ONLY exercises that
 
 $availableExercises
 
-OUTPUT FORMAT:
-Output the routine ONLY as a JSON object containing a single key "routines" which is a list of routine objects. Each routine should have multiple parts with different exercises.
-[
-  {
-    "routineName": "User's Goal Routine",
-    "mainTargetedBodyPart": "FullBody",
-    "parts": [
-      {
-        "partName": "Day 1: Full Body A",
-        "targetedBodyPart": "FullBody",
-        "setType": "Regular",
-        "exercises": [
-          { "name": "Barbell Squat", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
-          { "name": "Barbell Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
-        ]
-      },
-      {
-        "partName": "Day 1: Full Body B",
-        "targetedBodyPart": "FullBody",
-        "setType": "Regular",
-        "exercises": [
-          { "name": "Dumbbell Lunges", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
-          { "name": "Pull-ups", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
-        ]
-      }
-    ]
-  }
-]
+OUTPUT FORMAT (STRICT):
+Return ONLY a valid JSON object with a single top-level key "routines" whose value is an array of routine objects. Do not output markdown fences or any extra text.
+{
+  "routines": [
+    {
+      "routineName": "User's Goal Routine",
+      "mainTargetedBodyPart": "FullBody",
+      "parts": [
+        {
+          "partName": "Day 1: Full Body A",
+          "targetedBodyPart": "FullBody",
+          "setType": "Regular",
+          "exercises": [
+            { "name": "Barbell Squat", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight", "primaryTarget": "Leg" },
+            { "name": "Barbell Bench Press", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight", "primaryTarget": "Chest", "secondaryTargets": ["Tricep","Shoulder"] }
+          ]
+        },
+        {
+          "partName": "Day 1: Full Body B",
+          "targetedBodyPart": "FullBody",
+          "setType": "Regular",
+          "exercises": [
+            { "name": "Dumbbell Lunges", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" },
+            { "name": "Pull-ups", "sets": 3, "reps": "8-12", "weight": 0.0, "workoutType": "Weight" }
+          ]
+        }
+      ]
+    }
+  ]
+}
 
-FIELD REQUIREMENTS:
+FIELD REQUIREMENTS (STRICT):
 - 'workoutType' can be 'Weight', 'Cardio', 'Timed'.
 - 'mainTargetedBodyPart' for the routine must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Other.
 - 'targetedBodyPart' for a part must be one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep.
@@ -69,9 +71,14 @@ FIELD REQUIREMENTS:
 - If the user asks for a 3-day routine, the "parts" array should contain 3 part objects, each representing a day.
 - Each part should contain only one exercise. If there are 12 exercises in a routine, there should be 12 parts.
 
-CRITICAL: Use EXACT exercise names from the available list above. Users will see 3D animations during their workout, so using unavailable exercises will result in no animation display.
+TARGETS PER EXERCISE:
+- For each exercise, include "primaryTarget" as one of: Abs, Arm, Back, Chest, Leg, Shoulder, FullBody, Tricep, Bicep.
+- Optionally include "secondaryTargets" as a list of the same enum strings.
 
-Do not include any explanatory text before or after the JSON object.
+CRITICAL:
+- Use EXACT exercise names from the available list above.
+- ALWAYS return a JSON object with the key "routines" (even for a single routine).
+- Do NOT include markdown (```), comments, or any extra prose.
 """;
 
     try {
@@ -93,17 +100,36 @@ Do not include any explanatory text before or after the JSON object.
       if (response.statusCode == 200) {
         final responseBody = jsonDecode(response.body);
         if (responseBody['choices'] != null && responseBody['choices'].isNotEmpty) {
-          // Assuming the AI's response is in the 'content' of the first choice's message
+          // AI response content
           String rawContent = responseBody['choices'][0]['message']['content'];
           debugPrint("[OpenRouterService] Raw AI Response: $rawContent");
-          // Attempt to extract only the JSON part if there's any surrounding text
-          // This is a basic attempt; more robust JSON extraction might be needed
-          final jsonRegex = RegExp(r'\{[\s\S]*\}');
-          final match = jsonRegex.firstMatch(rawContent);
-          if (match != null) {
-            return match.group(0);
+
+          // Robust JSON block extraction: try array first, then object; else fallback
+          String? extractJson(String input) {
+            String? trySlice(String start, String end) {
+              final startIdx = input.indexOf(start);
+              final endIdx = input.lastIndexOf(end);
+              if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
+                final candidate = input.substring(startIdx, endIdx + 1).trim();
+                try {
+                  jsonDecode(candidate);
+                  return candidate;
+                } catch (_) { /* keep searching */ }
+              }
+              return null;
+            }
+
+            // Prefer a JSON object with routines
+            final obj = trySlice('{', '}');
+            if (obj != null) return obj;
+            // Or a top-level array of routines
+            final arr = trySlice('[', ']');
+            if (arr != null) return arr;
+            return null;
           }
-          return rawContent; // Fallback to raw content if regex fails
+
+          final extracted = extractJson(rawContent);
+          return extracted ?? rawContent.trim();
         }
       } else {
         debugPrint("OpenRouter API Error: ${response.statusCode} - ${response.body}");
@@ -118,16 +144,42 @@ Do not include any explanatory text before or after the JSON object.
 
   List<Routine> parseRoutinesFromJsonString(String jsonString) {
     try {
-      final Map<String, dynamic> jsonMap = jsonDecode(jsonString);
-      if (!jsonMap.containsKey('routines') || jsonMap['routines'] is! List) {
-        debugPrint("[OpenRouterService] Error: JSON root is not a map with a 'routines' list.");
+      final dynamic decoded = jsonDecode(jsonString);
+
+      List<dynamic> routinesJson;
+
+      if (decoded is Map<String, dynamic>) {
+        // Case A: Proper object with 'routines'
+        if (decoded.containsKey('routines') && decoded['routines'] is List) {
+          routinesJson = decoded['routines'] as List<dynamic>;
+        } else {
+          // Case B: Single routine object at root
+          debugPrint("[OpenRouterService] Root is a single object; wrapping into routines[].");
+          routinesJson = [decoded];
+        }
+      } else if (decoded is List) {
+        // Case C: Top-level array of routines
+        routinesJson = decoded;
+      } else {
+        debugPrint("[OpenRouterService] Error: Unsupported JSON root type: ${decoded.runtimeType}");
         return [];
       }
-      final List<dynamic> routinesJson = jsonMap['routines'];
-      return routinesJson.map((routineJson) {
-        if (routineJson is! Map<String, dynamic>) return null;
-        return _parseSingleRoutine(routineJson);
-      }).whereType<Routine>().toList();
+
+      // Pre-process each routine map: if AI encoded multiple days in one routine
+      // (e.g., parts named "Day 1", "Day 2"...), split them into separate routines.
+      final List<Routine> parsed = [];
+      for (final routineJson in routinesJson) {
+        if (routineJson is! Map<String, dynamic>) continue;
+        for (final splitMap in _splitRoutineMapByDaysIfNeeded(routineJson)) {
+          final r = _parseSingleRoutine(splitMap);
+          if (r != null) parsed.add(r);
+        }
+      }
+
+      if (parsed.isEmpty) {
+        debugPrint("[OpenRouterService] Warning: No valid routines parsed from JSON.");
+      }
+      return parsed;
     } catch (e, s) {
       debugPrint("[OpenRouterService] Exception parsing JSON to List<Routine>: $e\n$s");
       debugPrint("[OpenRouterService] Faulty JSON string was: $jsonString");
@@ -273,12 +325,34 @@ Do not include any explanatory text before or after the JSON object.
           }
 
 
+          // Parse optional targets if provided by AI
+          TargetedBodyPart? primaryTarget;
+          List<TargetedBodyPart> secondaryTargets = const [];
+          try {
+            final pt = exerciseJson['primaryTarget'] ?? exerciseJson['primaryTargetedBodyPart'];
+            if (pt != null) {
+              primaryTarget = TargetedBodyPart.values.firstWhere(
+                  (e) => e.name.toLowerCase() == pt.toString().toLowerCase(),
+                  orElse: () => TargetedBodyPart.FullBody);
+            }
+            final st = exerciseJson['secondaryTargets'];
+            if (st is List) {
+              secondaryTargets = st.map((v) {
+                try {
+                  return TargetedBodyPart.values.firstWhere((e) => e.name.toLowerCase() == v.toString().toLowerCase());
+                } catch (_) { return null; }
+              }).whereType<TargetedBodyPart>().toList();
+            }
+          } catch (_) {}
+
           exercises.add(Exercise(
             name: exerciseJson['name'] as String, // Use the potentially updated name
             sets: exSets,
             reps: exReps,
             weight: exWeight,
             workoutType: workoutType,
+            primaryTarget: primaryTarget,
+            secondaryTargets: secondaryTargets,
             // exHistory and id will be handled by DB or default
           ));
         }
@@ -314,4 +388,71 @@ Do not include any explanatory text before or after the JSON object.
       return null;
     }
   }
+
+  // --- Helpers to split a single routine map into multiple routines by Day markers ---
+  List<Map<String, dynamic>> _splitRoutineMapByDaysIfNeeded(Map<String, dynamic> routineMap) {
+    final parts = routineMap['parts'];
+    if (parts is! List) return [routineMap];
+
+    // Identify indices where a new day begins by scanning partName
+    final List<_DayGroup> groups = [];
+    _DayGroup? current;
+
+    for (final p in parts) {
+      if (p is! Map<String, dynamic>) continue;
+      final pn = (p['partName'] ?? '').toString();
+      final label = _extractDayLabel(pn);
+
+      if (label != null) {
+        // Start a new group on a new day label
+        current = _DayGroup(label)..parts.add(p);
+        groups.add(current);
+      } else {
+        // Append to current group if one exists; otherwise, keep a generic bucket
+        current ??= _DayGroup('');
+        current.parts.add(p);
+      }
+    }
+
+    // If fewer than 2 labeled groups, do not split; return original
+    final labeledCount = groups.where((g) => g.label.isNotEmpty).length;
+    if (labeledCount < 2) return [routineMap];
+
+    // Build new routine maps from groups
+    final baseName = (routineMap['routineName'] ?? 'Program').toString();
+    final mainTarget = routineMap['mainTargetedBodyPart'] ?? 'FullBody';
+    final List<Map<String, dynamic>> out = [];
+    int auto = 1;
+    for (final g in groups) {
+      final nameSuffix = g.label.isNotEmpty ? g.label : 'Day $auto';
+      final newMap = <String, dynamic>{
+        'routineName': '$baseName - $nameSuffix',
+        'mainTargetedBodyPart': mainTarget,
+        'parts': g.parts,
+      };
+      out.add(newMap);
+      auto++;
+    }
+    return out;
+  }
+
+  String? _extractDayLabel(String partName) {
+    final lower = partName.toLowerCase();
+    // Common patterns: Day 1/2/3, Day One/Two, Mon/Tue/Wednesday, etc.
+    final RegExp dayRe = RegExp(
+      r"\b(day\s*(\d+|one|two|three|four|five|six|seven)|mon(day)?|tue(sday)?|wed(nesday)?|thu(rsday)?|fri(day)?|sat(urday)?|sun(day)?)\b",
+      caseSensitive: false,
+    );
+    final m = dayRe.firstMatch(lower);
+    if (m == null) return null;
+    // Return the matched segment capitalized nicely
+    final raw = m.group(0)!;
+    return raw.split(' ').map((w) => w.isEmpty ? w : w[0].toUpperCase() + w.substring(1)).join(' ');
+  }
+}
+
+class _DayGroup {
+  final String label;
+  final List<Map<String, dynamic>> parts = [];
+  _DayGroup(this.label);
 }
