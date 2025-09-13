@@ -13,6 +13,8 @@ const String weeklyAmountKey = "weeklyAmount";   // Example: User preference
 const String DailyRankKey = "dailyRankInfo"; // Stores string like "YYYY-MM-DD/rank"
 const String weeklyProgressRoutineIdsKey = "weeklyProgressRoutineIds"; // Key for selected routine IDs
 const String themeModeKey = "themeMode"; // Key for storing theme preference (light, dark, system)
+// AI prompt history
+const String aiPromptHistoryKey = "aiPromptHistory";
 
 // User Profile related keys
 const String userProfileKey = "userProfile"; // Key for storing user profile JSON
@@ -188,6 +190,44 @@ class SharedPrefsProvider {
       await prefs.setStringList(weeklyProgressRoutineIdsKey, idStrings);
     } catch (e) {
       debugPrint("SharedPrefsProvider: Error setting weekly progress routine IDs: $e");
+    }
+  }
+
+  // --- AI Prompt History ---
+  Future<List<String>> getAiPromptHistory() async {
+    try {
+      final prefs = await _prefs;
+      return prefs.getStringList(aiPromptHistoryKey) ?? <String>[];
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error getting AI prompt history: $e");
+      return <String>[];
+    }
+  }
+
+  Future<void> addAiPromptToHistory(String prompt, {int maxItems = 30}) async {
+    try {
+      final prefs = await _prefs;
+      final list = prefs.getStringList(aiPromptHistoryKey) ?? <String>[];
+      // Move to front, dedupe
+      final trimmed = prompt.trim();
+      list.removeWhere((p) => p.trim().toLowerCase() == trimmed.toLowerCase());
+      list.insert(0, trimmed);
+      // Cap length
+      if (list.length > maxItems) {
+        list.removeRange(maxItems, list.length);
+      }
+      await prefs.setStringList(aiPromptHistoryKey, list);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error adding AI prompt to history: $e");
+    }
+  }
+
+  Future<void> clearAiPromptHistory() async {
+    try {
+      final prefs = await _prefs;
+      await prefs.remove(aiPromptHistoryKey);
+    } catch (e) {
+      debugPrint("SharedPrefsProvider: Error clearing AI prompt history: $e");
     }
   }
 

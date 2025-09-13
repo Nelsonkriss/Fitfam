@@ -144,12 +144,25 @@ class _InitializationLoaderState extends State<InitializationLoader> {
         Future(() async {
           print('[MAIN] Starting Firebase initialization...');
           if (Firebase.apps.isEmpty) {
-            await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+            if (kIsWeb) {
+              // Web requires explicit options
+              await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
+            } else if (defaultTargetPlatform == TargetPlatform.windows) {
+              // Windows requires explicit options
+              await Firebase.initializeApp(options: DefaultFirebaseOptions.windows);
+            } else {
+              // Android/iOS/macOS: use native configuration (google-services.json / GoogleService-Info.plist)
+              await Firebase.initializeApp();
+            }
             print('[MAIN] Firebase initialized successfully');
           }
-        }).catchError((e) {
+        }).catchError((e, s) {
+          // Do not crash the app if Firebase fails; log and continue without Firebase.
           print('[MAIN] Firebase initialization error: $e');
-          throw e;
+          if (kDebugMode) {
+            print(s);
+          }
+          // swallow
         }),
         
         // Database initialization with retry

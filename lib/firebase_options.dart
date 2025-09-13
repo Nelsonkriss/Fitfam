@@ -51,13 +51,10 @@ class DefaultFirebaseOptions {
     measurementId: 'G-X1NV3D3N4F',
   );
 
-  static final FirebaseOptions android = FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_ANDROID_API_KEY']!,
-    appId: '1:831897287544:android:1a20fedd003520907fe68d',
-    messagingSenderId: '831897287544',
-    projectId: 'fitfam-c61fb',
-    storageBucket: 'fitfam-c61fb.firebasestorage.app',
-  );
+  // Not used on Android — native config is loaded from google-services.json
+  static FirebaseOptions get android => throw UnsupportedError(
+        'Android FirebaseOptions are not used. Rely on native configuration via google-services.json.',
+      );
 
   static final FirebaseOptions ios = FirebaseOptions(
     apiKey: dotenv.env['FIREBASE_IOS_API_KEY']!,
