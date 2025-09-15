@@ -295,37 +295,7 @@ class _ExerciseAnimationWidgetState extends State<ExerciseAnimationWidget>
                     ),
                   ),
                 
-                if (_animationData!.isAnimated)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.play_circle_filled,
-                            color: Colors.white,
-                            size: 12,
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            'ANIMATED',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                // Removed the green 'ANIMATED' tag overlay for a cleaner look
                 
                 if (!_animationData!.isAnimated && !_isPlaying && widget.showControls)
                   Positioned.fill(

@@ -12,7 +12,8 @@ import 'package:workout_planner/ui/recommend_page.dart';
 import 'package:workout_planner/ui/routine_edit_page.dart';
 import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/ui/components/routine_card.dart';
-import 'package:workout_planner/ui/workout_session_page.dart'; // Import WorkoutSessionPage
+// Removed direct use of WorkoutSessionPage
+import 'package:workout_planner/ui/routine_step_page_v2.dart';
 import 'package:workout_planner/ui/routine_detail_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -342,7 +343,7 @@ class _HomePageState extends State<HomePage> {
             icon = Icons.play_circle_fill_rounded;
             onPressed = () => Navigator.push(
                   context,
-                  _fadeRoute(WorkoutSessionPage(routine: ongoing!.routine)),
+                  _fadeRoute(RoutineStepPageV2(routine: ongoing!.routine, resumeSession: ongoing)),
                 );
           } else if (todayRoutines.isNotEmpty) {
             final r = todayRoutines.first;
@@ -351,7 +352,7 @@ class _HomePageState extends State<HomePage> {
             icon = Icons.event_available_rounded;
             onPressed = () => Navigator.push(
                   context,
-                  _fadeRoute(WorkoutSessionPage(routine: r)),
+                  _fadeRoute(RoutineStepPageV2(routine: r)),
                 );
           } else if (lastCompleted != null) {
             title = 'Repeat: ${lastCompleted.routine.routineName}';
@@ -359,7 +360,7 @@ class _HomePageState extends State<HomePage> {
             icon = Icons.replay_rounded;
             onPressed = () => Navigator.push(
                   context,
-                  _fadeRoute(WorkoutSessionPage(routine: lastCompleted!.routine)),
+                  _fadeRoute(RoutineStepPageV2(routine: lastCompleted!.routine)),
                 );
           } else {
             title = 'Build Your First Routine';
@@ -709,7 +710,7 @@ class _HomePageState extends State<HomePage> {
                           trailing: FilledButton(
                             onPressed: () {
                               Navigator.pop(ctx);
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => WorkoutSessionPage(routine: r)));
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => RoutineStepPageV2(routine: r)));
                             },
                             child: const Text('Start'),
                           ),
@@ -726,7 +727,7 @@ class _HomePageState extends State<HomePage> {
                             onPressed: suggestions.isEmpty ? null : () {
                               final r = suggestions.first;
                               Navigator.pop(ctx);
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => WorkoutSessionPage(routine: r)));
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => RoutineStepPageV2(routine: r)));
                             },
                           ),
                         ),
@@ -1088,9 +1089,15 @@ class _RoutineCompactCard extends StatelessWidget {
                   icon: const Icon(Icons.play_arrow_rounded),
                   color: cs.onSecondaryContainer,
                   onPressed: () {
-                    Navigator.push(context, _fadeRoute(WorkoutSessionPage(routine: routine)));
+                    // Go to Routine Detail so user can press Start Workout
+                    final routinesBlocInstance = context.read<RoutinesBloc>();
+                    final int? rid = routine.id;
+                    if (rid != null) {
+                      routinesBlocInstance.selectRoutine(rid);
+                    }
+                    Navigator.push(context, _fadeRoute(const RoutineDetailPage()));
                   },
-                  tooltip: 'Start',
+                  tooltip: 'Open Details',
                 ),
               )
             ],

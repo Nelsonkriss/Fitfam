@@ -14,16 +14,24 @@ import 'package:workout_planner/models/exercise_performance.dart';
 import 'package:workout_planner/models/set_performance.dart';
 import 'package:workout_planner/utils/android_animations.dart';
 import 'package:workout_planner/ui/components/exercise_animation_widget.dart';
+import 'package:workout_planner/services/exercise_coaching_service.dart';
+import 'package:workout_planner/models/targeted_body_part.dart';
+import 'package:workout_planner/services/ai_weight_recommendation_service.dart';
+import 'package:workout_planner/resource/shared_prefs_provider.dart';
+import 'package:workout_planner/models/user_profile.dart';
+import 'package:workout_planner/services/ai_rep_time_recommendation_service.dart';
 
 import 'components/number_ticker.dart';
 
 class RoutineStepPageV2 extends StatefulWidget {
   final Routine originalRoutine;
+  final WorkoutSession? resumeSession;
   final VoidCallback? celebrateCallback;
   final VoidCallback? onBackPressed;
 
   const RoutineStepPageV2({
     required Routine routine,
+    this.resumeSession,
     this.celebrateCallback,
     this.onBackPressed,
     super.key,
@@ -80,7 +88,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     _preparationController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
     _completionController = AnimationController(duration: AndroidAnimations.m3ExtraLongDuration, vsync: this);
 
-    _currentWorkingRoutine = widget.originalRoutine.copyWith(
+    // Use resume session's routine if provided
+    final baseRoutine = widget.resumeSession?.routine ?? widget.originalRoutine;
+    _currentWorkingRoutine = baseRoutine.copyWith(
       parts: widget.originalRoutine.parts.map((originalPart) {
         return originalPart.copyWith(
           exercises: originalPart.exercises.map((originalExercise) {
@@ -92,8 +102,25 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
     _rebuildStateFromRoutine();
 
-    _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
-    debugPrint("RoutineStepPage: Initialized _activeWorkoutSession with ID: ${_activeWorkoutSession?.id}");
+    if (widget.resumeSession != null) {
+      _activeWorkoutSession = widget.resumeSession;
+      // Compute how many sets are already completed to position the cursor
+      int completedSets = 0;
+      try {
+        for (final ex in widget.resumeSession!.exercises) {
+          for (final set in ex.sets) {
+            if (set.isCompleted) completedSets++;
+          }
+        }
+      } catch (_) {}
+      if (_exerciseIndexesInStepOrder.isNotEmpty) {
+        _currentStepIndex = completedSets.clamp(0, _exerciseIndexesInStepOrder.length - 1);
+      }
+      debugPrint("RoutineStepPageV2: Resuming session ${_activeWorkoutSession!.id}, completed sets=$completedSets, stepIndex=$_currentStepIndex");
+    } else {
+      _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
+      debugPrint("RoutineStepPageV2: Starting new session ${_activeWorkoutSession?.id}");
+    }
 
     _startSetPreparation();
   }
@@ -227,8 +254,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         backgroundColor: Colors.black,
         body: _finished ? _buildFinishedScreen() : _buildWorkoutInterface(),
       ),
-    );
-  }
+  );
+}
 
   Widget _buildFinishedScreen() {
     final theme = Theme.of(context);
@@ -343,17 +370,36 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           child: Column(
             children: [
               _buildHeader(),
+              _buildSafetyBanner(),
               Expanded(
-                child: _buildExerciseInfo(exercise, setNum, totalSets),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const SizedBox(height: 8),
+                      _buildExerciseInfo(exercise, setNum, totalSets),
+                      const SizedBox(height: 8),
+                      _buildTypeAndRestChips(exercise, totalSets),
+                      const SizedBox(height: 8),
+                      _buildInlineCoaching(exercise, setNum, totalSets),
+                      const SizedBox(height: 12),
+                      _buildInputControls(weightController, repsController, exercise),
+                      const SizedBox(height: 12),
+                      _buildActionButtons(),
+                      const SizedBox(height: 8),
+                      _buildNextExerciseInfo(),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
               ),
-              _buildInputControls(weightController, repsController, exercise),
-              _buildActionButtons(),
-              _buildNextExerciseInfo(),
-              const SizedBox(height: 20),
             ],
           ),
         ),
         if (_isInRestPeriod) _buildRestPeriodOverlay(),
+        if (_isTimedExerciseActive) _timedOverlay(),
       ],
     );
   }
@@ -408,36 +454,216 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     );
   }
 
-  Widget _buildInputControls(
-      NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
+  Widget _buildSafetyBanner() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.redAccent.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: const [
+            Icon(Icons.health_and_safety, color: Colors.redAccent, size: 18),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Coaching is educational only — not medical advice.',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypeAndRestChips(Exercise exercise, int totalSets) {
+    final isTimed = _isTimed(exercise);
+    final isBodyweight = _isBodyweight(exercise);
+    final typeLabel = isTimed ? 'Timed' : (isBodyweight ? 'Bodyweight' : 'Weighted');
+    final tip = ExerciseCoachingService.getCoaching(
+      exerciseName: exercise.name,
+      setIndex: 0,
+      totalSets: totalSets,
+      primaryTarget: TargetedBodyPart.FullBody,
+      lowEnergy: false,
+      sore: false,
+    );
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        _pill(typeLabel),
+        _pill('Rest ~ ${tip.suggestedRestSeconds}s'),
+      ],
+    );
+  }
+
+  Widget _buildInlineCoaching(Exercise exercise, int setNum, int totalSets) {
+    final tip = ExerciseCoachingService.getCoaching(
+      exerciseName: exercise.name,
+      setIndex: (setNum - 1).clamp(0, totalSets - 1),
+      totalSets: totalSets,
+      primaryTarget: TargetedBodyPart.FullBody,
+      lowEnergy: false,
+      sore: false,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
         children: [
-          _buildControlColumn("Weight (kg)", weightController),
-          _buildControlColumn("Reps", repsController),
+          Text(tip.headline, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 4,
+            children: tip.tips.map((t) => _bullet(t)).toList(),
+          ),
+          if (tip.pitfalls.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
+              runSpacing: 4,
+              children: tip.pitfalls.map((p) => _chip(p)).toList(),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Text('Why this set? ${tip.whyThisSet}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
         ],
       ),
     );
   }
 
-  Widget _buildControlColumn(String label, NumberTickerController controller) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 16),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            IconButton(
-              onPressed: () => controller.decrement(),
-              icon: const Icon(Icons.remove, color: Colors.white),
+  Widget _buildInputControls(
+      NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
+    final isTimed = _isTimed(exercise);
+    final isBodyweight = _isBodyweight(exercise);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          if (!isTimed && !isBodyweight)
+            Expanded(
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Flexible(
+                        child: Text(
+                          'Weight (kg)',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () => _applyAIRecommendedWeight(exercise, weightController),
+                        icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                        tooltip: 'AI Suggests Weight',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildTickerRow(weightController),
+                ],
+              ),
             ),
-            GestureDetector(
-              onTap: () => _showNumberInputDialog(label, controller),
+          if (!isTimed && !isBodyweight) const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  isTimed ? 'Seconds' : 'Reps',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                FutureBuilder<int>(
+                  future: _getAiRepsOrSecondsSuggestion(exercise, isTimed: isTimed),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const SizedBox(height: 0);
+                    final v = snap.data!;
+                    final label = isTimed ? 'AI: ${v}s' : 'AI: ${v} reps';
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4.0),
+                      child: Text(label, style: const TextStyle(color: Colors.tealAccent, fontSize: 12)),
+                    );
+                  },
+                ),
+                if (isTimed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Wrap(
+                      spacing: 8,
+                      children: [20, 30, 45, 60].map((s) => _pillButton('$s s', onTap: () { repsController.number = s.toDouble(); })).toList(),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                _buildTickerRow(repsController),
+                if (isBodyweight)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Text(
+                      'Bodyweight set — focus on quality reps',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ),
+                if (isTimed || isBodyweight)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: IconButton(
+                      onPressed: () => _applyAIRecommendedRepsOrSeconds(exercise, repsController, isTimed: isTimed),
+                      icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                      tooltip: isTimed ? 'AI Suggests Seconds' : 'AI Suggests Reps',
+                    ),
+                  ),
+                if (isTimed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _startTimed(exercise, repsController.number.toInt()),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.tealAccent.shade400,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                      icon: const Icon(Icons.timer),
+                      label: const Text('Start Timer'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTickerRow(NumberTickerController controller) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          onPressed: () => controller.decrement(),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          iconSize: 22,
+          icon: const Icon(Icons.remove, color: Colors.white),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: GestureDetector(
+            onTap: () => _showNumberInputDialog('Edit', controller),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
               child: NumberTicker(
                 controller: controller,
                 textStyle: const TextStyle(
@@ -447,11 +673,15 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 ),
               ),
             ),
-            IconButton(
-              onPressed: () => controller.increment(),
-              icon: const Icon(Icons.add, color: Colors.white),
-            ),
-          ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        IconButton(
+          onPressed: () => controller.increment(),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          iconSize: 22,
+          icon: const Icon(Icons.add, color: Colors.white),
         ),
       ],
     );
@@ -566,6 +796,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     final exercise = _currentExercises[exerciseIdx];
     final weight = _weightTickerControllers[exerciseIdx]!.value;
     final reps = _repsTickerControllers[exerciseIdx]!.value.toInt();
+    final currentSetNum = _setNumberOfStep[_currentStepIndex];
+    final totalSets = _setsTotalInStepOrder[_currentStepIndex];
 
     final setPerformance = SetPerformance(
       targetReps: int.tryParse(exercise.reps) ?? 0,
@@ -589,7 +821,16 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       setState(() {
         _currentStepIndex++;
       });
-      _startRestPeriod(duration: 60); // Assuming 60 seconds rest
+      // Suggest rest based on coaching service
+      final tip = ExerciseCoachingService.getCoaching(
+        exerciseName: exercise.name,
+        setIndex: (currentSetNum - 1).clamp(0, totalSets - 1),
+        totalSets: totalSets,
+        primaryTarget: TargetedBodyPart.FullBody,
+        lowEnergy: false,
+        sore: false,
+      );
+      _startRestPeriod(duration: tip.suggestedRestSeconds);
     } else {
       _finishWorkout();
     }
@@ -754,4 +995,227 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     }
     return shouldQuit;
   }
+
+  // --- Timed exercise overlay & flow (instance methods) ---
+  Widget _timedOverlay() {
+    final nextName = (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1)
+        ? _currentExercises[_exerciseIndexesInStepOrder[_currentStepIndex + 1]].name
+        : 'Finish';
+    return Container(
+      color: Colors.black.withOpacity(0.9),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Timed Set',
+              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Up next: $nextName',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '$_timedExerciseRemainingSeconds',
+              style: const TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                OutlinedButton(
+                  onPressed: _stopTimedEarly,
+                  style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white54)),
+                  child: const Text('Stop', style: TextStyle(color: Colors.white)),
+                ),
+                const SizedBox(width: 16),
+                ElevatedButton(
+                  onPressed: () {},
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                  child: const Text('Counting...'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _startTimed(Exercise exercise, int seconds) {
+    if (seconds <= 0) seconds = 30;
+    setState(() {
+      _isTimedExerciseActive = true;
+      _timedExerciseRemainingSeconds = seconds;
+    });
+    _exerciseTimer?.cancel();
+    _exerciseTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (_timedExerciseRemainingSeconds > 0) {
+        setState(() {
+          _timedExerciseRemainingSeconds--;
+        });
+      } else {
+        t.cancel();
+        _exerciseTimer = null;
+        _completeTimed(exercise, seconds);
+      }
+    });
+  }
+
+  void _stopTimedEarly() {
+    _exerciseTimer?.cancel();
+    _exerciseTimer = null;
+    setState(() {
+      _isTimedExerciseActive = false;
+    });
+  }
+
+  void _completeTimed(Exercise exercise, int secondsSelected) {
+    setState(() {
+      _isTimedExerciseActive = false;
+    });
+    final exerciseIdx = _exerciseIndexesInStepOrder[_currentStepIndex];
+    final setPerformance = SetPerformance(
+      targetReps: secondsSelected,
+      targetWeight: 0,
+      actualReps: secondsSelected,
+      actualWeight: 0,
+      isCompleted: true,
+    );
+    final exercisePerformances = _activeWorkoutSession!.exercises.map((ep) {
+      if (ep.exerciseName == exercise.name) {
+        final newSets = List<SetPerformance>.from(ep.sets)..add(setPerformance);
+        return ep.copyWith(sets: newSets);
+      }
+      return ep;
+    }).toList();
+    _activeWorkoutSession = _activeWorkoutSession?.copyWith(exercises: exercisePerformances);
+
+    if (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1) {
+      setState(() {
+        _currentStepIndex++;
+      });
+      final tip = ExerciseCoachingService.getCoaching(
+        exerciseName: exercise.name,
+        setIndex: 0,
+        totalSets: 1,
+        primaryTarget: TargetedBodyPart.FullBody,
+        lowEnergy: false,
+        sore: false,
+      );
+      _startRestPeriod(duration: tip.suggestedRestSeconds);
+    } else {
+      _finishWorkout();
+    }
+  }
+  }
+
+  // Removed old top-level variant; now using instance method _timedOverlay() above
+
+// --- Small UI helpers ---
+Widget _pill(String label) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.white10,
+      border: Border.all(color: Colors.white24),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(label, style: const TextStyle(color: Colors.white70)),
+  );
+}
+
+Widget _bullet(String text) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.white10,
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(text, style: const TextStyle(color: Colors.white70)),
+  );
+}
+
+  Widget _chip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.redAccent.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text, style: const TextStyle(color: Colors.redAccent)),
+    );
+  }
+
+  Widget _pillButton(String text, {required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          border: Border.all(color: Colors.white24),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      ),
+    );
+  }
+
+Future<void> _applyAIRecommendedWeight(Exercise exercise, NumberTickerController controller) async {
+  try {
+    final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
+    final service = AIWeightRecommendationService();
+    final rec = await service.getRecommendedWeight(
+      exerciseName: exercise.name,
+      userProfile: profile,
+      targetReps: 10,
+    );
+    controller.number = rec;
+  } catch (e) {
+    // No UI here; the controlling page can show a snackbar in future
+  }
+}
+
+Future<void> _applyAIRecommendedRepsOrSeconds(Exercise exercise, NumberTickerController controller, {required bool isTimed}) async {
+  try {
+    final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
+    final svc = AIRepTimeRecommendationService();
+    final int rec = isTimed
+        ? await svc.recommendSeconds(exerciseName: exercise.name, userProfile: profile)
+        : await svc.recommendReps(exerciseName: exercise.name, userProfile: profile);
+    controller.number = rec.toDouble();
+  } catch (_) {}
+}
+
+Future<int> _getAiRepsOrSecondsSuggestion(Exercise exercise, {required bool isTimed}) async {
+  try {
+    final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
+    final svc = AIRepTimeRecommendationService();
+    return isTimed
+        ? await svc.recommendSeconds(exerciseName: exercise.name, userProfile: profile)
+        : await svc.recommendReps(exerciseName: exercise.name, userProfile: profile);
+  } catch (_) {
+    return isTimed ? 30 : 12;
+  }
+}
+
+bool _isBodyweight(Exercise ex) {
+  if (ex.workoutType == WorkoutType.Weight && ex.weight <= 0.0) return true;
+  final n = ex.name.toLowerCase();
+  const bw = [
+    'push', 'push-up', 'push up', 'pull-up', 'pull up', 'crunch', 'sit-up', 'sit up', 'plank', 'mountain climber',
+    'dips', 'dip', 'burpee', 'jumping jack', 'bodyweight', 'hollow hold', 'leg raise'
+  ];
+  return bw.any((k) => n.contains(k));
+}
+
+bool _isTimed(Exercise ex) {
+  if (ex.workoutType == WorkoutType.Timed) return true;
+  final n = ex.name.toLowerCase();
+  const timed = ['plank', 'hold', 'wall sit', 'hollow hold', 'mountain climber', 'jumping jack'];
+  return timed.any((k) => n.contains(k));
 }

@@ -378,18 +378,33 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             ),
           ],
         ),
-        body: Column(
+        body: ListView(
+          controller: _scrollController,
+          padding: EdgeInsets.zero,
           children: [
             _buildHeroHeader(),
             _buildRoutineNameCard(),
             _buildWeekdaySelectorCard(),
-            Expanded(
-              child: ReorderableListView(
-                scrollController: _scrollController,
-                onReorder: _onReorder,
-                padding: const EdgeInsets.only(bottom: 96),
-                children: _buildPartEditCards(),
-              ),
+            // Reorderable parts list (non-scrollable; outer ListView scrolls)
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: true,
+              onReorder: _onReorder,
+              padding: const EdgeInsets.only(bottom: 96),
+              itemCount: _routineEditState.parts.length,
+              itemBuilder: (context, index) {
+                final part = _routineEditState.parts[index];
+                return Container(
+                  key: ObjectKey(part),
+                  child: PartEditCard(
+                    part: part,
+                    curRoutine: _routineEditState,
+                    onDelete: () => _onDeletePart(part),
+                    onEdit: () => _onEditPart(part, index),
+                  ),
+                );
+              },
             ),
           ],
         ),

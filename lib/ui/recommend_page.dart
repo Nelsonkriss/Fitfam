@@ -7,6 +7,9 @@ import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/resource/open_router_service.dart';
 import 'package:workout_planner/services/notification_service.dart'; // Import NotificationService
 import 'components/routine_card.dart';
+import 'package:flutter/foundation.dart';
+import 'package:workout_planner/resource/ai_parse_isolate.dart';
+import 'package:workout_planner/services/progressive_plan_service.dart';
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
 // For optional prompt templates
@@ -79,6 +82,20 @@ class _RecommendPageState extends State<RecommendPage> {
   }
 
   Future<void> _generateAndSaveAiRoutine() async {
+    if (_isGeneratingAiRoutine) return; // Prevent double trigger
+
+    // Show a full-screen generating overlay while we work
+    bool overlayShown = false;
+    void _showGeneratingOverlay() {
+      overlayShown = true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (ctx) => const _GeneratingOverlay(),
+      );
+    }
+
     if (_aiPromptController.text.trim().isEmpty) {
       if (mounted) {
         setState(() {
@@ -103,6 +120,7 @@ class _RecommendPageState extends State<RecommendPage> {
       _isGeneratingAiRoutine = true;
       _aiError = null;
     });
+    if (mounted) _showGeneratingOverlay();
 
     try {
       final String? routineJsonString = await _openRouterService
@@ -111,8 +129,10 @@ class _RecommendPageState extends State<RecommendPage> {
       if (!mounted) return;
 
       if (routineJsonString != null) {
-        final List<Routine> newRoutines = _openRouterService
-            .parseRoutinesFromJsonString(routineJsonString);
+        final List<Routine> newRoutines = await compute(
+          parseRoutinesOnIsolate,
+          routineJsonString,
+        );
         if (newRoutines.isNotEmpty) {
           if (mounted) {
             // Show notification immediately
@@ -136,6 +156,8 @@ class _RecommendPageState extends State<RecommendPage> {
                 backgroundColor: Colors.green,
               ),
             );
+            // Offer to build a progressive plan
+            await _promptBuildPlan(newRoutines);
           }
         } else {
           if (mounted) {
@@ -152,7 +174,7 @@ class _RecommendPageState extends State<RecommendPage> {
         if (mounted) {
           setState(() {
             _aiError =
-                "Failed to get a response from the AI. Check connection/API key.";
+                "Failed to get a response from the AI. Check connection.";
           });
         }
       }
@@ -168,6 +190,10 @@ class _RecommendPageState extends State<RecommendPage> {
         setState(() {
           _isGeneratingAiRoutine = false;
         });
+        // Dismiss the overlay if it's still showing
+        if (overlayShown) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
       }
     }
   }
@@ -267,27 +293,48 @@ class _RecommendPageState extends State<RecommendPage> {
           StreamBuilder<List<Routine>>(
             stream: routinesBlocInstance.allRoutinesStream,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                );
               }
               if (snapshot.hasError) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: Text('Error loading routines: ${snapshot.error}', textAlign: TextAlign.center, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    child: Text(
+                      'Error loading routines: ${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                   ),
                 );
               }
-              final aiGeneratedRoutines = snapshot.data?.where((r) => r.isAiGenerated).toList() ?? [];
+              final aiGeneratedRoutines =
+                  snapshot.data?.where((r) => r.isAiGenerated).toList() ?? [];
               if (aiGeneratedRoutines.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.all(16.0),
-                  child: Center(child: Text('No AI-generated routines yet. Try creating one above!')),
+                  child: Center(
+                    child: Text(
+                      'No AI-generated routines yet. Try creating one above!',
+                    ),
+                  ),
                 );
               }
               final count = _calculateListItemCount(aiGeneratedRoutines);
               return Column(
-                children: List.generate(count, (index) => _buildListItem(context, aiGeneratedRoutines, index)),
+                children: List.generate(
+                  count,
+                  (index) =>
+                      _buildListItem(context, aiGeneratedRoutines, index),
+                ),
               );
             },
           ),
@@ -305,7 +352,7 @@ class _RecommendPageState extends State<RecommendPage> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text(
-            'Featured for Students',
+            'Featured',
             style: Theme.of(
               context,
             ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
@@ -340,17 +387,27 @@ class _RecommendPageState extends State<RecommendPage> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text('Quick Picks', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+          child: Text(
+            'Quick Picks',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
         ),
         SizedBox(
           height: 180,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemBuilder: (_, i) => _FeaturedCard(
-              data: items[i],
-              onTap: () => _generateFromPrompt(items[i].prompt, title: items[i].title),
-            ),
+            itemBuilder:
+                (_, i) => _FeaturedCard(
+                  data: items[i],
+                  onTap:
+                      () => _generateFromPrompt(
+                        items[i].prompt,
+                        title: items[i].title,
+                      ),
+                ),
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemCount: items.length,
           ),
@@ -363,6 +420,17 @@ class _RecommendPageState extends State<RecommendPage> {
     String prompt, {
     required String title,
   }) async {
+    if (_isGeneratingAiRoutine) return; // Prevent double trigger
+    bool overlayShown = false;
+    void _showGeneratingOverlay() {
+      overlayShown = true;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (ctx) => const _GeneratingOverlay(),
+      );
+    }
     if (_apiKeyMissing) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -380,13 +448,16 @@ class _RecommendPageState extends State<RecommendPage> {
       _isGeneratingAiRoutine = true;
       _aiError = null;
     });
+    if (mounted) _showGeneratingOverlay();
     try {
       final String? routineJsonString = await _openRouterService
           .getAiGeneratedRoutineDescription(prompt);
       if (!mounted) return;
       if (routineJsonString != null) {
-        final List<Routine> routines = _openRouterService
-            .parseRoutinesFromJsonString(routineJsonString);
+        final List<Routine> routines = await compute(
+          parseRoutinesOnIsolate,
+          routineJsonString,
+        );
         if (routines.isNotEmpty) {
           await routinesBloc.addRoutines(routines);
           await NotificationService().showNotification(
@@ -401,6 +472,7 @@ class _RecommendPageState extends State<RecommendPage> {
               backgroundColor: Colors.green,
             ),
           );
+          await _promptBuildPlan(routines);
         } else {
           setState(
             () =>
@@ -420,7 +492,101 @@ class _RecommendPageState extends State<RecommendPage> {
         setState(() {
           _isGeneratingAiRoutine = false;
         });
+      if (mounted && overlayShown) {
+        // Dismiss the overlay if it's still showing
+        Navigator.of(context, rootNavigator: true).pop();
+      }
     }
+  }
+
+  Future<void> _promptBuildPlan(List<Routine> baseRoutines) async {
+    if (!mounted) return;
+    int selectedWeeks = 4;
+    bool includeDeload = true;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_graph),
+                      const SizedBox(width: 8),
+                      Text('Build Progressive Plan', style: Theme.of(ctx).textTheme.titleLarge),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Create a ${selectedWeeks}-week progression with science-based increases and deloads.',
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Weeks', style: Theme.of(ctx).textTheme.labelLarge),
+                  Wrap(
+                    spacing: 8,
+                    children: [4,6,8].map((w) => ChoiceChip(
+                      label: Text('$w'),
+                      selected: selectedWeeks == w,
+                      onSelected: (_) => setState(() => selectedWeeks = w),
+                    )).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include deload every 4th week'),
+                    value: includeDeload,
+                    onChanged: (v) => setState(() => includeDeload = v),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Not now'),
+                      ),
+                      const Spacer(),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.add_task),
+                        label: const Text('Build Plan'),
+                        onPressed: () async {
+                          final plan = ProgressivePlanService.buildPlan(
+                            baseRoutines,
+                            weeks: selectedWeeks,
+                            deloadEvery: includeDeload ? 4 : 0,
+                          );
+                          await context.read<RoutinesBloc>().addRoutines(plan);
+                          if (mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Created ${plan.length} plan routine(s).')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   // --------------------- UI Models and Cards ---------------------
@@ -432,7 +598,7 @@ class _RecommendPageState extends State<RecommendPage> {
         title: 'Science-Based Workout',
         subtitle: 'Evidence > ego',
         gradient: [Colors.deepPurple.shade600, Colors.teal.shade400],
-        prompt: 'Science-based hypertrophy routine for students; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
+        prompt: 'Science-based hypertrophy routine; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
         assetOverlay: 'assets/exercise_images/app_bodybuilding.webp',
         emojis: '💪📈',
       ),
@@ -448,7 +614,7 @@ class _RecommendPageState extends State<RecommendPage> {
         title: 'Bro Chest Day',
         subtitle: 'Pump + fun',
         gradient: [Colors.pink.shade400, Colors.redAccent.shade200],
-        prompt: 'Classic bro chest workout for students; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
+        prompt: 'Classic bro chest workout; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
         assetOverlay: 'assets/chest-96.png',
         emojis: '🏋️🔥',
       ),
@@ -468,37 +634,37 @@ class _RecommendPageState extends State<RecommendPage> {
       _RecoData(
         title: 'Dorm Room 15', subtitle: 'No equipment',
         gradient: [Colors.orange.shade400, Colors.amber.shade600],
-        prompt: '15-minute dorm-friendly bodyweight circuit for students; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
+        prompt: '15-minute dorm-friendly bodyweight circuit; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
         assetOverlay: 'assets/exercise_images/app_abdominal.webp', emojis: '🏠⏱️',
       ),
       _RecoData(
         title: 'Glute & Legs', subtitle: 'Power hour',
         gradient: [Colors.purple.shade400, Colors.deepPurple.shade700],
-        prompt: 'Glutes & legs strength + pump for students; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
+        prompt: 'Glutes & legs strength; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
         assetOverlay: 'assets/leg-96.png', emojis: '🍑🦵',
       ),
       _RecoData(
         title: 'Pull Day', subtitle: 'Back + biceps',
         gradient: [Colors.blue.shade400, Colors.indigo.shade700],
-        prompt: 'Pull day for students; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
+        prompt: 'Pull day to maximize back growth; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
         assetOverlay: 'assets/back-96.png', emojis: '🧲💪',
       ),
       _RecoData(
         title: 'Push Day', subtitle: 'Chest + shoulders',
         gradient: [Colors.red.shade400, Colors.deepOrange.shade600],
-        prompt: 'Push day for students; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
+        prompt: 'Push day; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
         assetOverlay: 'assets/chest-96.png', emojis: '➡️🏋️',
       ),
       _RecoData(
         title: '5x5 Basics', subtitle: 'Strength first',
         gradient: [Colors.grey.shade700, Colors.blueGrey.shade500],
-        prompt: 'Science-based 5x5 strength routine for students; 3 days/week full body; linear progression; safety cues; optional accessories.',
+        prompt: 'Science-based 5x5 strength routine ; 3 days/week full body; linear progression; safety cues; optional accessories.',
         assetOverlay: 'assets/exercise_images/app_barbell.webp', emojis: '📊🏗️',
       ),
       _RecoData(
         title: 'Bro Arm Blast', subtitle: 'Biceps + triceps',
         gradient: [Colors.pinkAccent.shade200, Colors.deepPurple.shade400],
-        prompt: 'High-pump arm workout for students; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
+        prompt: 'High-pump arm workout ; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
         assetOverlay: 'assets/muscle-96.png', emojis: '💥💪',
       ),
     ];
@@ -506,6 +672,50 @@ class _RecommendPageState extends State<RecommendPage> {
     return picks;
   }
 */
+}
+
+// Simple full-screen generating overlay
+class _GeneratingOverlay extends StatelessWidget {
+  const _GeneratingOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return WillPopScope(
+      onWillPop: () async => false,
+      child: Container(
+        color: Colors.black54,
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surface.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: CircularProgressIndicator(),
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Generating your routine... ',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _RecoData {
@@ -532,7 +742,7 @@ List<_RecoData> _featuredItems() {
       subtitle: 'Evidence > ego',
       gradient: [Colors.deepPurple.shade600, Colors.teal.shade400],
       prompt:
-          'Science-based hypertrophy routine for students; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
+          'Science-based hypertrophy routine; 60 minutes; full body emphasis with compounds (squat, hinge, push, pull); RIR 1-2; progressive overload; warmup; finishers optional.',
       assetOverlay: 'assets/exercise_images/app_bodybuilding.webp',
       emojis: '',
     ),
@@ -550,7 +760,7 @@ List<_RecoData> _featuredItems() {
       subtitle: 'Pump + fun',
       gradient: [Colors.pink.shade400, Colors.redAccent.shade200],
       prompt:
-          'Classic bro chest workout for students; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
+          'Classic bro chest workout; 40-50 minutes; high-volume chest focus with triceps finishers; supersets; emphasis on pump; include incline, flat, fly, dips.',
       assetOverlay: 'assets/chest-96.png',
       emojis: '',
     ),
@@ -573,7 +783,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'No equipment',
       gradient: [Colors.orange.shade400, Colors.amber.shade600],
       prompt:
-          '15-minute dorm-friendly bodyweight circuit for students; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
+          '15-minute dorm-friendly bodyweight circuit; no equipment; low noise; minimal space; EMOM style; mobility finisher.',
       assetOverlay: 'assets/exercise_images/app_abdominal.webp',
       emojis: '',
     ),
@@ -582,7 +792,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'Power hour',
       gradient: [Colors.purple.shade400, Colors.deepPurple.shade700],
       prompt:
-          'Glutes & legs strength + pump for students; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
+          'Glutes & legs strength + pump ; 40 minutes; compounds + burnouts; progressive sets; RDLs, split squats, hip thrusts, leg press or step-ups.',
       assetOverlay: 'assets/leg-96.png',
       emojis: '',
     ),
@@ -591,7 +801,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'Back + biceps',
       gradient: [Colors.blue.shade400, Colors.indigo.shade700],
       prompt:
-          'Pull day for students; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
+          'Pull day; 45 minutes; back and biceps; vertical + horizontal pulls; finish with grip and rear delts; mix of strength and volume.',
       assetOverlay: 'assets/back-96.png',
       emojis: '',
     ),
@@ -600,7 +810,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'Chest + shoulders',
       gradient: [Colors.red.shade400, Colors.deepOrange.shade600],
       prompt:
-          'Push day for students; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
+          'Push day; 45 minutes; chest, shoulders, triceps; compounds + accessories; tempo work; safe for after-class sessions.',
       assetOverlay: 'assets/chest-96.png',
       emojis: '',
     ),
@@ -609,7 +819,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'Strength first',
       gradient: [Colors.grey.shade700, Colors.blueGrey.shade500],
       prompt:
-          'Science-based 5x5 strength routine for students; 3 days/week full body; linear progression; safety cues; optional accessories.',
+          'Science-based 5x5 strength routine; 3 days/week full body; linear progression; safety cues; optional accessories.',
       assetOverlay: 'assets/exercise_images/app_barbell.webp',
       emojis: '',
     ),
@@ -618,7 +828,7 @@ List<_RecoData> _quickPickItems() {
       subtitle: 'Biceps + triceps',
       gradient: [Colors.pinkAccent.shade200, Colors.deepPurple.shade400],
       prompt:
-          'High-pump arm workout for students; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
+          'High-pump arm workout; 30-40 minutes; alternating supersets biceps/triceps; finish with forearms; low joint stress.',
       assetOverlay: 'assets/muscle-96.png',
       emojis: '',
     ),

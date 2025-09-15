@@ -73,6 +73,18 @@ class WorkoutSetTargetWeightChanged extends WorkoutSessionEvent {
   });
 }
 
+class WorkoutSetTargetRepsChanged extends WorkoutSessionEvent {
+  final int exerciseIndex;
+  final int setIndex;
+  final int targetReps;
+
+  WorkoutSetTargetRepsChanged({
+    required this.exerciseIndex,
+    required this.setIndex,
+    required this.targetReps,
+  });
+}
+
 /// Event triggered to finish the current workout session attempt.
 class WorkoutSessionFinishAttempt extends WorkoutSessionEvent {}
 
@@ -176,6 +188,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     on<_ExerciseTimerTicked>(_onExerciseTimerTicked);
     on<_TimedExerciseEnded>(_onTimedExerciseEnded);
     on<WorkoutSetTargetWeightChanged>(_onWorkoutSetTargetWeightChanged);
+    on<WorkoutSetTargetRepsChanged>(_onWorkoutSetTargetRepsChanged);
     on<WorkoutSetActualWeightChanged>(_onWorkoutSetActualWeightChanged);
     on<WorkoutSessionStartOrResume>(_onWorkoutSessionStartOrResume);
   }
@@ -602,6 +615,40 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
         _startSessionTimer();
       }
       _safeAutosave(updatedSession);
+    }
+  }
+
+  void _onWorkoutSetTargetRepsChanged(WorkoutSetTargetRepsChanged event, Emitter<WorkoutSessionState> emit) {
+    if (state.session == null || state.isFinished || state.isLoading) {
+      debugPrint("[WorkoutSessionBloc] Ignoring SetTargetRepsChanged: Invalid state.");
+      return;
+    }
+    debugPrint("[WorkoutSessionBloc] Event: WorkoutSetTargetRepsChanged - ExIdx: ${event.exerciseIndex}, SetIdx: ${event.setIndex}, Reps: ${event.targetReps}");
+    try {
+      final currentSession = state.session!;
+      final updatedExercises = List<ExercisePerformance>.from(
+        currentSession.exercises.map((exPerf) => exPerf.copyWith(
+          sets: List<SetPerformance>.from(exPerf.sets),
+        )),
+      );
+
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) throw RangeError("Invalid exercise index: ${event.exerciseIndex}");
+      final targetExercise = updatedExercises[event.exerciseIndex];
+      if (event.setIndex < 0 || event.setIndex >= targetExercise.sets.length) throw RangeError("Invalid set index: ${event.setIndex}");
+
+      final originalSet = targetExercise.sets[event.setIndex];
+      final updatedSet = originalSet.copyWith(
+        targetReps: event.targetReps,
+      );
+      targetExercise.sets[event.setIndex] = updatedSet;
+
+      final updatedSession = currentSession.copyWith(exercises: updatedExercises);
+      emit(state.copyWith(session: updatedSession, errorMessage: null));
+      _safeAutosave(updatedSession);
+      debugPrint("[WorkoutSessionBloc] Session state updated with changed target reps.");
+    } catch (e, s) {
+      debugPrint("[WorkoutSessionBloc] Error updating target reps: $e\n$s");
+      emit(state.copyWith(errorMessage: "Failed to update target reps: $e"));
     }
   }
 
