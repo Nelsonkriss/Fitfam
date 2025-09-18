@@ -1,0 +1,215 @@
+*** Begin Patch
+*** Update File: lib/ui/routine_step_page_v2.dart
+@@
+-    return Stack(
+-      children: [
+-        // Background gradient
+-        Container(
+-          decoration: const BoxDecoration(
+-            gradient: LinearGradient(
+-              begin: Alignment.topCenter,
+-              end: Alignment.bottomCenter,
+-              colors: [Colors.black, Color(0xFF1a1a1a)],
+-            ),
+-          ),
+-        ),
+-        // Exercise animation - positioned in center with better visibility
+-        Positioned(
+-          top: 100,
+-          left: 0,
+-          right: 0,
+-          child: ExerciseAnimationWidget(
+-            exerciseName: exercise.name,
+-            width: double.infinity,
+-            height: 400,
+-            autoPlay: !_isInRestPeriod && !_isInPreparation,
+-            showControls: false,
+-            showDescription: false,
+-          ),
+-        ),
+-        SafeArea(
+-          child: Column(
+-            children: [
+-              _buildHeader(),
+-              _buildSafetyBanner(),
+-              Expanded(
+-                child: SingleChildScrollView(
+-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+-                  child: Column(
+-                    mainAxisAlignment: MainAxisAlignment.start,
+-                    crossAxisAlignment: CrossAxisAlignment.center,
+-                    children: [
+-                      const SizedBox(height: 8),
+-                      _buildExerciseInfo(exercise, setNum, totalSets),
+-                      const SizedBox(height: 8),
+-                      _buildTypeAndRestChips(exercise, totalSets),
+-                      const SizedBox(height: 8),
+-                      _buildInlineCoaching(exercise, setNum, totalSets),
+-                      const SizedBox(height: 12),
+-                      _buildInputControls(weightController, repsController, exercise),
+-                      const SizedBox(height: 12),
+-                      _buildActionButtons(),
+-                      const SizedBox(height: 8),
+-                      _buildNextExerciseInfo(),
+-                      const SizedBox(height: 8),
+-                      _buildProgressBar(),
+-                      const SizedBox(height: 20),
+-                    ],
+-                  ),
+-                ),
+-              ),
+-            ],
+-          ),
+-        ),
+-        if (_isInRestPeriod) _buildRestPeriodOverlay(),
+-        if (_isTimedExerciseActive) _timedOverlay(),
+-      ],
+-    );
++    return Stack(children: [
++      Container(
++        decoration: const BoxDecoration(
++          gradient: LinearGradient(
++            begin: Alignment.topCenter,
++            end: Alignment.bottomCenter,
++            colors: [Color(0xFF0f1115), Color(0xFF121418)],
++          ),
++        ),
++      ),
++      SafeArea(
++        child: Column(children: [
++          _buildHeader(),
++          _buildSafetyBanner(),
++          Expanded(
++            child: SingleChildScrollView(
++              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
++              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
++                _buildStepCard(exercise, setNum, totalSets, weightController, repsController),
++                const SizedBox(height: 12),
++                _buildProgressBar(),
++                const SizedBox(height: 20),
++              ]),
++            ),
++          ),
++        ]),
++      ),
++      if (_isInRestPeriod) _buildRestPeriodOverlay(),
++      if (_isTimedExerciseActive) _timedOverlay(),
++    ]);
+   }
++
++  Widget _buildStepCard(
++    Exercise exercise,
++    int setNum,
++    int totalSets,
++    NumberTickerController weightController,
++    NumberTickerController repsController,
++  ) {
++    return Card(
++      color: const Color(0xFF171a21).withOpacity(0.9),
++      elevation: 6,
++      shape: RoundedRectangleBorder(
++        borderRadius: BorderRadius.circular(16),
++        side: const BorderSide(color: Color(0x22FFFFFF)),
++      ),
++      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
++        ClipRRect(
++          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
++          child: AspectRatio(
++            aspectRatio: 16 / 9,
++            child: Stack(children: [
++              Positioned.fill(
++                child: ExerciseAnimationWidget(
++                  exerciseName: exercise.name,
++                  width: double.infinity,
++                  height: double.infinity,
++                  autoPlay: !_isInRestPeriod && !_isInPreparation,
++                  showControls: false,
++                  showDescription: false,
++                ),
++              ),
++              Positioned(
++                left: 12,
++                top: 12,
++                child: Container(
++                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
++                  decoration: BoxDecoration(
++                    color: Colors.black54,
++                    borderRadius: BorderRadius.circular(999),
++                    border: Border.all(color: Colors.white10),
++                  ),
++                  child: Text('Set ' + setNum.toString() + ' of ' + totalSets.toString(),
++                      style: const TextStyle(color: Colors.white, fontSize: 12)),
++                ),
++              ),
++            ]),
++          ),
++        ),
++        Padding(
++          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
++          child: Row(children: [
++            Expanded(
++              child: Text(exercise.name,
++                  maxLines: 1,
++                  overflow: TextOverflow.ellipsis,
++                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
++            ),
++            Wrap(spacing: 6, children: [
++              _pill(exercise.sets.toString() + ' × ' + repsController.number.toInt().toString()),
++              _pill(_isTimed(exercise) ? 'Timed' : (_isBodyweight(exercise) ? 'Bodyweight' : 'Weighted')),
++            ]),
++          ]),
++        ),
++        Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 16),
++          child: _buildInlineCoaching(exercise, setNum, totalSets),
++        ),
++        const SizedBox(height: 8),
++        Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 16),
++          child: _buildTypeAndRestChips(exercise, totalSets),
++        ),
++        const SizedBox(height: 8),
++        Padding(
++          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
++          child: Column(children: [
++            Row(children: [
++              Expanded(child: _metaBox('Sets', exercise.sets.toString())),
++              const SizedBox(width: 10),
++              Expanded(child: _metaBox(_isTimed(exercise) ? 'Seconds' : 'Reps', repsController.number.toInt().toString())),
++              const SizedBox(width: 10),
++              Expanded(child: _metaBox('Rest',
++                  ExerciseCoachingService.getCoaching(
++                    exerciseName: exercise.name,
++                    setIndex: (setNum - 1).clamp(0, totalSets - 1),
++                    totalSets: totalSets,
++                    primaryTarget: TargetedBodyPart.FullBody,
++                    lowEnergy: false,
++                    sore: false,
++                  ).suggestedRestSeconds.toString() + 's')),
++            ]),
++            const SizedBox(height: 12),
++            _buildInputControls(weightController, repsController, exercise),
++            const SizedBox(height: 6),
++            Align(alignment: Alignment.centerLeft, child: _buildNextExerciseInfo()),
++          ]),
++        ),
++      ]),
++    );
++  }
++
++  Widget _metaBox(String k, String v) {
++    return Container(
++      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
++      decoration: BoxDecoration(
++        color: Colors.white.withOpacity(0.03),
++        borderRadius: BorderRadius.circular(12),
++        border: Border.all(color: Colors.white10),
++      ),
++      child: Row(children: [
++        Text(k, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
++        const Spacer(),
++        Text(v, style: const TextStyle(color: Colors.white70)),
++      ]),
++    );
++  }
+*** End Patch

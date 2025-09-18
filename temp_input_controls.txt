@@ -1,0 +1,107 @@
+  Widget _buildInputControls(
+      NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
+    final isTimed = _isTimed(exercise);
+    final isBodyweight = _isBodyweight(exercise);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          if (!isTimed && !isBodyweight)
+            Expanded(
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Flexible(
+                        child: Text(
+                          'Weight (kg)',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () => _applyAIRecommendedWeight(exercise, weightController),
+                        icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                        tooltip: 'AI Suggests Weight',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildTickerRow(weightController, semanticsLabel: 'Weight'),
+                ],
+              ),
+            ),
+          if (!isTimed && !isBodyweight) const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  isTimed ? 'Seconds' : 'Reps',
+                  style: const TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+                FutureBuilder<int>(
+                  future: _getAiRepsOrSecondsSuggestion(exercise, isTimed: isTimed),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const SizedBox(height: 0);
+                    final v = snap.data!;
+                    final label = isTimed ? 'Apply AI: ${v}s' : 'Apply AI: ${v} reps';
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6.0),
+                      child: _pillButton(label, onTap: () { repsController.number = v.toDouble(); }),
+                    );
+                  },
+                ),
+                if (isTimed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Wrap(
+                      spacing: 8,
+                      children: [20, 30, 45, 60].map((s) => _pillButton('$s s', onTap: () { repsController.number = s.toDouble(); })).toList(),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                _buildTickerRow(repsController, semanticsLabel: isTimed ? 'Seconds' : 'Reps'),
+                if (isBodyweight)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: Text(
+                      'Bodyweight set — focus on quality reps',
+                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                    ),
+                  ),
+                if (isTimed || isBodyweight)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6.0),
+                    child: IconButton(
+                      onPressed: () => _applyAIRecommendedRepsOrSeconds(exercise, repsController, isTimed: isTimed),
+                      icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                      tooltip: isTimed ? 'AI Suggests Seconds' : 'AI Suggests Reps',
+                    ),
+                  ),
+                if (isTimed)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: ElevatedButton.icon(
+                      onPressed: () => _startTimed(exercise, repsController.number.toInt()),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.tealAccent.shade400,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                      icon: const Icon(Icons.timer),
+                      label: const Text('Start Timer'),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
