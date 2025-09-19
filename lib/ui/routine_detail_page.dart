@@ -7,6 +7,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 // import 'package:flutter/rendering.dart'; // Not directly used here
 import 'package:provider/provider.dart'; // Import Provider
 import 'package:share_plus/share_plus.dart';
@@ -118,6 +119,7 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
 
         // Routine data is available, build the main UI
         return Scaffold(
+          backgroundColor: AppColors.background,
           key: _scaffoldKey,
           appBar: AppBar(
             centerTitle: true,
@@ -142,10 +144,11 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
                   onPressed: () => _startRoutine(context, currentRoutine),
                   label: const Text('Start Workout'),
                   icon: const Icon(Icons.play_arrow), // Or Icons.fitness_center
+                  backgroundColor: AppColors.accent,
                 )
               : null,
         );
-      },
+     },
     );
   }
 

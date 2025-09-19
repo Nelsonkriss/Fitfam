@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../design_system.dart';
 import 'package:provider/provider.dart'; // <--- Import Provider package if using it
 // OR import 'package:flutter_bloc/flutter_bloc.dart'; // If using BlocProvider
 
@@ -28,6 +29,12 @@ class RoutineCard extends StatelessWidget {
     final textTheme = theme.textTheme;
 
     return Card(
+      color: AppColors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Colors.white10),
+      ),
+      elevation: 0,
       child: InkWell(
         onTap: () {
           final int? currentRoutineId = routine.id;
@@ -77,7 +84,7 @@ class RoutineCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
                   child: Row(
                     children: [
-                      Icon(Icons.fitness_center, color: colorScheme.primary),
+                      const Icon(Icons.fitness_center, color: AppColors.accent),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -89,7 +96,7 @@ class RoutineCard extends StatelessWidget {
                             ),
                             Text(
                               '${part.exercises.length} exercises',
-                              style: textTheme.bodyMedium?.copyWith(color: colorScheme.onSurface.withOpacity(0.7)),
+                              style: textTheme.bodyMedium?.copyWith(color: Colors.white70),
                             ),
                           ],
                         ),

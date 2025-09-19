@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 
 class LoadingScreen extends StatefulWidget {
   const LoadingScreen({super.key});
@@ -36,7 +37,7 @@ class _LoadingScreenState extends State<LoadingScreen>
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       home: Scaffold(
-        backgroundColor: const Color(0xFF121212),
+        backgroundColor: AppColors.background,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

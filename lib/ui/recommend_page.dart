@@ -1,5 +1,6 @@
 ﻿import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_planner/bloc/routines_bloc.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
@@ -203,6 +204,7 @@ class _RecommendPageState extends State<RecommendPage> {
     final routinesBlocInstance = context.watch<RoutinesBloc>();
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text("AI Routine Coach"),
         elevation: _showAppBarShadow ? 4.0 : 0.0,
@@ -270,8 +272,8 @@ class _RecommendPageState extends State<RecommendPage> {
                       onPressed:
                           _apiKeyMissing ? null : _generateAndSaveAiRoutine,
                       style: ElevatedButton.styleFrom(
-                        // Theme will provide base, this makes it full width
                         minimumSize: const Size(double.infinity, 48),
+                        backgroundColor: AppColors.accent,
                       ),
                     ),
               ],

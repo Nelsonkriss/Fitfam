@@ -1,381 +1,3 @@
-﻿import 'dart:async';
-import 'dart:math';
-
-import 'package:confetti/confetti.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import 'package:workout_planner/bloc/routines_bloc.dart';
-import 'package:workout_planner/bloc/workout_session_bloc.dart';
-import 'package:workout_planner/models/workout_session.dart';
-import 'package:workout_planner/models/exercise_performance.dart';
-import 'package:workout_planner/models/set_performance.dart';
-import 'package:workout_planner/utils/android_animations.dart';
-import 'package:workout_planner/ui/components/exercise_animation_widget.dart';
-import 'package:workout_planner/services/exercise_coaching_service.dart';
-import 'package:workout_planner/models/targeted_body_part.dart';
-import 'package:workout_planner/services/ai_weight_recommendation_service.dart';
-import 'package:workout_planner/resource/shared_prefs_provider.dart';
-import 'package:workout_planner/models/user_profile.dart';
-import 'package:workout_planner/services/ai_rep_time_recommendation_service.dart';
-
-import 'components/number_ticker.dart';
-import 'components/value_slider.dart';
-import 'components/progress_ring.dart';
-import 'design_system.dart';
-
-class RoutineStepPageV2 extends StatefulWidget {
-  final Routine originalRoutine;
-  final WorkoutSession? resumeSession;
-  final VoidCallback? celebrateCallback;
-  final VoidCallback? onBackPressed;
-
-  const RoutineStepPageV2({
-    required Routine routine,
-    this.resumeSession,
-    this.celebrateCallback,
-    this.onBackPressed,
-    super.key,
-  }) : originalRoutine = routine;
-
-  @override
-  State<RoutineStepPageV2> createState() => _RoutineStepPageV2State();
-}
-
-class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProviderStateMixin {
-  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final ConfettiController _confettiController = ConfettiController(duration: const Duration(seconds: 5));
-
-  late Routine _currentWorkingRoutine;
-  late List<Exercise> _currentExercises;
-  bool _finished = false;
-
-  final List<int> _exerciseIndexesInStepOrder = [];
-  final List<int> _partIndexesInStepOrder = [];
-  final List<int> _setsTotalInStepOrder = [];
-  final List<int> _setNumberOfStep = [];
-  int _currentStepIndex = 0;
-
-  WorkoutSession? _activeWorkoutSession;
-
-  Map<int, NumberTickerController> _weightTickerControllers = {};
-  Map<int, NumberTickerController> _repsTickerControllers = {};
-
-  late AnimationController _setTransitionController;
-  late AnimationController _exerciseTransitionController;
-  late AnimationController _restPeriodController;
-  late AnimationController _preparationController;
-  late AnimationController _completionController;
-
-  bool _isInRestPeriod = false;
-  bool _isInPreparation = false;
-  bool _showingPersonalRecord = false;
-  bool _showingExerciseTransition = false;
-  int _restTimeRemaining = 0;
-  int _restTimeTotal = 0;
-  int _preparationTimeRemaining = 3;
-  Timer? _restTimer;
-  Timer? _preparationTimer;
-  Timer? _exerciseTimer;
-  int _timedExerciseRemainingSeconds = 0;
-  int _timedExerciseTotalSeconds = 0;
-  bool _isTimedExerciseActive = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _setTransitionController = AnimationController(duration: AndroidAnimations.m3LongDuration, vsync: this);
-    _exerciseTransitionController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _restPeriodController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _preparationController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _completionController = AnimationController(duration: AndroidAnimations.m3ExtraLongDuration, vsync: this);
-
-    // Use resume session's routine if provided
-    final baseRoutine = widget.resumeSession?.routine ?? widget.originalRoutine;
-    _currentWorkingRoutine = baseRoutine.copyWith(
-      parts: widget.originalRoutine.parts.map((originalPart) {
-        return originalPart.copyWith(
-          exercises: originalPart.exercises.map((originalExercise) {
-            return originalExercise.copyWith();
-          }).toList(),
-        );
-      }).toList(),
-    );
-
-    _rebuildStateFromRoutine();
-
-    if (widget.resumeSession != null) {
-      _activeWorkoutSession = widget.resumeSession;
-      // Compute how many sets are already completed to position the cursor
-      int completedSets = 0;
-      try {
-        for (final ex in widget.resumeSession!.exercises) {
-          for (final set in ex.sets) {
-            if (set.isCompleted) completedSets++;
-          }
-        }
-      } catch (_) {}
-      if (_exerciseIndexesInStepOrder.isNotEmpty) {
-        _currentStepIndex = completedSets.clamp(0, _exerciseIndexesInStepOrder.length - 1);
-      }
-      debugPrint("RoutineStepPageV2: Resuming session ${_activeWorkoutSession!.id}, completed sets=$completedSets, stepIndex=$_currentStepIndex");
-    } else {
-      _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
-      debugPrint("RoutineStepPageV2: Starting new session ${_activeWorkoutSession?.id}");
-    }
-
-    _startSetPreparation();
-  }
-
-  void _rebuildStateFromRoutine() {
-    _currentExercises = _currentWorkingRoutine.parts.expand((p) => p.exercises).toList();
-    _exerciseIndexesInStepOrder.clear();
-    _partIndexesInStepOrder.clear();
-    _setsTotalInStepOrder.clear();
-    _setNumberOfStep.clear();
-    _disposeTickerControllers();
-    _weightTickerControllers = {};
-    _repsTickerControllers = {};
-
-    int exerciseCounter = 0;
-
-    for (int partIdx = 0; partIdx < _currentWorkingRoutine.parts.length; partIdx++) {
-      final part = _currentWorkingRoutine.parts[partIdx];
-      if (part.exercises.isEmpty) continue;
-
-      int exercisesInThisSetGroup = 1;
-      switch (part.setType) {
-        case SetType.Super:
-          exercisesInThisSetGroup = 2;
-          break;
-        case SetType.Tri:
-          exercisesInThisSetGroup = 3;
-          break;
-        case SetType.Giant:
-          exercisesInThisSetGroup = 4;
-          break;
-        case SetType.Regular:
-        case SetType.Drop:
-        default:
-          exercisesInThisSetGroup = part.exercises.length;
-          break;
-      }
-
-      exercisesInThisSetGroup = min(exercisesInThisSetGroup, part.exercises.length);
-      if (exercisesInThisSetGroup == 0) continue;
-
-      for (int i = 0; i < exercisesInThisSetGroup; i++) {
-        final currentExerciseFlatIndex = exerciseCounter + i;
-        if (currentExerciseFlatIndex >= _currentExercises.length) {
-          debugPrint("Warning: Exercise index ($currentExerciseFlatIndex) out of bounds during step generation.");
-          continue;
-        }
-
-        final exercise = _currentExercises[currentExerciseFlatIndex];
-        final totalSets = exercise.sets;
-        if (totalSets <= 0) continue;
-
-        for (int setNum = 1; setNum <= totalSets; setNum++) {
-          _exerciseIndexesInStepOrder.add(currentExerciseFlatIndex);
-          _partIndexesInStepOrder.add(partIdx);
-          _setsTotalInStepOrder.add(totalSets);
-          _setNumberOfStep.add(setNum);
-
-          if (!_weightTickerControllers.containsKey(currentExerciseFlatIndex)) {
-            final exerciseTemplate = _currentExercises[currentExerciseFlatIndex];
-            _weightTickerControllers[currentExerciseFlatIndex] = NumberTickerController(
-                initial: exerciseTemplate.lastUsedWeight ?? exerciseTemplate.weight, step: 0.5, minValue: 0);
-            
-            // Handle reps that might be ranges like "6-8" or single numbers
-            double initialReps = 8.0; // Default fallback
-            try {
-              final repsString = exerciseTemplate.reps.trim();
-              if (repsString.contains('-')) {
-                // Handle range like "6-8", take the first number
-                final parts = repsString.split('-');
-                if (parts.isNotEmpty) {
-                  initialReps = double.parse(parts[0].trim());
-                }
-              } else {
-                // Handle single number
-                initialReps = double.parse(repsString);
-              }
-            } catch (e) {
-              debugPrint("Error parsing reps '${exerciseTemplate.reps}': $e. Using default value.");
-              initialReps = 8.0;
-            }
-            
-            _repsTickerControllers[currentExerciseFlatIndex] =
-                NumberTickerController(initial: initialReps, step: 1, minValue: 0);
-          }
-        }
-      }
-      exerciseCounter += exercisesInThisSetGroup;
-    }
-    debugPrint("Generated ${_exerciseIndexesInStepOrder.length} total steps for the workout.");
-  }
-
-  @override
-  void dispose() {
-    _confettiController.dispose();
-    _disposeTickerControllers();
-    _setTransitionController.dispose();
-    _exerciseTransitionController.dispose();
-    _restPeriodController.dispose();
-    _preparationController.dispose();
-    _completionController.dispose();
-    _restTimer?.cancel();
-    _preparationTimer?.cancel();
-    _exerciseTimer?.cancel();
-    super.dispose();
-  }
-
-  void _disposeTickerControllers() {
-    for (var controller in _weightTickerControllers.values) {
-      try {
-        controller.dispose();
-      } catch (e) {
-        debugPrint("Error disposing NumberTickerController: $e");
-      }
-    }
-    for (var controller in _repsTickerControllers.values) {
-      try {
-        controller.dispose();
-      } catch (e) {
-        debugPrint("Error disposing NumberTickerController: $e");
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
-      child: Scaffold(
-        key: _scaffoldKey,
-        backgroundColor: Colors.black,
-        body: _finished ? _buildFinishedScreen() : _buildWorkoutInterface(),
-        // Simplify primary flow: avoid duplicate Prev/Next dock
-        bottomNavigationBar: null,
-      ),
-  );
-}
-
-  Widget _buildFinishedScreen() {
-    final theme = Theme.of(context);
-    // Clean finished screen with corrected copy
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.surface, AppColors.background],
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              maxBlastForce: 10,
-              minBlastForce: 5,
-              emissionFrequency: 0.04,
-              numberOfParticles: 15,
-              gravity: 0.1,
-            ),
-          ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const ProgressRing(size: 220, progress: 1.0, centerText: 'Done', subtitle: 'Great work'),
-              const SizedBox(height: 16),
-              Text(
-                'Workout Complete!',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white),
-              ),
-              const SizedBox(height: 20),
-              const Icon(Icons.emoji_events_outlined, size: 80, color: Colors.white70),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24)),
-                child: const Text('Finish'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-    /*
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              maxBlastForce: 10,
-              minBlastForce: 5,
-              emissionFrequency: 0.04,
-              numberOfParticles: 15,
-              gravity: 0.1,
-              colors: [
-                theme.colorScheme.secondary,
-                theme.colorScheme.primaryContainer,
-                theme.colorScheme.tertiary,
-                Colors.lightGreenAccent
-              ],
-            ),
-          ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Workout Complete! ðŸŽ‰',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.onPrimary),
-              ),
-              const SizedBox(height: 20),
-              Icon(Icons.emoji_events_outlined, size: 80, color: theme.colorScheme.secondary),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                },
-                child: const Text('DONE'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildWorkoutInterface() {
     if (_exerciseIndexesInStepOrder.isEmpty) {
       return const Center(
@@ -431,16 +53,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           ),
         ),
         SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              _buildSliverAppBar(),
-              SliverToBoxAdapter(
-                child: Padding(
+          child: Column(
+            children: [
+              _buildHeader(),
+              _buildSafetyBanner(),
+              Expanded(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildSafetyBanner(),
                       const SizedBox(height: 8),
                       _buildExerciseInfo(exercise, setNum, totalSets),
                       const SizedBox(height: 8),
@@ -467,7 +90,6 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         if (_isTimedExerciseActive) _timedOverlay(),
       ],
     );
-    */
   }
 
   // Newer, corrected version to avoid encoding glitches and tighten UX
@@ -542,7 +164,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 if (isBodyweight)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
-                    child: Text('Bodyweight set — focus on quality reps', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    child: Text('Bodyweight set � focus on quality reps', style: const TextStyle(color: Colors.white54, fontSize: 12)),
                   ),
                 if (isTimed)
                   Padding(
@@ -696,64 +318,6 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  SliverAppBar _buildSliverAppBar() {
-    final title = _activeWorkoutSession?.routine.routineName ?? widget.originalRoutine.routineName;
-    final stepText = 'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
-    final total = _exerciseIndexesInStepOrder.length;
-    final current = (_currentStepIndex + 1).clamp(0, total);
-    final headerProgress = total == 0 ? 0.0 : current / total;
-
-    return SliverAppBar(
-      pinned: true,
-      floating: false,
-      snap: false,
-      backgroundColor: AppColors.surface,
-      foregroundColor: AppColors.onSurface,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => widget.onBackPressed != null ? widget.onBackPressed!() : Navigator.pop(context),
-      ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 12.0),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ),
-        ),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(32),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(stepText, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 6,
-                  value: headerProgress,
-                  backgroundColor: Colors.white12,
-                  valueColor: const AlwaysStoppedAnimation(AppColors.accent),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -938,7 +502,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Text(
-                      'Bodyweight set â€” focus on quality reps',
+                      'Bodyweight set — focus on quality reps',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ),

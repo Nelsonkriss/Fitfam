@@ -3,6 +3,7 @@ import 'dart:async'; // For Future
 
 import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 import 'package:percent_indicator/circular_percent_indicator.dart'; // For weekly progress
 import 'package:fl_chart/fl_chart.dart'; // Trend chart
 import 'package:intl/intl.dart';
@@ -102,6 +103,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     if (kDebugMode) print("[BUILD] StatisticsPage");
 
     return Scaffold(
+      backgroundColor: AppColors.background,
       // Use NestedScrollView for seamless scrolling between SliverAppBar, Grid, and other content
       body: NestedScrollView(
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
@@ -112,9 +114,9 @@ class _StatisticsPageState extends State<StatisticsPage> {
               floating: true,   // Reappears on scroll up
               snap: true,       // Snaps fully in/out
               forceElevated: innerBoxIsScrolled, // Shows shadow when content scrolls under
-              backgroundColor: Theme.of(context).colorScheme.surface, // Use surface color
-              foregroundColor: Theme.of(context).colorScheme.onSurface, // Text/Icon color
-              surfaceTintColor: Theme.of(context).colorScheme.surfaceTint, // Material 3 tint
+              backgroundColor: AppColors.surface,
+              foregroundColor: AppColors.onSurface,
+              surfaceTintColor: AppColors.surface,
             ),
           ];
         },
@@ -209,10 +211,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
+          gradient: const LinearGradient(
             colors: [
-              Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
-              Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.22),
+              Color(0x2921E9B6),
+              Color(0x337C5CFF),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -227,7 +229,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
                 children: [
                   Text('Your Progress', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  Text(since, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  Text(since, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white70)),
                   const SizedBox(height: 12),
                   Row(children: [
                     _chip(

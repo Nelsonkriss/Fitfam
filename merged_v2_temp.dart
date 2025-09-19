@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math';
 
 import 'package:confetti/confetti.dart';
@@ -264,10 +264,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       ),
   );
 }
-
   Widget _buildFinishedScreen() {
-    final theme = Theme.of(context);
-    // Clean finished screen with corrected copy
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -291,92 +288,27 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               gravity: 0.1,
             ),
           ),
-          Column(
+          const Column(
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const ProgressRing(size: 220, progress: 1.0, centerText: 'Done', subtitle: 'Great work'),
-              const SizedBox(height: 16),
-              Text(
-                'Workout Complete!',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white),
-              ),
-              const SizedBox(height: 20),
-              const Icon(Icons.emoji_events_outlined, size: 80, color: Colors.white70),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24)),
-                child: const Text('Finish'),
-              ),
+              ProgressRing(size: 220, progress: 1.0, centerText: 'Done', subtitle: 'Great work'),
+              SizedBox(height: 24),
             ],
           ),
-        ],
-      ),
-    );
-    /*
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: _confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              maxBlastForce: 10,
-              minBlastForce: 5,
-              emissionFrequency: 0.04,
-              numberOfParticles: 15,
-              gravity: 0.1,
-              colors: [
-                theme.colorScheme.secondary,
-                theme.colorScheme.primaryContainer,
-                theme.colorScheme.tertiary,
-                Colors.lightGreenAccent
-              ],
+          Positioned(
+            bottom: 40,
+            left: 16,
+            right: 16,
+            child: ElevatedButton(
+              onPressed: null,
+              child: SizedBox.shrink(),
             ),
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Workout Complete! ðŸŽ‰',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.headlineMedium?.copyWith(color: theme.colorScheme.onPrimary),
-              ),
-              const SizedBox(height: 20),
-              Icon(Icons.emoji_events_outlined, size: 80, color: theme.colorScheme.secondary),
-              const SizedBox(height: 40),
-              ElevatedButton(
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  }
-                },
-                child: const Text('DONE'),
-              ),
-            ],
-          ),
         ],
       ),
     );
-  }
-
-  Widget _buildWorkoutInterface() {
+  }  Widget _buildWorkoutInterface() {
     if (_exerciseIndexesInStepOrder.isEmpty) {
       return const Center(
         child: Text(
@@ -431,16 +363,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           ),
         ),
         SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              _buildSliverAppBar(),
-              SliverToBoxAdapter(
-                child: Padding(
+          child: Column(
+            children: [
+              _buildHeader(),
+              _buildSafetyBanner(),
+              Expanded(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _buildSafetyBanner(),
                       const SizedBox(height: 8),
                       _buildExerciseInfo(exercise, setNum, totalSets),
                       const SizedBox(height: 8),
@@ -467,7 +400,6 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         if (_isTimedExerciseActive) _timedOverlay(),
       ],
     );
-    */
   }
 
   // Newer, corrected version to avoid encoding glitches and tighten UX
@@ -542,7 +474,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 if (isBodyweight)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
-                    child: Text('Bodyweight set — focus on quality reps', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    child: Text('Bodyweight set � focus on quality reps', style: const TextStyle(color: Colors.white54, fontSize: 12)),
                   ),
                 if (isTimed)
                   Padding(
@@ -696,64 +628,6 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  SliverAppBar _buildSliverAppBar() {
-    final title = _activeWorkoutSession?.routine.routineName ?? widget.originalRoutine.routineName;
-    final stepText = 'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
-    final total = _exerciseIndexesInStepOrder.length;
-    final current = (_currentStepIndex + 1).clamp(0, total);
-    final headerProgress = total == 0 ? 0.0 : current / total;
-
-    return SliverAppBar(
-      pinned: true,
-      floating: false,
-      snap: false,
-      backgroundColor: AppColors.surface,
-      foregroundColor: AppColors.onSurface,
-      elevation: 0,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => widget.onBackPressed != null ? widget.onBackPressed!() : Navigator.pop(context),
-      ),
-      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 12.0),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          ),
-        ),
-      ],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(32),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(stepText, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              const SizedBox(height: 6),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  minHeight: 6,
-                  value: headerProgress,
-                  backgroundColor: Colors.white12,
-                  valueColor: const AlwaysStoppedAnimation(AppColors.accent),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -938,7 +812,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Text(
-                      'Bodyweight set â€” focus on quality reps',
+                      'Bodyweight set — focus on quality reps',
                       style: TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                   ),
@@ -1542,6 +1416,7 @@ bool _isTimed(Exercise ex) {
   const timed = ['plank', 'hold', 'wall sit', 'hollow hold', 'mountain climber', 'jumping jack'];
   return timed.any((k) => n.contains(k));
 }
+
 
 
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'design_system.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_planner/models/user_profile.dart';
@@ -117,6 +118,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -178,7 +180,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           Icon(
             Icons.fitness_center,
             size: 120,
-            color: Theme.of(context).colorScheme.primary,
+            color: AppColors.accent,
           ),
           const SizedBox(height: 32),
           Text(
@@ -199,6 +201,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
             onPressed: _nextPage,
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
+              backgroundColor: AppColors.accent,
             ),
             child: const Text('Get Started'),
           ),
@@ -284,6 +287,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               },
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 48),
+                backgroundColor: AppColors.accent,
               ),
               child: const Text('Continue'),
             ),
