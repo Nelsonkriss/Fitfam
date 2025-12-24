@@ -152,23 +152,20 @@ class RoutineOverview extends StatelessWidget {
   String _getIconPath(MainTargetedBodyPart mainTB) {
     switch (mainTB) {
       case MainTargetedBodyPart.Abs:
-        return 'assets/icons/abs-96.png'; // Example path structure
+        return 'assets/abs-96.png';
       case MainTargetedBodyPart.Arm:
       case MainTargetedBodyPart.Shoulder: // Combine similar icons
-        return 'assets/icons/muscle-96.png';
+        return 'assets/muscle-96.png';
       case MainTargetedBodyPart.Back:
-        return 'assets/icons/back-96.png';
+        return 'assets/back-96.png';
       case MainTargetedBodyPart.Chest:
-        return 'assets/icons/chest-96.png';
+        return 'assets/chest-96.png';
       case MainTargetedBodyPart.Leg:
-        return 'assets/icons/leg-96.png';
+        return 'assets/leg-96.png';
       case MainTargetedBodyPart.FullBody:
-        return 'assets/icons/fullbody-96.png'; // Example different icon
-    // Remove default case or handle explicitly if new enums are added
-    // default: return 'assets/icons/default-96.png'; // Fallback icon
+        return 'assets/dumbbell-96.png';
       case MainTargetedBodyPart.Other:
-        // TODO: Handle this case.
-        throw UnimplementedError();
+        return 'assets/dumbbell-96.png';
     }
   }
 

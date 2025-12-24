@@ -261,7 +261,7 @@ class NotificationService {
         weekday: wd,
         hour: hour,
         minute: minute,
-        payload: '${payloadPrefix ?? 'routine'}_$baseId",$wd',
+        payload: '${payloadPrefix ?? 'routine'}_${baseId}_$wd',
       );
     }
   }

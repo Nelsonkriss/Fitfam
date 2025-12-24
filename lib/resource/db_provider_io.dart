@@ -52,7 +52,7 @@ class DBProviderIO implements DbProviderInterface {
       debugPrint("[DBProviderIO] Database path: $path");
 
       // Define DB version - increment this when schema changes require migration
-      const int dbVersion = 3; // Incremented version for workoutType column
+      const int dbVersion = 4; // Added timedDuration column for exercise performances
 
       return await openDatabase(path, version: dbVersion,
           onOpen: (db) async {
@@ -107,6 +107,7 @@ class DBProviderIO implements DbProviderInterface {
         "exerciseName TEXT NOT NULL,"
         "workoutType TEXT NOT NULL," // Enum as string (Weight, Cardio, Timed)
         "restPeriod INTEGER," // Duration in seconds or NULL
+        "timedDuration INTEGER," // Duration in seconds or NULL
         "FOREIGN KEY (sessionId) REFERENCES WorkoutSessions(id) ON DELETE CASCADE"
         ")");
     debugPrint("[DBProviderIO] Created ExercisePerformances table.");
@@ -136,6 +137,10 @@ class DBProviderIO implements DbProviderInterface {
     if (oldVersion < 3) {
       await db.execute("ALTER TABLE ExercisePerformances ADD COLUMN workoutType TEXT NOT NULL DEFAULT 'Weight';");
       debugPrint("[DBProviderIO] Added 'workoutType' column to ExercisePerformances table.");
+    }
+    if (oldVersion < 4) {
+      await db.execute("ALTER TABLE ExercisePerformances ADD COLUMN timedDuration INTEGER;");
+      debugPrint("[DBProviderIO] Added 'timedDuration' column to ExercisePerformances table.");
     }
   }
 
@@ -232,6 +237,7 @@ class DBProviderIO implements DbProviderInterface {
             'exerciseName': exercise.exerciseName,
             'workoutType': exercise.workoutType.name, // Store enum as string
             'restPeriod': exercise.restPeriod?.inSeconds,
+            'timedDuration': exercise.timedDuration?.inSeconds,
           };
           // Insert exercise and get its new DB ID
           final exerciseId = await txn.insert('ExercisePerformances', exerciseMap);
@@ -306,6 +312,7 @@ class DBProviderIO implements DbProviderInterface {
               exerciseName: exerciseMap['exerciseName'] as String? ?? 'Unknown Exercise',
               sets: setsForThisExercise, // Assign the fetched sets
               restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int) : null,
+              timedDuration: exerciseMap['timedDuration'] != null ? Duration(seconds: exerciseMap['timedDuration'] as int) : null,
               workoutType: WorkoutType.values.firstWhere(
                 (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
                 orElse: () => WorkoutType.Weight,
@@ -358,6 +365,7 @@ class DBProviderIO implements DbProviderInterface {
           exerciseName: exerciseMap['exerciseName'] as String? ?? '',
           sets: setsForThisExercise,
           restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null,
+          timedDuration: exerciseMap['timedDuration'] != null ? Duration(seconds: exerciseMap['timedDuration'] as int) : null,
           workoutType: WorkoutType.values.firstWhere(
             (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
             orElse: () => WorkoutType.Weight,
@@ -420,6 +428,7 @@ class DBProviderIO implements DbProviderInterface {
           exerciseName: exerciseMap['exerciseName'] as String? ?? '',
           sets: setsForThisExercise,
           restPeriod: exerciseMap['restPeriod'] != null ? Duration(seconds: exerciseMap['restPeriod'] as int): null,
+          timedDuration: exerciseMap['timedDuration'] != null ? Duration(seconds: exerciseMap['timedDuration'] as int) : null,
           workoutType: WorkoutType.values.firstWhere(
             (e) => e.name == (exerciseMap['workoutType'] as String? ?? 'Weight'),
             orElse: () => WorkoutType.Weight,

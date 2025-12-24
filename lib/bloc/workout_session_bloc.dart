@@ -540,10 +540,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
     debugPrint("[WorkoutSessionBloc] Starting rest timer for $restDuration.");
     _sessionTimer?.cancel(); _sessionTimer = null;
     _restTimer?.cancel();
-    
-    // Immediately emit initial rest duration
-    emit(state.copyWith(displayDuration: restDuration));
-    
+
     Duration remaining = restDuration;
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!state.isResting) { 
@@ -557,8 +554,7 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
         remaining = Duration.zero;
       }
       
-      // Directly emit state change for countdown
-      emit(state.copyWith(displayDuration: remaining));
+      add(_RestTimerTicked(remaining));
       
       if (remaining.inSeconds <= 0) {
         timer.cancel();
@@ -583,8 +579,20 @@ class WorkoutSessionBloc extends Bloc<WorkoutSessionEvent, WorkoutSessionState> 
       
       // Mark the set as completed
       final currentSession = state.session!;
-      final updatedExercises = List<ExercisePerformance>.from(currentSession.exercises);
+      final updatedExercises = List<ExercisePerformance>.from(
+        currentSession.exercises.map((exPerf) => exPerf.copyWith(
+          sets: List<SetPerformance>.from(exPerf.sets),
+        )),
+      );
+      if (event.exerciseIndex < 0 || event.exerciseIndex >= updatedExercises.length) {
+        debugPrint("[WorkoutSessionBloc] Invalid exercise index: ${event.exerciseIndex}");
+        return;
+      }
       final exercise = updatedExercises[event.exerciseIndex];
+      if (event.setIndex < 0 || event.setIndex >= exercise.sets.length) {
+        debugPrint("[WorkoutSessionBloc] Invalid set index: ${event.setIndex}");
+        return;
+      }
       final updatedSet = exercise.sets[event.setIndex].copyWith(
         isCompleted: true,
         actualReps: 1, // For timed exercises, we use 1 rep to mark completion
