@@ -13,7 +13,10 @@ class AIRoutineGenerationService {
 
   AIRoutineGenerationService({AIWeightRecommendationService? weightRecommendationService, OpenRouterService? openRouterService})
       : _weightRecommendationService = weightRecommendationService ?? AIWeightRecommendationService(),
-        _openRouterService = openRouterService ?? OpenRouterService(apiKey: dotenv.env['OPENROUTER_API_KEY'] ?? '');
+        _openRouterService = openRouterService ?? OpenRouterService(
+          apiKey: dotenv.env['OPENROUTER_API_KEY'] ?? '',
+          defaultModel: dotenv.env['OPENROUTER_MODEL'] ?? 'mimo v2flash',
+        );
 
   Future<List<Routine>> generateRoutines({
     required MainTargetedBodyPart targetedBodyPart,

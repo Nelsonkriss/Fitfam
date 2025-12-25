@@ -41,14 +41,15 @@ class _RecommendPageState extends State<RecommendPage> {
     _scrollController.addListener(_handleScroll);
 
     final apiKey = dotenv.env['OPENROUTER_API_KEY'];
+    final model = dotenv.env['OPENROUTER_MODEL'] ?? 'mimo v2flash';
     if (apiKey == null || apiKey.isEmpty) {
       _apiKeyMissing = true;
       _aiError =
           "OpenRouter API Key is missing. Please set it in your .env file and restart the app.";
-      _openRouterService = OpenRouterService(apiKey: '');
+      _openRouterService = OpenRouterService(apiKey: '', defaultModel: model);
       debugPrint("[RecommendPage] API Key missing in initState.");
     } else {
-      _openRouterService = OpenRouterService(apiKey: apiKey);
+      _openRouterService = OpenRouterService(apiKey: apiKey, defaultModel: model);
       debugPrint(
         "[RecommendPage] API Key loaded, OpenRouterService initialized.",
       );

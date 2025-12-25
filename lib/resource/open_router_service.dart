@@ -8,11 +8,18 @@ import 'package:workout_planner/services/exercise_animation_service.dart';
 
 class OpenRouterService {
   final String apiKey;
+  final String defaultModel;
   static const String _apiUrl = "https://openrouter.ai/api/v1/chat/completions";
 
-  OpenRouterService({required this.apiKey});
+  OpenRouterService({
+    required this.apiKey,
+    this.defaultModel = "mimo v2flash",
+  });
 
-  Future<String?> getAiGeneratedRoutineDescription(String userPrompt, {String model = "deepseek/deepseek-chat-v3.1:free"}) async {
+  Future<String?> getAiGeneratedRoutineDescription(String userPrompt, {String? model}) async {
+    final String effectiveModel = (model != null && model.trim().isNotEmpty)
+        ? model.trim()
+        : defaultModel.trim();
     // API key is now passed via constructor and stored in this.apiKey
     if (apiKey.isEmpty) { // Check if the passed key is empty
       debugPrint("OpenRouter API key is empty.");
@@ -89,7 +96,7 @@ CRITICAL:
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
-          'model': model,
+          'model': effectiveModel,
           'messages': [
             {'role': 'system', 'content': systemPrompt},
             {'role': 'user', 'content': userPrompt},

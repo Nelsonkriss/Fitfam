@@ -21,6 +21,7 @@ import 'package:workout_planner/services/ai_weight_recommendation_service.dart';
 import 'package:workout_planner/resource/shared_prefs_provider.dart';
 import 'package:workout_planner/models/user_profile.dart';
 import 'package:workout_planner/services/ai_rep_time_recommendation_service.dart';
+import 'package:workout_planner/services/progressive_plan_service.dart';
 
 import 'components/number_ticker.dart';
 import 'components/value_slider.dart';
@@ -83,6 +84,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   int _timedExerciseRemainingSeconds = 0;
   int _timedExerciseTotalSeconds = 0;
   bool _isTimedExerciseActive = false;
+  bool _isPersonalizing = false;
+  bool _planSuggestionShown = false;
+  String _weightUnit = 'kg';
 
   @override
   void initState() {
@@ -93,6 +97,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     _restPeriodController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
     _preparationController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
     _completionController = AnimationController(duration: AndroidAnimations.m3ExtraLongDuration, vsync: this);
+    _loadWeightUnit();
 
     // Use resume session's routine if provided
     final baseRoutine = widget.resumeSession?.routine ?? widget.originalRoutine;
@@ -129,6 +134,14 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     }
 
     _startSetPreparation();
+    if (widget.resumeSession == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _applyPersonalizationOnStart().then((_) {
+          if (mounted) _maybeSuggestProgressivePlan();
+        });
+      });
+    }
   }
 
   void _rebuildStateFromRoutine() {
@@ -249,6 +262,215 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         debugPrint("Error disposing NumberTickerController: $e");
       }
     }
+  }
+
+  Future<void> _loadWeightUnit() async {
+    try {
+      final unit = await sharedPrefsProvider.getWeightUnit();
+      if (!mounted) return;
+      setState(() {
+        _weightUnit = unit;
+      });
+    } catch (_) {}
+  }
+
+  int _parseTargetRepsHint(String reps) {
+    final trimmed = reps.trim().toLowerCase();
+    if (trimmed.isEmpty) return 10;
+    if (trimmed.contains('-')) {
+      final parts = trimmed.split('-');
+      final first = int.tryParse(parts.first.trim());
+      if (first != null && first > 0) return first;
+    }
+    final match = RegExp(r'(\d+)').firstMatch(trimmed);
+    if (match != null) {
+      return int.tryParse(match.group(1) ?? '') ?? 10;
+    }
+    return int.tryParse(trimmed) ?? 10;
+  }
+
+  void _refreshActiveSessionFromRoutine() {
+    if (_activeWorkoutSession == null) return;
+    final seeded = WorkoutSession.startNew(routine: _currentWorkingRoutine);
+    _activeWorkoutSession = _activeWorkoutSession!.copyWith(
+      routine: _currentWorkingRoutine,
+      exercises: seeded.exercises,
+    );
+  }
+
+  Future<void> _applyPersonalizationOnStart() async {
+    if (widget.resumeSession != null || _activeWorkoutSession == null) return;
+    if (!mounted) return;
+    setState(() => _isPersonalizing = true);
+    try {
+      final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
+      final weightService = AIWeightRecommendationService();
+      final repsService = AIRepTimeRecommendationService();
+
+      final updatedParts = <Part>[];
+      bool changed = false;
+
+      for (final part in _currentWorkingRoutine.parts) {
+        final updatedExercises = <Exercise>[];
+        for (final exercise in part.exercises) {
+          Exercise updated = exercise;
+          final isTimed = _isTimed(exercise);
+          final isBodyweight = _isBodyweight(exercise);
+
+          if (isTimed) {
+            final recSeconds = await repsService.recommendSeconds(
+              exerciseName: exercise.name,
+              userProfile: profile,
+            );
+            updated = updated.copyWith(reps: recSeconds.toString());
+            changed = true;
+          } else if (isBodyweight) {
+            final recReps = await repsService.recommendReps(
+              exerciseName: exercise.name,
+              userProfile: profile,
+            );
+            updated = updated.copyWith(reps: recReps.toString());
+            changed = true;
+          }
+
+          if (exercise.workoutType == WorkoutType.Weight && !isBodyweight) {
+            final targetReps = _parseTargetRepsHint(updated.reps);
+            final recWeight = await weightService.getRecommendedWeight(
+              exerciseName: exercise.name,
+              userProfile: profile,
+              targetReps: targetReps,
+            );
+            updated = updated.copyWith(weight: recWeight, lastUsedWeight: recWeight);
+            changed = true;
+          }
+
+          updatedExercises.add(updated);
+        }
+        updatedParts.add(part.copyWith(exercises: updatedExercises));
+      }
+
+      if (!mounted) return;
+      if (changed) {
+        setState(() {
+          _currentWorkingRoutine = _currentWorkingRoutine.copyWith(parts: updatedParts);
+          _rebuildStateFromRoutine();
+        });
+        _refreshActiveSessionFromRoutine();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Personalized targets applied.')),
+        );
+      }
+    } catch (e) {
+      debugPrint("RoutineStepPageV2: Personalization failed: $e");
+    } finally {
+      if (mounted) setState(() => _isPersonalizing = false);
+    }
+  }
+
+  void _maybeSuggestProgressivePlan() {
+    if (_planSuggestionShown || widget.resumeSession != null) return;
+    _planSuggestionShown = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Want a progressive plan for this routine?'),
+        action: SnackBarAction(
+          label: 'Build plan',
+          onPressed: () => _promptBuildPlan([_currentWorkingRoutine]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _promptBuildPlan(List<Routine> baseRoutines) async {
+    if (!mounted) return;
+    int selectedWeeks = 4;
+    bool includeDeload = true;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.auto_graph),
+                      const SizedBox(width: 8),
+                      Text('Build Progressive Plan', style: Theme.of(ctx).textTheme.titleLarge),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Create a ${selectedWeeks}-week progression with smart increases and deloads.',
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Weeks', style: Theme.of(ctx).textTheme.labelLarge),
+                  Wrap(
+                    spacing: 8,
+                    children: [4, 6, 8].map((w) {
+                      return ChoiceChip(
+                        label: Text('$w'),
+                        selected: selectedWeeks == w,
+                        onSelected: (_) => setState(() => selectedWeeks = w),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Include deload every 4th week'),
+                    value: includeDeload,
+                    onChanged: (v) => setState(() => includeDeload = v),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Not now'),
+                      ),
+                      const Spacer(),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.add_task),
+                        label: const Text('Build Plan'),
+                        onPressed: () async {
+                          final plan = ProgressivePlanService.buildPlan(
+                            baseRoutines,
+                            weeks: selectedWeeks,
+                            deloadEvery: includeDeload ? 4 : 0,
+                          );
+                          await context.read<RoutinesBloc>().addRoutines(plan);
+                          if (mounted) Navigator.pop(ctx);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Created ${plan.length} plan routine(s).')),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -463,6 +685,12 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
             ],
           ),
         ),
+        if (_isPersonalizing)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: _pill('Personalizing...'),
+          ),
         if (_isInRestPeriod) _buildRestPeriodOverlay(),
         if (_isTimedExerciseActive) _timedOverlay(),
       ],
@@ -475,6 +703,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
     final isTimed = _isTimed(exercise);
     final isBodyweight = _isBodyweight(exercise);
+    final weightLabel = 'Weight ($_weightUnit)';
+    final weightDeltas = _weightUnit == 'lb'
+        ? const [-10.0, -5.0, 5.0, 10.0, 20.0]
+        : const [-5.0, -2.5, 2.5, 5.0, 10.0];
+    final repDeltas = isTimed ? const [-10.0, -5.0, 5.0, 10.0, 20.0] : const [-2.0, -1.0, 1.0, 2.0, 5.0];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: Row(
@@ -487,10 +720,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Flexible(
+                      Flexible(
                         child: Text(
-                          'Weight (kg)',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                          weightLabel,
+                          style: const TextStyle(color: Colors.white70, fontSize: 16),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -505,7 +738,14 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _buildTickerRow(weightController, semanticsLabel: 'Weight'),
+                  _buildTickerRow(
+                    weightController,
+                    semanticsLabel: 'Weight',
+                    dialogLabel: weightLabel,
+                    suffix: _weightUnit,
+                  ),
+                  const SizedBox(height: 8),
+                  _buildQuickAdjustRow(weightController, weightDeltas, unitSuffix: _weightUnit),
                 ],
               ),
             ),
@@ -538,7 +778,14 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     ),
                   ),
                 const SizedBox(height: 8),
-                _buildTickerRow(repsController, semanticsLabel: isTimed ? 'Seconds' : 'Reps'),
+                _buildTickerRow(
+                  repsController,
+                  semanticsLabel: isTimed ? 'Seconds' : 'Reps',
+                  dialogLabel: isTimed ? 'Seconds' : 'Reps',
+                  suffix: isTimed ? 's' : null,
+                ),
+                const SizedBox(height: 8),
+                _buildQuickAdjustRow(repsController, repDeltas, unitSuffix: isTimed ? 's' : null),
                 if (isBodyweight)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
@@ -884,7 +1131,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     children: [
                       const Flexible(
                         child: Text(
-                          'Weight (kg)',
+                          'Weight',
                           style: TextStyle(color: Colors.white70, fontSize: 16),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -973,7 +1220,12 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     );
   }
 
-  Widget _buildTickerRow(NumberTickerController controller, {String semanticsLabel = ''}) {
+  Widget _buildTickerRow(
+    NumberTickerController controller, {
+    String semanticsLabel = '',
+    String dialogLabel = 'Edit',
+    String? suffix,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -994,7 +1246,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         const SizedBox(width: 6),
         Expanded(
           child: GestureDetector(
-            onTap: () => _showNumberInputDialog('Edit', controller),
+            onTap: () => _showNumberInputDialog(dialogLabel, controller, suffix: suffix),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: NumberTicker(
@@ -1024,6 +1276,35 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           ),
         ),
       ],
+    );
+  }
+
+  String _formatDeltaLabel(double delta) {
+    final absValue = delta.abs();
+    if (absValue % 1 == 0) {
+      return absValue.toStringAsFixed(0);
+    }
+    return absValue.toStringAsFixed(1);
+  }
+
+  Widget _buildQuickAdjustRow(
+    NumberTickerController controller,
+    List<double> deltas, {
+    String? unitSuffix,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.center,
+      children: deltas.map((delta) {
+        final sign = delta > 0 ? '+' : '';
+        final unit = unitSuffix == null ? '' : unitSuffix;
+        final label = '$sign${_formatDeltaLabel(delta)}$unit';
+        return _pillButton(label, onTap: () {
+          controller.number = controller.number + delta;
+          HapticFeedback.selectionClick();
+        });
+      }).toList(),
     );
   }
 
@@ -1117,6 +1398,18 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               subtitle: 'Rest',
             ),
             const SizedBox(height: 24),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                _pillButton('-15s', onTap: () => _adjustRest(-15)),
+                _pillButton('+15s', onTap: () => _adjustRest(15)),
+                _pillButton('+30s', onTap: () => _adjustRest(30)),
+                _pillButton('+60s', onTap: () => _adjustRest(60)),
+              ],
+            ),
+            const SizedBox(height: 16),
             OutlinedButton(
               onPressed: _endRestPeriod,
               style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white54), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)),
@@ -1139,7 +1432,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     final totalSets = _setsTotalInStepOrder[_currentStepIndex];
 
     final setPerformance = SetPerformance(
-      targetReps: int.tryParse(exercise.reps) ?? 0,
+      targetReps: reps,
       targetWeight: exercise.weight,
       actualReps: reps,
       actualWeight: weight,
@@ -1220,6 +1513,20 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     });
   }
 
+  void _adjustRest(int deltaSeconds) {
+    if (!_isInRestPeriod) return;
+    final nextRemaining = (_restTimeRemaining + deltaSeconds).clamp(0, 3600);
+    if (nextRemaining == 0) {
+      _endRestPeriod();
+      return;
+    }
+    setState(() {
+      _restTimeRemaining = nextRemaining;
+      final nextTotal = _restTimeTotal + deltaSeconds;
+      _restTimeTotal = nextTotal < nextRemaining ? nextRemaining : nextTotal;
+    });
+  }
+
   void _startSetPreparation() {
     setState(() {
       _isInPreparation = true;
@@ -1244,17 +1551,40 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     });
   }
 
+  Routine _mergeLastUsedWeights(Routine base, WorkoutSession session) {
+    final Map<String, double> lastWeights = {};
+    for (final ex in session.exercises) {
+      for (final set in ex.sets) {
+        if (!set.isCompleted) continue;
+        if (set.actualWeight > 0) {
+          lastWeights[ex.exerciseName] = set.actualWeight;
+        }
+      }
+    }
+    if (lastWeights.isEmpty) return base;
+    final updatedParts = base.parts.map((part) {
+      final updatedExercises = part.exercises.map((exercise) {
+        final weight = lastWeights[exercise.name];
+        if (weight == null || weight <= 0) return exercise;
+        return exercise.copyWith(lastUsedWeight: weight);
+      }).toList();
+      return part.copyWith(exercises: updatedExercises);
+    }).toList();
+    return base.copyWith(parts: updatedParts);
+  }
+
   void _finishWorkout() {
     final finalSession = _activeWorkoutSession?.copyWith(
       endTime: DateTime.now(),
       isCompleted: true,
     );
     if (finalSession != null) {
+      final updatedRoutine = _mergeLastUsedWeights(_currentWorkingRoutine, finalSession).copyWith(
+        completionCount: _currentWorkingRoutine.completionCount + 1,
+        lastCompletedDate: DateTime.now(),
+      );
       Provider.of<WorkoutSessionBloc>(context, listen: false).add(WorkoutSessionSaveCompleted(finalSession));
-      Provider.of<RoutinesBloc>(context, listen: false).updateRoutine(widget.originalRoutine.copyWith(
-            completionCount: widget.originalRoutine.completionCount + 1,
-            lastCompletedDate: DateTime.now(),
-          ));
+      Provider.of<RoutinesBloc>(context, listen: false).updateRoutine(updatedRoutine);
     }
 
     setState(() {
@@ -1265,7 +1595,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     widget.celebrateCallback?.call();
   }
 
-  Future<void> _showNumberInputDialog(String label, NumberTickerController controller) async {
+  Future<void> _showNumberInputDialog(
+    String label,
+    NumberTickerController controller, {
+    String? suffix,
+  }) async {
     final TextEditingController textController = TextEditingController(
       text: controller.value.toString(),
     );
@@ -1281,7 +1615,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
             autofocus: true,
             decoration: InputDecoration(
               labelText: label,
-              suffixText: label == 'Weight (kg)' ? 'kg' : null,
+              suffixText: suffix,
             ),
           ),
           actions: <Widget>[
