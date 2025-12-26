@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.dumbbell_new"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

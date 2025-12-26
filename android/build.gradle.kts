@@ -1,3 +1,6 @@
+import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.dsl.LibraryExtension
+
 buildscript {
     repositories {
         google()
@@ -5,7 +8,7 @@ buildscript {
     }
     dependencies {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
-        classpath("com.android.tools.build:gradle:8.7.0")
+        classpath("com.android.tools.build:gradle:8.13.1")
         classpath("com.google.gms:google-services:4.4.2")
 
     }
@@ -18,17 +21,30 @@ allprojects {
     }
 }
 
-val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
-rootProject.layout.buildDirectory.value(newBuildDir)
+val sanitizedRootDir = File(rootProject.projectDir.path.replace("\\\\ ", " "))
+val newBuildDir = sanitizedRootDir.resolve("build")
+rootProject.buildDir = newBuildDir
 
 subprojects {
-    val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
-    project.layout.buildDirectory.value(newSubprojectBuildDir)
+    buildDir = newBuildDir.resolve(name)
 }
 subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    plugins.withId("com.android.application") {
+        extensions.configure<ApplicationExtension> {
+            compileSdk = 36
+        }
+    }
+    plugins.withId("com.android.library") {
+        extensions.configure<LibraryExtension> {
+            compileSdk = 36
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+    delete(rootProject.buildDir)
 }

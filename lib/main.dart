@@ -317,7 +317,7 @@ class _MyAppState extends State<MyApp> {
         headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.black87),
         titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 1.0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
@@ -379,7 +379,7 @@ class _MyAppState extends State<MyApp> {
         headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
         titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 2.0,
         color: Colors.grey.shade800, // Darker card color
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),

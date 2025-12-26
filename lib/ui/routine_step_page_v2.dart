@@ -598,6 +598,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     );
   }
 
+    */
+  }
+
   Widget _buildWorkoutInterface() {
     if (_exerciseIndexesInStepOrder.isEmpty) {
       return const Center(
@@ -695,7 +698,6 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         if (_isTimedExerciseActive) _timedOverlay(),
       ],
     );
-    */
   }
 
   // Newer, corrected version to avoid encoding glitches and tighten UX

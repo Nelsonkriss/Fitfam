@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
-import 'design_system.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:workout_planner/models/user_profile.dart';
 import 'package:workout_planner/resource/shared_prefs_provider.dart';
 import 'package:workout_planner/resource/firebase_provider.dart';
+import 'design_system.dart';
 
 class OnboardingPage extends StatefulWidget {
   final VoidCallback onOnboardingComplete;
-  
+
   const OnboardingPage({
     super.key,
     required this.onOnboardingComplete,
@@ -21,31 +23,95 @@ class OnboardingPage extends StatefulWidget {
 class _OnboardingPageState extends State<OnboardingPage> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  
-  // Form controllers
+
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   FitnessLevel _selectedFitnessLevel = FitnessLevel.beginner;
   FitnessGoal _selectedFitnessGoal = FitnessGoal.buildMuscle;
   final Set<AvailableEquipment> _selectedEquipment = {};
-  
-  // Form validation
+
+  final GlobalKey<FormState> _nameFormKey = GlobalKey<FormState>();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+  bool _isSigningIn = false;
+  String _weightUnit = 'kg';
+
+  final Map<FitnessGoal, String> _goalDescriptions = const {
+    FitnessGoal.buildMuscle: 'Hypertrophy focus with progressive overload.',
+    FitnessGoal.loseWeight: 'Efficient sessions for fat loss and consistency.',
+    FitnessGoal.improveStrength: 'Lower reps, heavier lifts, longer rest.',
+    FitnessGoal.improveEndurance: 'Higher reps, shorter rest, steady volume.',
+    FitnessGoal.maintainFitness: 'Balanced mix to stay strong and mobile.',
+  };
+
+  final Map<FitnessGoal, IconData> _goalIcons = const {
+    FitnessGoal.buildMuscle: Icons.fitness_center,
+    FitnessGoal.loseWeight: Icons.local_fire_department,
+    FitnessGoal.improveStrength: Icons.bolt,
+    FitnessGoal.improveEndurance: Icons.directions_run,
+    FitnessGoal.maintainFitness: Icons.spa,
+  };
+
+  final Map<AvailableEquipment, IconData> _equipmentIcons = const {
+    AvailableEquipment.barbell: Icons.sports_gymnastics,
+    AvailableEquipment.dumbbell: Icons.fitness_center_outlined,
+    AvailableEquipment.kettlebell: Icons.sports_handball,
+    AvailableEquipment.bodyweight: Icons.accessibility_new,
+    AvailableEquipment.machine: Icons.precision_manufacturing,
+    AvailableEquipment.bands: Icons.auto_graph,
+    AvailableEquipment.other: Icons.more_horiz,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(_onInputChanged);
+    _heightController.addListener(_onInputChanged);
+    _weightController.addListener(_onInputChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadPrefs());
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _nameController.removeListener(_onInputChanged);
+    _heightController.removeListener(_onInputChanged);
+    _weightController.removeListener(_onInputChanged);
+    _nameController.dispose();
     _heightController.dispose();
     _weightController.dispose();
     super.dispose();
   }
 
+  Future<void> _loadPrefs() async {
+    try {
+      final unit = await context.read<SharedPrefsProvider>().getWeightUnit();
+      final firebaseUser = context.read<FirebaseProvider>().currentUser;
+      if (!mounted) return;
+      setState(() {
+        _weightUnit = unit;
+      });
+      if (_nameController.text.trim().isEmpty) {
+        final displayName = firebaseUser?.displayName?.trim();
+        if (displayName != null && displayName.isNotEmpty) {
+          _nameController.text = displayName;
+        } else if (firebaseUser?.email != null && firebaseUser!.email!.contains('@')) {
+          _nameController.text = firebaseUser.email!.split('@').first;
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _onInputChanged() {
+    if (mounted) setState(() {});
+  }
+
   void _nextPage() {
-    if (_currentPage < 4) {
+    if (_currentPage < _pages.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
       );
     }
   }
@@ -53,47 +119,164 @@ class _OnboardingPageState extends State<OnboardingPage> {
   void _previousPage() {
     if (_currentPage > 0) {
       _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOutCubic,
       );
     }
   }
 
+  void _jumpToPage(int page) {
+    _pageController.animateToPage(
+      page,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOutCubic,
+    );
+  }
+
+  void _setWeightUnit(String unit) {
+    if (_weightUnit == unit) return;
+    final currentWeight = double.tryParse(_weightController.text);
+    if (currentWeight != null && currentWeight > 0) {
+      final converted = unit == 'lb'
+          ? currentWeight * 2.20462
+          : currentWeight / 2.20462;
+      _weightController.text = converted.toStringAsFixed(1);
+    }
+    setState(() {
+      _weightUnit = unit;
+    });
+  }
+
+  double? _parseHeightCm() {
+    return double.tryParse(_heightController.text);
+  }
+
+  double? _parseWeightInput() {
+    return double.tryParse(_weightController.text);
+  }
+
+  double? _weightToKg(double? weight) {
+    if (weight == null) return null;
+    return _weightUnit == 'lb' ? weight / 2.20462 : weight;
+  }
+
+  int _recommendedFrequency() {
+    switch (_selectedFitnessLevel) {
+      case FitnessLevel.beginner:
+        return 3;
+      case FitnessLevel.intermediate:
+        return 4;
+      case FitnessLevel.advanced:
+        return 5;
+    }
+  }
+
+  Future<void> _handleSignIn(SignInMethod method) async {
+    if (_isSigningIn) return;
+    setState(() {
+      _isSigningIn = true;
+    });
+
+    try {
+      final firebaseProvider = context.read<FirebaseProvider>();
+      final user = method == SignInMethod.google
+          ? await firebaseProvider.signInWithGoogle()
+          : await firebaseProvider.signInWithApple();
+
+      if (!mounted) return;
+
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sign in cancelled.')),
+        );
+        return;
+      }
+
+      if (_nameController.text.trim().isEmpty) {
+        final displayName = user.displayName?.trim();
+        if (displayName != null && displayName.isNotEmpty) {
+          _nameController.text = displayName;
+        } else if (user.email != null && user.email!.contains('@')) {
+          _nameController.text = user.email!.split('@').first;
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Signed in successfully.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sign in failed: $e'),
+          backgroundColor: AppColors.danger,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSigningIn = false;
+        });
+      }
+    }
+  }
+
+  String _firstName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return '';
+    final parts = trimmed.split(RegExp(r'\s+'));
+    return parts.first;
+  }
+
   Future<void> _completeOnboarding() async {
-    if (!_formKey.currentState!.validate()) return;
+    final name = _nameController.text.trim();
+    if (_nameFormKey.currentState?.validate() == false || name.isEmpty) {
+      _jumpToPage(1);
+      return;
+    }
+    if (!_formKey.currentState!.validate()) {
+      _jumpToPage(2);
+      return;
+    }
 
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // Create user profile
+      final height = double.parse(_heightController.text);
+      final weightInput = double.parse(_weightController.text);
+      final weightKg = _weightToKg(weightInput) ?? weightInput;
+
       final userProfile = UserProfile.create(
-        height: double.parse(_heightController.text),
-        weight: double.parse(_weightController.text),
+        height: height,
+        weight: weightKg,
         fitnessLevel: _selectedFitnessLevel,
         fitnessGoal: _selectedFitnessGoal,
         availableEquipment: _selectedEquipment.toList(),
+        displayName: name.isEmpty ? null : name,
       );
 
-      // Save to local storage
-      await context.read<SharedPrefsProvider>().setUserProfile(userProfile);
-      await context.read<SharedPrefsProvider>().setOnboardingCompleted(true);
+      final prefs = context.read<SharedPrefsProvider>();
+      await prefs.setUserProfile(userProfile);
+      await prefs.setOnboardingCompleted(true);
+      await prefs.setWeightUnit(_weightUnit);
+      await prefs.setWeightIncrement(_weightUnit == 'lb' ? 5.0 : 2.5);
+      await prefs.setWeeklyAmount(userProfile.recommendedWorkoutFrequency);
 
-      // Try to sync to cloud if user is signed in
       try {
         final firebaseProvider = context.read<FirebaseProvider>();
         final user = firebaseProvider.currentUser;
         if (user != null) {
-          // Save to Firebase (you'll need to implement this in FirebaseProvider)
+          if (name.isNotEmpty && (user.displayName == null || user.displayName!.trim().isEmpty || user.displayName != name)) {
+            await user.updateDisplayName(name);
+          }
           await firebaseProvider.saveUserProfile(userProfile);
         }
       } catch (e) {
         debugPrint("Failed to sync profile to cloud: $e");
-        // Continue anyway - local storage is sufficient
       }
 
-      // Call the completion callback
       if (mounted) {
         widget.onOnboardingComplete();
       }
@@ -102,7 +285,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error saving profile: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -117,52 +300,85 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final gradient = _pageGradients[_currentPage];
+
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Progress indicator
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: _currentPage > 0 ? _previousPage : null,
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                  Expanded(
-                    child: LinearProgressIndicator(
-                      value: (_currentPage + 1) / 5,
-                      backgroundColor: Colors.grey.shade300,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Theme.of(context).colorScheme.primary,
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: gradient,
+            ),
+          ),
+          child: Stack(
+            children: [
+              _buildAmbientGlow(),
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildTopBar(),
+                    Expanded(
+                      child: PageView.builder(
+                        controller: _pageController,
+                        onPageChanged: (index) {
+                          setState(() {
+                            _currentPage = index;
+                          });
+                        },
+                        itemCount: _pages.length,
+                        physics: const BouncingScrollPhysics(),
+                        itemBuilder: (context, index) {
+                          return _buildAnimatedPage(index, _pages[index]());
+                        },
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAmbientGlow() {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            Positioned(
+              top: -80,
+              left: -40,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [AppColors.accent.withOpacity(0.25), Colors.transparent],
                   ),
-                  Text(
-                    '${_currentPage + 1}/5',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
+                ),
               ),
             ),
-            // Page content
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPage = index;
-                  });
-                },
-                children: [
-                  _buildWelcomePage(),
-                  _buildPhysicalInfoPage(),
-                  _buildFitnessLevelPage(),
-                  _buildFitnessGoalPage(),
-                  _buildEquipmentPage(),
-                ],
+            Positioned(
+              bottom: -120,
+              right: -40,
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [AppColors.accentAlt.withOpacity(0.2), Colors.transparent],
+                  ),
+                ),
               ),
             ),
           ],
@@ -171,125 +387,171 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  Widget _buildWelcomePage() {
+  Widget _buildTopBar() {
     return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
         children: [
-          Icon(
-            Icons.fitness_center,
-            size: 120,
-            color: AppColors.accent,
+          IconButton(
+            onPressed: _currentPage > 0 ? _previousPage : null,
+            icon: const Icon(Icons.arrow_back, color: AppColors.onSurface),
           ),
-          const SizedBox(height: 32),
+          Expanded(child: _buildProgressDots()),
           Text(
-            'Welcome to Workout Planner!',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Let\'s set up your profile to create personalized workout routines tailored just for you.',
-            style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 48),
-          ElevatedButton(
-            onPressed: _nextPage,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-              backgroundColor: AppColors.accent,
-            ),
-            child: const Text('Get Started'),
+            '${_currentPage + 1}/${_pages.length}',
+            style: AppText.caption.copyWith(color: AppColors.onSurfaceSubtle),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildPhysicalInfoPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildProgressDots() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(_pages.length, (index) {
+        final isActive = index == _currentPage;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          height: 8,
+          width: isActive ? 28 : 8,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            color: isActive ? AppColors.accentAlt : Colors.white24,
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildAnimatedPage(int index, Widget child) {
+    return AnimatedBuilder(
+      animation: _pageController,
+      builder: (context, _) {
+        final page = _pageController.hasClients
+            ? (_pageController.page ?? _currentPage.toDouble())
+            : _currentPage.toDouble();
+        final delta = (page - index).abs().clamp(0.0, 1.0);
+        final opacity = (1 - delta * 0.35).clamp(0.0, 1.0);
+        final translate = 30 * delta;
+        final scale = 1 - (delta * 0.04);
+        return Opacity(
+          opacity: opacity,
+          child: Transform.translate(
+            offset: Offset(0, translate),
+            child: Transform.scale(
+              scale: scale,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget Function()> get _pages => [
+        _buildWelcomePage,
+        _buildIdentityPage,
+        _buildPhysicalInfoPage,
+        _buildFitnessLevelPage,
+        _buildFitnessGoalPage,
+        _buildEquipmentPage,
+      ];
+
+  List<List<Color>> get _pageGradients => const [
+        [Color(0xFF10121A), Color(0xFF0E0F12)],
+        [Color(0xFF11141A), Color(0xFF1B1E24)],
+        [Color(0xFF0E1218), Color(0xFF141B22)],
+        [Color(0xFF0F1117), Color(0xFF1A1E28)],
+        [Color(0xFF10121A), Color(0xFF1A1B20)],
+        [Color(0xFF0D1014), Color(0xFF132028)],
+      ];
+
+  Widget _scrollablePage({required Widget child}) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minHeight = (constraints.maxHeight - bottomInset).clamp(0.0, double.infinity);
+        return SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(24, 12, 24, bottomInset + 24),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: IntrinsicHeight(child: child),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildWelcomePage() {
+    return _scrollablePage(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const SizedBox(height: 8),
+          _buildHeroGraphic(),
+          const SizedBox(height: 24),
+          Text(
+            'Train with a plan that learns you',
+            style: AppText.headline,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Answer a few questions and we will build sessions, rest, and weights that fit your body and goals.',
+            style: AppText.body,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          _buildFeatureStrip(),
+          const SizedBox(height: 24),
+          _primaryButton('Start Personalization', _nextPage),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroGraphic() {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 650),
+      tween: Tween(begin: 0.9, end: 1),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(scale: value, child: child);
+      },
+      child: Container(
+        height: 200,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.surfaceBright, AppColors.surface],
+          ),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Stack(
           children: [
-            Text(
-              'Physical Information',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            Positioned(
+              top: 20,
+              left: 20,
+              child: _statBubble('Smart weights', Icons.auto_graph),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'This helps us calculate your BMI and suggest appropriate starting weights.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey.shade600,
-              ),
+            Positioned(
+              top: 20,
+              right: 20,
+              child: _statBubble('Rest timers', Icons.timer),
             ),
-            const SizedBox(height: 32),
-            TextFormField(
-              controller: _heightController,
-              decoration: const InputDecoration(
-                labelText: 'Height (cm)',
-                hintText: 'e.g., 175',
-                prefixIcon: Icon(Icons.height),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}')),
-              ],
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your height';
-                }
-                final height = double.tryParse(value);
-                if (height == null || height < 100 || height > 250) {
-                  return 'Please enter a valid height (100-250 cm)';
-                }
-                return null;
-              },
+            Align(
+              alignment: Alignment.center,
+              child: Icon(Icons.fitness_center, size: 72, color: AppColors.accentAlt),
             ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _weightController,
-              decoration: const InputDecoration(
-                labelText: 'Weight (kg)',
-                hintText: 'e.g., 70',
-                prefixIcon: Icon(Icons.monitor_weight),
-              ),
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}')),
-              ],
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your weight';
-                }
-                final weight = double.tryParse(value);
-                if (weight == null || weight < 30 || weight > 300) {
-                  return 'Please enter a valid weight (30-300 kg)';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  _nextPage();
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
-                backgroundColor: AppColors.accent,
-              ),
-              child: const Text('Continue'),
+            Positioned(
+              bottom: 20,
+              left: 20,
+              child: _statBubble('Progress path', Icons.trending_up),
             ),
           ],
         ),
@@ -297,193 +559,551 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  Widget _buildFitnessLevelPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+  Widget _statBubble(String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.accentAlt),
+          const SizedBox(width: 6),
+          Text(label, style: AppText.caption.copyWith(color: AppColors.onSurface)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureStrip() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      alignment: WrapAlignment.center,
+      children: const [
+        _FeatureCard(title: 'Adaptive', subtitle: 'Weights that scale with you', icon: Icons.auto_awesome),
+        _FeatureCard(title: 'Focused', subtitle: 'Goal-driven routines', icon: Icons.flag),
+        _FeatureCard(title: 'Simple', subtitle: 'Log sets in seconds', icon: Icons.flash_on),
+      ],
+    );
+  }
+
+  Widget _buildIdentityPage() {
+    final firebaseUser = context.read<FirebaseProvider>().currentUser;
+    final signedInLabel = (firebaseUser?.displayName?.trim().isNotEmpty ?? false)
+        ? firebaseUser!.displayName!.trim()
+        : firebaseUser?.email;
+    final showApple = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS);
+
+    return _scrollablePage(
+      child: Form(
+        key: _nameFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Make it yours', style: AppText.headline),
+            const SizedBox(height: 8),
+            Text(
+              'Add your name and sign in if you want to sync progress across devices.',
+              style: AppText.body,
+            ),
+            const SizedBox(height: 20),
+            Text('Sign in or create account', style: AppText.title),
+            const SizedBox(height: 12),
+            _buildSignInButton(
+              icon: FaIcon(FontAwesomeIcons.google, color: Colors.redAccent.shade200, size: 18),
+              label: 'Continue with Google',
+              onPressed: _isSigningIn ? null : () => _handleSignIn(SignInMethod.google),
+            ),
+            if (showApple) ...[
+              const SizedBox(height: 12),
+              _buildSignInButton(
+                icon: const FaIcon(FontAwesomeIcons.apple, color: Colors.white, size: 18),
+                label: 'Continue with Apple',
+                onPressed: _isSigningIn ? null : () => _handleSignIn(SignInMethod.apple),
+              ),
+            ],
+            if (_isSigningIn)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Row(
+                  children: const [
+                    SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 8),
+                    Text('Signing you in...', style: AppText.caption),
+                  ],
+                ),
+              ),
+            if (signedInLabel != null && signedInLabel.isNotEmpty)
+              _buildSignInStatus(signedInLabel),
+            const SizedBox(height: 20),
+            _buildOrDivider(),
+            const SizedBox(height: 20),
+            _buildNameField(),
+            const SizedBox(height: 24),
+            _primaryButton('Continue', () {
+              if (_nameFormKey.currentState!.validate()) {
+                _nextPage();
+              }
+            }),
+            const SizedBox(height: 8),
+            Text(
+              'You can always sign in later from Settings.',
+              style: AppText.caption,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSignInButton({
+    required Widget icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: Text(label, style: AppText.title.copyWith(color: AppColors.onSurface)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.onSurface,
+          backgroundColor: Colors.white10,
+          side: const BorderSide(color: Colors.white24),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSignInStatus(String label) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified, size: 18, color: AppColors.accentAlt),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Signed in as $label',
+              style: AppText.caption.copyWith(color: AppColors.onSurface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrDivider() {
+    return Row(
+      children: [
+        const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(
+            'OR',
+            style: AppText.caption.copyWith(
+              color: AppColors.onSurfaceSubtle,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        const Expanded(child: Divider(color: Colors.white12, thickness: 1)),
+      ],
+    );
+  }
+
+  Widget _buildNameField() {
+    return TextFormField(
+      controller: _nameController,
+      style: AppText.title.copyWith(color: AppColors.onSurface),
+      decoration: InputDecoration(
+        labelText: 'Name',
+        hintText: 'e.g., Jordan',
+        prefixIcon: const Icon(Icons.person, color: AppColors.onSurfaceSubtle),
+        filled: true,
+        fillColor: AppColors.surfaceBright,
+        labelStyle: AppText.caption.copyWith(color: AppColors.onSurfaceSubtle),
+        hintStyle: AppText.caption,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.white12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Colors.white12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.accentAlt, width: 1.5),
+        ),
+      ),
+      keyboardType: TextInputType.name,
+      textCapitalization: TextCapitalization.words,
+      textInputAction: TextInputAction.done,
+      autofillHints: const [AutofillHints.name],
+      validator: (value) {
+        final trimmed = value?.trim() ?? '';
+        if (trimmed.isEmpty) return 'Please enter your name';
+        if (trimmed.length < 2) return 'Name is too short';
+        return null;
+      },
+      scrollPadding: const EdgeInsets.only(bottom: 140),
+      onFieldSubmitted: (_) {
+        if (_nameFormKey.currentState!.validate()) {
+          _nextPage();
+        }
+      },
+    );
+  }
+
+  Widget _buildPhysicalInfoPage() {
+    return _scrollablePage(
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Your baseline', style: AppText.headline),
+            const SizedBox(height: 8),
+            Text(
+              'We will personalize starting weights and rest based on your body metrics.',
+              style: AppText.body,
+            ),
+            const SizedBox(height: 16),
+            _buildUnitToggle(),
+            const SizedBox(height: 16),
+            _buildInputField(
+              label: 'Height (cm)',
+              hint: 'e.g., 175',
+              icon: Icons.height,
+              controller: _heightController,
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Please enter your height';
+                final height = double.tryParse(value);
+                if (height == null || height < 100 || height > 250) {
+                  return 'Enter a valid height (100-250 cm)';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildInputField(
+              label: 'Weight ($_weightUnit)',
+              hint: _weightUnit == 'lb' ? 'e.g., 160' : 'e.g., 70',
+              icon: Icons.monitor_weight,
+              controller: _weightController,
+              validator: (value) {
+                if (value == null || value.isEmpty) return 'Please enter your weight';
+                final weight = double.tryParse(value);
+                final weightKg = _weightToKg(weight);
+                if (weight == null || weightKg == null || weightKg < 30 || weightKg > 300) {
+                  return 'Enter a valid weight';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 20),
+            _buildSnapshotCard(),
+            const SizedBox(height: 24),
+            _primaryButton('Continue', () {
+              if (_formKey.currentState!.validate()) {
+                _nextPage();
+              }
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUnitToggle() {
+    return Row(
+      children: [
+        Text('Preferred unit', style: AppText.title),
+        const SizedBox(width: 12),
+        Wrap(
+          spacing: 8,
+          children: [
+            ChoiceChip(
+              label: const Text('kg'),
+              selected: _weightUnit == 'kg',
+              onSelected: (_) => _setWeightUnit('kg'),
+              selectedColor: AppColors.accentAlt,
+              backgroundColor: AppColors.surfaceBright,
+              labelStyle: TextStyle(
+                color: _weightUnit == 'kg' ? Colors.black : AppColors.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            ChoiceChip(
+              label: const Text('lb'),
+              selected: _weightUnit == 'lb',
+              onSelected: (_) => _setWeightUnit('lb'),
+              selectedColor: AppColors.accentAlt,
+              backgroundColor: AppColors.surfaceBright,
+              labelStyle: TextStyle(
+                color: _weightUnit == 'lb' ? Colors.black : AppColors.onSurface,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSnapshotCard() {
+    final height = _parseHeightCm();
+    final weight = _parseWeightInput();
+    final weightKg = _weightToKg(weight);
+    final hasMetrics = height != null && weightKg != null;
+    final bmi = hasMetrics ? (weightKg! / ((height! / 100) * (height / 100))) : null;
+    final bmiText = bmi == null ? '--' : bmi.toStringAsFixed(1);
+    final bmiCategory = hasMetrics
+        ? (bmi! < 18.5
+            ? 'Underweight'
+            : bmi < 25
+                ? 'Normal'
+                : bmi < 30
+                    ? 'Overweight'
+                    : 'High')
+        : 'Enter metrics';
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.card.copyWith(
+        gradient: AppColors.accentGradient,
+        borderRadius: BorderRadius.circular(18),
+      ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Fitness Level',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+          Text('Your snapshot', style: AppText.title.copyWith(color: Colors.white)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _snapshotTile('BMI', bmiText),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _snapshotTile('Status', bmiCategory),
+              ),
+            ],
           ),
+          const SizedBox(height: 12),
+          Text(
+            'Recommended frequency: ${_recommendedFrequency()} days/week',
+            style: AppText.body.copyWith(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _snapshotTile(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppText.caption.copyWith(color: Colors.white70)),
+          const SizedBox(height: 4),
+          Text(value, style: AppText.title.copyWith(color: Colors.white)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFitnessLevelPage() {
+    return _scrollablePage(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Choose your level', style: AppText.headline),
           const SizedBox(height: 8),
           Text(
-            'This helps us recommend appropriate exercises and starting weights.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade600,
-            ),
+            'We will tune weights, recovery, and weekly volume for you.',
+            style: AppText.body,
           ),
-          const SizedBox(height: 32),
-          ...FitnessLevel.values.map((level) => _buildFitnessLevelCard(level)),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: _nextPage,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            child: const Text('Continue'),
-          ),
+          const SizedBox(height: 20),
+          ...FitnessLevel.values.map(_buildFitnessLevelCard),
+          const SizedBox(height: 24),
+          _primaryButton('Continue', _nextPage),
         ],
       ),
     );
   }
 
   Widget _buildFitnessGoalPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    return _scrollablePage(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'What\'s Your Goal?',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('What is your goal?', style: AppText.headline),
           const SizedBox(height: 8),
           Text(
-            'Select your primary fitness goal to help us tailor your plan.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade600,
-            ),
+            'Your plan will prioritize this focus every week.',
+            style: AppText.body,
           ),
-          const SizedBox(height: 32),
-          ...FitnessGoal.values.map((goal) => _buildFitnessGoalCard(goal)),
-          const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: _nextPage,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            child: const Text('Continue'),
-          ),
+          const SizedBox(height: 20),
+          ...FitnessGoal.values.map(_buildFitnessGoalCard),
+          const SizedBox(height: 24),
+          _primaryButton('Continue', _nextPage),
         ],
       ),
     );
   }
 
   Widget _buildEquipmentPage() {
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
+    final greetingName = _firstName(_nameController.text);
+    final greeting = greetingName.isEmpty
+        ? 'Your plan is ready to go.'
+        : 'Great to meet you, $greetingName.';
+
+    return _scrollablePage(
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'What Equipment Do You Have?',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
+          Text('What equipment do you have?', style: AppText.headline),
           const SizedBox(height: 8),
           Text(
-            'Select all that apply. This helps us create routines you can actually do.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade600,
-            ),
+            'Select all that apply. We will only suggest routines you can do.',
+            style: AppText.body,
           ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 2.5,
-              children: AvailableEquipment.values
-                  .map((equipment) => _buildEquipmentChip(equipment))
-                  .toList(),
-            ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: AvailableEquipment.values
+                .map((equipment) => _buildEquipmentChip(equipment))
+                .toList(),
           ),
+          const SizedBox(height: 16),
+          _buildSummaryGreeting(greeting),
+          const SizedBox(height: 20),
+          _buildPlanPreviewCard(),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _completeOnboarding,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(double.infinity, 48),
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Complete Setup'),
+          _primaryButton(
+            _isLoading ? 'Finishing...' : 'Complete Setup',
+            _isLoading ? null : _completeOnboarding,
+            isLoading: _isLoading,
           ),
         ],
       ),
     );
   }
 
+  Widget _buildInputField({
+    required String label,
+    required String hint,
+    required IconData icon,
+    required TextEditingController controller,
+    required String? Function(String?) validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      style: AppText.title.copyWith(color: AppColors.onSurface),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, color: AppColors.onSurfaceSubtle),
+        filled: true,
+        fillColor: AppColors.surfaceBright,
+        labelStyle: AppText.caption.copyWith(color: AppColors.onSurfaceSubtle),
+        hintStyle: AppText.caption,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white12),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: AppColors.accentAlt, width: 1.5),
+        ),
+      ),
+      keyboardType: TextInputType.number,
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,1}')),
+      ],
+      validator: validator,
+      scrollPadding: const EdgeInsets.only(bottom: 140),
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+    );
+  }
+
   Widget _buildFitnessLevelCard(FitnessLevel level) {
     final isSelected = _selectedFitnessLevel == level;
-    
-    return Container(
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.white10 : AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+      ),
       child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedFitnessLevel = level;
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isSelected 
-                  ? Theme.of(context).colorScheme.primary 
-                  : Colors.grey.shade300,
-              width: isSelected ? 2 : 1,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            color: isSelected 
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
-                : null,
-          ),
-          child: Row(
-            children: [
-              Icon(
+        onTap: () => setState(() => _selectedFitnessLevel = level),
+        borderRadius: BorderRadius.circular(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : Colors.white10,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
                 _getFitnessLevelIcon(level),
-                color: isSelected 
-                    ? Theme.of(context).colorScheme.primary 
-                    : Colors.grey.shade600,
-                size: 32,
+                color: isSelected ? AppColors.accentAlt : AppColors.onSurfaceSubtle,
+                size: 28,
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      level.displayName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isSelected 
-                            ? Theme.of(context).colorScheme.primary 
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      level.description,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    level.displayName,
+                    style: AppText.title.copyWith(color: AppColors.onSurface),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(level.description, style: AppText.body),
+                ],
               ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-            ],
-          ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_circle, color: AppColors.accentAlt),
+          ],
         ),
       ),
     );
@@ -491,50 +1111,46 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   Widget _buildFitnessGoalCard(FitnessGoal goal) {
     final isSelected = _selectedFitnessGoal == goal;
-    
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isSelected ? Colors.white10 : AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+      ),
       child: InkWell(
-        onTap: () {
-          setState(() {
-            _selectedFitnessGoal = goal;
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: isSelected 
-                  ? Theme.of(context).colorScheme.primary 
-                  : Colors.grey.shade300,
-              width: isSelected ? 2 : 1,
-            ),
-            borderRadius: BorderRadius.circular(12),
-            color: isSelected 
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
-                : null,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  goal.displayName,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isSelected 
-                            ? Theme.of(context).colorScheme.primary 
-                            : null,
-                      ),
-                ),
+        onTap: () => setState(() => _selectedFitnessGoal = goal),
+        borderRadius: BorderRadius.circular(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : Colors.white10,
+                borderRadius: BorderRadius.circular(12),
               ),
-              if (isSelected)
-                Icon(
-                  Icons.check_circle,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-            ],
-          ),
+              child: Icon(
+                _goalIcons[goal],
+                color: isSelected ? AppColors.accentAlt : AppColors.onSurfaceSubtle,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(goal.displayName, style: AppText.title.copyWith(color: AppColors.onSurface)),
+                  const SizedBox(height: 6),
+                  Text(_goalDescriptions[goal] ?? '', style: AppText.body),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_circle, color: AppColors.accentAlt),
+          ],
         ),
       ),
     );
@@ -542,23 +1158,117 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   Widget _buildEquipmentChip(AvailableEquipment equipment) {
     final isSelected = _selectedEquipment.contains(equipment);
-    
-    return FilterChip(
-      label: Text(equipment.displayName),
-      selected: isSelected,
-      onSelected: (bool selected) {
+
+    return GestureDetector(
+      onTap: () {
         setState(() {
-          if (selected) {
-            _selectedEquipment.add(equipment);
-          } else {
+          if (isSelected) {
             _selectedEquipment.remove(equipment);
+          } else {
+            _selectedEquipment.add(equipment);
           }
         });
       },
-      checkmarkColor: Theme.of(context).colorScheme.onPrimary,
-      selectedColor: Theme.of(context).colorScheme.primary,
-      labelStyle: TextStyle(
-        color: isSelected ? Theme.of(context).colorScheme.onPrimary : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : AppColors.surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_equipmentIcons[equipment], size: 18, color: AppColors.onSurfaceSubtle),
+            const SizedBox(width: 8),
+            Text(
+              equipment.displayName,
+              style: AppText.caption.copyWith(color: AppColors.onSurface),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryGreeting(String greeting) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.card.copyWith(color: AppColors.surfaceBright),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.auto_awesome, color: AppColors.accentAlt, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Final summary', style: AppText.caption),
+                const SizedBox(height: 6),
+                Text(greeting, style: AppText.title.copyWith(color: AppColors.onSurface)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlanPreviewCard() {
+    final equipmentText = _selectedEquipment.isEmpty
+        ? 'Any equipment'
+        : _selectedEquipment.map((e) => e.displayName).take(3).join(', ');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.card,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Your plan preview', style: AppText.title.copyWith(color: AppColors.onSurface)),
+          const SizedBox(height: 8),
+          _previewRow('Goal', _selectedFitnessGoal.displayName),
+          _previewRow('Level', _selectedFitnessLevel.displayName),
+          _previewRow('Frequency', '${_recommendedFrequency()} days/week'),
+          _previewRow('Equipment', equipmentText),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 90,
+            child: Text(label, style: AppText.caption),
+          ),
+          Expanded(
+            child: Text(value, style: AppText.body.copyWith(color: AppColors.onSurface)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _primaryButton(String label, VoidCallback? onPressed, {bool isLoading = false}) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.accentAlt,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: isLoading
+            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -572,5 +1282,40 @@ class _OnboardingPageState extends State<OnboardingPage> {
       case FitnessLevel.advanced:
         return Icons.fitness_center;
     }
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _FeatureCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 170,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.accentAlt),
+          const SizedBox(height: 10),
+          Text(title, style: AppText.title),
+          const SizedBox(height: 6),
+          Text(subtitle, style: AppText.body),
+        ],
+      ),
+    );
   }
 }
