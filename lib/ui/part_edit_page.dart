@@ -197,6 +197,26 @@ class _ExerciseEditState {
   }
 }
 
+class _ExercisePreset {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final List<Color> colors;
+  final SetType setType;
+  final TargetedBodyPart targetedBodyPart;
+  final List<Exercise> exercises;
+
+  const _ExercisePreset({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.colors,
+    required this.setType,
+    required this.targetedBodyPart,
+    required this.exercises,
+  });
+}
+
 class PartEditPage extends StatefulWidget {
   final Part originalPart;
   final AddOrEdit addOrEdit;
@@ -221,10 +241,13 @@ class _PartEditPageState extends State<PartEditPage> {
   // Personalization
   String _weightUnit = 'kg';
   double _weightIncrement = 2.5;
+  late final PageController _presetPageController;
+  int _activePresetPage = 0;
 
   @override
   void initState() {
     super.initState();
+    _presetPageController = PageController(viewportFraction: 0.88);
     _initializeState();
   }
 
@@ -266,13 +289,19 @@ class _PartEditPageState extends State<PartEditPage> {
       }
     }
 
-    _focusNodes.clear();
-    // Create focus nodes sized to number of exercises (4 fields per exercise)
-    for (int i = 0; i < 4 * exerciseCount; i++) {
-      _focusNodes.add(FocusNode());
-    }
+    _rebuildFocusNodes();
     // Load personalization
     _loadPersonalization();
+  }
+
+  void _rebuildFocusNodes() {
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
+    _focusNodes.clear();
+    for (int i = 0; i < 4 * _exerciseEditStates.length; i++) {
+      _focusNodes.add(FocusNode());
+    }
   }
 
   Future<void> _loadPersonalization() async {
@@ -298,6 +327,7 @@ class _PartEditPageState extends State<PartEditPage> {
   @override
   void dispose() {
     _additionalNotesController.dispose();
+    _presetPageController.dispose();
     for (var exState in _exerciseEditStates) {
       exState.dispose();
     }
@@ -331,24 +361,24 @@ class _PartEditPageState extends State<PartEditPage> {
     setState(() {
       _selectedSetType = newSetType;
       _exerciseEditStates = newStates;
+      _rebuildFocusNodes();
     });
   }
 
   void _adjustSetTypeByCount() {
     final count = _exerciseEditStates.length;
     SetType newType;
-    if (count <= 1)
+    if (count <= 1) {
       newType = SetType.Regular;
-    else if (count == 2)
+    } else if (count == 2) {
       newType = SetType.Super;
-    else if (count == 3)
+    } else if (count == 3) {
       newType = SetType.Tri;
-    else
+    } else {
       newType = SetType.Giant;
+    }
     if (newType != _selectedSetType) {
-      setState(() {
-        _selectedSetType = newType;
-      });
+      _selectedSetType = newType;
     }
   }
 
@@ -357,6 +387,188 @@ class _PartEditPageState extends State<PartEditPage> {
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+    );
+  }
+
+  List<_ExercisePreset> get _exercisePresets {
+    return [
+      _ExercisePreset(
+        title: 'For You Starter',
+        subtitle: 'Fast setup tuned to your selected target',
+        icon: Icons.bolt_rounded,
+        colors: const [Color(0xFF22D3EE), Color(0xFF2563EB)],
+        setType: SetType.Regular,
+        targetedBodyPart: _selectedTargetedBodyPart,
+        exercises: [
+          Exercise(
+            name:
+                '${targetedBodyPartToStringConverter(_selectedTargetedBodyPart)} Builder',
+            weight: 25,
+            sets: 4,
+            reps: '8-10',
+            primaryTarget: _selectedTargetedBodyPart,
+          ),
+        ],
+      ),
+      const _ExercisePreset(
+        title: 'Push Pump',
+        subtitle: 'Chest + shoulders hypertrophy combo',
+        icon: Icons.fitness_center_rounded,
+        colors: [Color(0xFFEF4444), Color(0xFFF97316)],
+        setType: SetType.Super,
+        targetedBodyPart: TargetedBodyPart.Chest,
+        exercises: [
+          Exercise(
+            name: 'Incline Bench Press',
+            weight: 40,
+            sets: 4,
+            reps: '6-10',
+            primaryTarget: TargetedBodyPart.Chest,
+          ),
+          Exercise(
+            name: 'Dumbbell Lateral Raise',
+            weight: 8,
+            sets: 4,
+            reps: '12-15',
+            primaryTarget: TargetedBodyPart.Shoulder,
+          ),
+        ],
+      ),
+      const _ExercisePreset(
+        title: 'Pull Builder',
+        subtitle: 'Back thickness + biceps in one flow',
+        icon: Icons.swap_vert_circle_rounded,
+        colors: [Color(0xFF14B8A6), Color(0xFF0EA5E9)],
+        setType: SetType.Super,
+        targetedBodyPart: TargetedBodyPart.Back,
+        exercises: [
+          Exercise(
+            name: 'Barbell Row',
+            weight: 45,
+            sets: 4,
+            reps: '6-10',
+            primaryTarget: TargetedBodyPart.Back,
+          ),
+          Exercise(
+            name: 'Alternating Dumbbell Curl',
+            weight: 10,
+            sets: 3,
+            reps: '10-12',
+            primaryTarget: TargetedBodyPart.Bicep,
+          ),
+        ],
+      ),
+      const _ExercisePreset(
+        title: 'Leg Domination',
+        subtitle: 'Strength-focused lower body tri-set',
+        icon: Icons.run_circle_rounded,
+        colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+        setType: SetType.Tri,
+        targetedBodyPart: TargetedBodyPart.Leg,
+        exercises: [
+          Exercise(
+            name: 'Back Squat',
+            weight: 60,
+            sets: 4,
+            reps: '5-8',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+          Exercise(
+            name: 'Romanian Deadlift',
+            weight: 55,
+            sets: 3,
+            reps: '8-10',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+          Exercise(
+            name: 'Walking Lunge',
+            weight: 14,
+            sets: 3,
+            reps: '10/side',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+        ],
+      ),
+      const _ExercisePreset(
+        title: 'Core Igniter',
+        subtitle: 'Timed circuit to end strong',
+        icon: Icons.auto_awesome_rounded,
+        colors: [Color(0xFF10B981), Color(0xFF14B8A6)],
+        setType: SetType.Tri,
+        targetedBodyPart: TargetedBodyPart.Abs,
+        exercises: [
+          Exercise(
+            name: 'Plank Hold',
+            weight: 0,
+            sets: 3,
+            reps: '45',
+            workoutType: WorkoutType.Timed,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+          Exercise(
+            name: 'Hollow Hold',
+            weight: 0,
+            sets: 3,
+            reps: '30',
+            workoutType: WorkoutType.Timed,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+          Exercise(
+            name: 'Mountain Climber',
+            weight: 0,
+            sets: 3,
+            reps: '40',
+            workoutType: WorkoutType.Cardio,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  bool _isPristineBlankEditor(_ExerciseEditState state) {
+    return state.nameController.text.trim().isEmpty &&
+        (double.tryParse(state.weightController.text) ?? 0.0) == 0 &&
+        (int.tryParse(state.setsController.text) ?? 0) == 3 &&
+        state.repsController.text.trim() == '10';
+  }
+
+  void _applyPreset(_ExercisePreset preset) {
+    final shouldReplace =
+        _exerciseEditStates.length == 1 &&
+        _isPristineBlankEditor(_exerciseEditStates.first);
+
+    setState(() {
+      final newStates =
+          preset.exercises
+              .map((exercise) => _ExerciseEditState.fromExercise(exercise))
+              .toList();
+
+      if (shouldReplace) {
+        _exerciseEditStates.first.dispose();
+        _exerciseEditStates = newStates;
+      } else {
+        _exerciseEditStates = [..._exerciseEditStates, ...newStates];
+      }
+
+      _selectedTargetedBodyPart = preset.targetedBodyPart;
+      final count = _exerciseEditStates.length;
+      if (count <= 1) {
+        _selectedSetType = SetType.Regular;
+      } else if (count == 2) {
+        _selectedSetType = SetType.Super;
+      } else if (count == 3) {
+        _selectedSetType = SetType.Tri;
+      } else {
+        _selectedSetType = SetType.Giant;
+      }
+      _rebuildFocusNodes();
+    });
+
+    _showSnackBar(
+      shouldReplace
+          ? 'Applied "${preset.title}"'
+          : 'Added "${preset.title}" exercises',
     );
   }
 
@@ -462,11 +674,12 @@ class _PartEditPageState extends State<PartEditPage> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (await _onWillPop() && mounted) {
+        if (await _onWillPop() && context.mounted) {
           Navigator.pop(context);
         }
       },
@@ -487,94 +700,221 @@ class _PartEditPageState extends State<PartEditPage> {
         body: KeyboardActions(
           config: _buildKeyboardActionsConfig(),
           autoScroll: true,
-          child: ListView(
-            padding: const EdgeInsets.all(8.0),
-            children: [
-              _buildSectionCard(
-                title: 'Targeted Muscle Group',
-                icon: Icons.ads_click_rounded,
-                child: _buildTargetedBodyPartRadioList(),
+          child: AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(bottom: keyboardOpen ? 8 : 0),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                8,
+                8,
+                8,
+                8 + (keyboardOpen ? 16 : 0),
               ),
-              _buildSectionCard(
-                title: 'Set Type',
-                icon: Icons.repeat_rounded,
-                child: _buildSetTypeSegmentedControl(),
-              ),
-              Form(
-                key: _formKey,
-                child: _buildSectionCard(
-                  title: 'Exercise Details',
-                  icon: Icons.fitness_center_rounded,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildSetDetailsList(),
-                      const SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _exerciseEditStates.add(
-                              _ExerciseEditState.empty(
-                                defaultTarget: _selectedTargetedBodyPart,
-                              ),
-                            );
-                            for (int i = 0; i < 4; i++) {
-                              _focusNodes.add(FocusNode());
-                            }
-                            _adjustSetTypeByCount();
-                          });
-                        },
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Exercise'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildSectionCard(
+                    title: 'Quick Add Reels',
+                    icon: Icons.auto_awesome_motion_rounded,
+                    child: _buildPresetReel(),
+                  ),
+                  _buildSectionCard(
+                    title: 'Targeted Muscle Group',
+                    icon: Icons.ads_click_rounded,
+                    child: _buildTargetedBodyPartRadioList(),
+                  ),
+                  _buildSectionCard(
+                    title: 'Set Type',
+                    icon: Icons.repeat_rounded,
+                    child: _buildSetTypeSegmentedControl(),
+                  ),
+                  Form(
+                    key: _formKey,
+                    child: _buildSectionCard(
+                      title: 'Exercise Details',
+                      icon: Icons.fitness_center_rounded,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildSetDetailsList(),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _exerciseEditStates.add(
+                                  _ExerciseEditState.empty(
+                                    defaultTarget: _selectedTargetedBodyPart,
+                                  ),
+                                );
+                                _rebuildFocusNodes();
+                                _adjustSetTypeByCount();
+                              });
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('Add Custom Exercise'),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              _buildSectionCard(
-                title: 'Additional Notes (Optional)',
-                icon: Icons.notes_rounded,
-                initiallyExpanded: _additionalNotesController.text.isNotEmpty,
-                child: _buildAdditionalNotesField(),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-        bottomNavigationBar: SafeArea(
-          top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              border: Border(
-                top: BorderSide(
-                  color: Theme.of(context).dividerColor.withOpacity(0.5),
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.maybePop(context),
-                    icon: const Icon(Icons.close),
-                    label: const Text('Cancel'),
+                  _buildSectionCard(
+                    title: 'Additional Notes (Optional)',
+                    icon: Icons.notes_rounded,
+                    initiallyExpanded:
+                        _additionalNotesController.text.isNotEmpty,
+                    child: _buildAdditionalNotesField(),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _onDone,
-                    icon: const Icon(Icons.check),
-                    label: const Text('Save Part'),
-                  ),
-                ),
-              ],
+                  const SizedBox(height: 20),
+                ],
+              ),
             ),
           ),
         ),
+        bottomNavigationBar:
+            keyboardOpen
+                ? null
+                : SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(
+                            context,
+                          ).dividerColor.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.maybePop(context),
+                            icon: const Icon(Icons.close),
+                            label: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _onDone,
+                            icon: const Icon(Icons.check),
+                            label: const Text('Save Part'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
       ),
+    );
+  }
+
+  Widget _buildPresetReel() {
+    final presets = _exercisePresets;
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 170,
+          child: PageView.builder(
+            controller: _presetPageController,
+            itemCount: presets.length,
+            onPageChanged: (value) {
+              setState(() {
+                _activePresetPage = value;
+              });
+            },
+            itemBuilder: (context, index) {
+              final preset = presets[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => _applyPreset(preset),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: preset.colors,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(preset.icon, color: Colors.white),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  preset.title,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            preset.subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                          ),
+                          const Spacer(),
+                          FilledButton(
+                            onPressed: () => _applyPreset(preset),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black87,
+                              minimumSize: const Size(120, 36),
+                            ),
+                            child: const Text('Add This'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(presets.length, (index) {
+            final selected = index == _activePresetPage;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: selected ? 18 : 7,
+              height: 7,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                color: selected ? cs.primary : cs.outlineVariant,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 
@@ -755,16 +1095,24 @@ class _PartEditPageState extends State<PartEditPage> {
                       setState(() {
                         if (_exerciseEditStates.length > 1) {
                           _exerciseEditStates.removeAt(index);
-                          _focusNodes.clear();
-                          for (
-                            int i = 0;
-                            i < 4 * _exerciseEditStates.length;
-                            i++
-                          ) {
-                            _focusNodes.add(FocusNode());
-                          }
+                          _rebuildFocusNodes();
                           _adjustSetTypeByCount();
                         }
+                      });
+                    },
+                  );
+
+                  final duplicateButton = IconButton(
+                    icon: const Icon(Icons.copy_all_outlined),
+                    tooltip: 'Duplicate',
+                    onPressed: () {
+                      setState(() {
+                        final cloned = _ExerciseEditState.fromExercise(
+                          exerciseState.toExercise(),
+                        );
+                        _exerciseEditStates.insert(index + 1, cloned);
+                        _rebuildFocusNodes();
+                        _adjustSetTypeByCount();
                       });
                     },
                   );
@@ -795,6 +1143,7 @@ class _PartEditPageState extends State<PartEditPage> {
                                 maxLines: 1,
                               ),
                             ),
+                            duplicateButton,
                             deleteButton,
                             if (showDragHandle) dragHandle,
                           ],
@@ -816,6 +1165,7 @@ class _PartEditPageState extends State<PartEditPage> {
                           maxLines: 1,
                         ),
                       ),
+                      duplicateButton,
                       deleteButton,
                       const SizedBox(width: 8),
                       Flexible(fit: FlexFit.tight, child: selector),
@@ -899,100 +1249,113 @@ class _PartEditPageState extends State<PartEditPage> {
                               decimal: true,
                             ),
                             decoration: InputDecoration(
-                              labelText: 'Wt (' + _weightUnit + ')',
+                              labelText: 'Wt ($_weightUnit)',
                               isDense: true,
                               suffixIconConstraints:
                                   const BoxConstraints.tightFor(
-                                    width: 96,
-                                    height: 40,
+                                    width: 88,
+                                    height: 36,
                                   ),
                               suffixIcon: SizedBox(
-                                width: 96,
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.remove, size: 18),
-                                      visualDensity: const VisualDensity(
-                                        horizontal: -4,
-                                        vertical: -4,
+                                width: 88,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.remove,
+                                          size: 16,
+                                        ),
+                                        visualDensity: const VisualDensity(
+                                          horizontal: -4,
+                                          vertical: -4,
+                                        ),
+                                        tooltip: 'Decrement',
+                                        padding: EdgeInsets.zero,
+                                        constraints:
+                                            const BoxConstraints.tightFor(
+                                              width: 24,
+                                              height: 24,
+                                            ),
+                                        onPressed: () {
+                                          final v =
+                                              double.tryParse(
+                                                exerciseState
+                                                    .weightController
+                                                    .text,
+                                              ) ??
+                                              0.0;
+                                          final newV = (v - _weightIncrement)
+                                              .clamp(0.0, double.infinity);
+                                          setState(() {
+                                            exerciseState
+                                                    .weightController
+                                                    .text =
+                                                StringHelper.weightToString(
+                                                  newV,
+                                                );
+                                          });
+                                        },
                                       ),
-                                      tooltip: 'Decrement',
-                                      padding: EdgeInsets.zero,
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                            width: 28,
-                                            height: 28,
-                                          ),
-                                      onPressed: () {
-                                        final v =
-                                            double.tryParse(
-                                              exerciseState
-                                                  .weightController
-                                                  .text,
-                                            ) ??
-                                            0.0;
-                                        final newV = (v - _weightIncrement)
-                                            .clamp(0.0, double.infinity);
-                                        setState(() {
-                                          exerciseState.weightController.text =
-                                              StringHelper.weightToString(newV);
-                                        });
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add, size: 18),
-                                      visualDensity: const VisualDensity(
-                                        horizontal: -4,
-                                        vertical: -4,
+                                      IconButton(
+                                        icon: const Icon(Icons.add, size: 16),
+                                        visualDensity: const VisualDensity(
+                                          horizontal: -4,
+                                          vertical: -4,
+                                        ),
+                                        tooltip: 'Increment',
+                                        padding: EdgeInsets.zero,
+                                        constraints:
+                                            const BoxConstraints.tightFor(
+                                              width: 24,
+                                              height: 24,
+                                            ),
+                                        onPressed: () {
+                                          final v =
+                                              double.tryParse(
+                                                exerciseState
+                                                    .weightController
+                                                    .text,
+                                              ) ??
+                                              0.0;
+                                          final newV = v + _weightIncrement;
+                                          setState(() {
+                                            exerciseState
+                                                    .weightController
+                                                    .text =
+                                                StringHelper.weightToString(
+                                                  newV,
+                                                );
+                                          });
+                                        },
                                       ),
-                                      tooltip: 'Increment',
-                                      padding: EdgeInsets.zero,
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                            width: 28,
-                                            height: 28,
-                                          ),
-                                      onPressed: () {
-                                        final v =
-                                            double.tryParse(
-                                              exerciseState
-                                                  .weightController
-                                                  .text,
-                                            ) ??
-                                            0.0;
-                                        final newV = v + _weightIncrement;
-                                        setState(() {
-                                          exerciseState.weightController.text =
-                                              StringHelper.weightToString(newV);
-                                        });
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: Icon(
-                                        Icons.auto_awesome,
-                                        size: 18,
-                                        color: colorScheme.primary,
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.auto_awesome,
+                                          size: 16,
+                                          color: colorScheme.primary,
+                                        ),
+                                        visualDensity: const VisualDensity(
+                                          horizontal: -4,
+                                          vertical: -4,
+                                        ),
+                                        onPressed:
+                                            () =>
+                                                _showWeightRecommendationDialog(
+                                                  index,
+                                                ),
+                                        tooltip: 'AI Weight Recommendation',
+                                        padding: EdgeInsets.zero,
+                                        constraints:
+                                            const BoxConstraints.tightFor(
+                                              width: 24,
+                                              height: 24,
+                                            ),
                                       ),
-                                      visualDensity: const VisualDensity(
-                                        horizontal: -4,
-                                        vertical: -4,
-                                      ),
-                                      onPressed:
-                                          () => _showWeightRecommendationDialog(
-                                            index,
-                                          ),
-                                      tooltip: 'AI Weight Recommendation',
-                                      padding: EdgeInsets.zero,
-                                      constraints:
-                                          const BoxConstraints.tightFor(
-                                            width: 28,
-                                            height: 28,
-                                          ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
@@ -1064,24 +1427,29 @@ class _PartEditPageState extends State<PartEditPage> {
                 ],
               ),
               const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: DropdownButton<TargetedBodyPart>(
-                  value: exerciseState.primaryTarget,
-                  onChanged: (bp) {
-                    if (bp == null) return;
-                    setState(() => exerciseState.primaryTarget = bp);
-                  },
-                  items:
-                      TargetedBodyPart.values
-                          .map(
-                            (bp) => DropdownMenuItem(
-                              value: bp,
-                              child: Text('Target: ${bp.name}'),
-                            ),
-                          )
-                          .toList(),
+              DropdownButtonFormField<TargetedBodyPart>(
+                initialValue: exerciseState.primaryTarget,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Primary Target',
+                  isDense: true,
                 ),
+                onChanged: (bp) {
+                  if (bp == null) return;
+                  setState(() => exerciseState.primaryTarget = bp);
+                },
+                items:
+                    TargetedBodyPart.values
+                        .map(
+                          (bp) => DropdownMenuItem(
+                            value: bp,
+                            child: Text(
+                              targetedBodyPartToStringConverter(bp),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
               ),
               Wrap(
                 spacing: 6,
@@ -1473,13 +1841,12 @@ class _PartEditPageState extends State<PartEditPage> {
 
   KeyboardActionsConfig _buildKeyboardActionsConfig() {
     final theme = Theme.of(context);
-    final validFocusNodes = _focusNodes.where((node) => node != null).toList();
     return KeyboardActionsConfig(
       keyboardActionsPlatform: KeyboardActionsPlatform.ALL,
       keyboardBarColor: theme.colorScheme.surfaceContainer,
       nextFocus: true,
       actions:
-          validFocusNodes.map((node) {
+          _focusNodes.map((node) {
             return KeyboardActionsItem(
               focusNode: node,
               displayDoneButton: true,

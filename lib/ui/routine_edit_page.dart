@@ -11,6 +11,51 @@ import 'package:workout_planner/ui/components/part_edit_card.dart';
 import 'package:workout_planner/ui/part_edit_page.dart';
 import 'package:workout_planner/utils/routine_helpers.dart';
 
+class _QuickPartTemplate {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final SetType setType;
+  final TargetedBodyPart targetedBodyPart;
+  final List<Exercise> exercises;
+
+  const _QuickPartTemplate({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.setType,
+    required this.targetedBodyPart,
+    required this.exercises,
+  });
+
+  Part toPart() {
+    return Part(
+      setType: setType,
+      targetedBodyPart: targetedBodyPart,
+      exercises: exercises.map((e) => e.copyWith()).toList(),
+      partName: title,
+    );
+  }
+}
+
+class _RoutineBlueprint {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final List<Color> colors;
+  final List<_QuickPartTemplate> partTemplates;
+  final List<int> suggestedWeekdays;
+
+  const _RoutineBlueprint({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.colors,
+    required this.partTemplates,
+    required this.suggestedWeekdays,
+  });
+}
+
 class RoutineEditPage extends StatefulWidget {
   final AddOrEdit addOrEdit;
   final Routine? initialRoutine;
@@ -53,14 +98,17 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _nameEditingController = TextEditingController();
   late ScrollController _scrollController;
+  late PageController _blueprintPageController;
   late Routine _routineEditState;
   bool _isDirty = false;
   late List<bool> _selectedWeekdaysBool;
+  int _activeBlueprintPage = 0;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController();
+    _blueprintPageController = PageController(viewportFraction: 0.86);
     _initializeRoutineState();
     _nameEditingController.addListener(_markDirtyOnNameChange);
   }
@@ -111,6 +159,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _blueprintPageController.dispose();
     _nameEditingController.removeListener(_markDirtyOnNameChange);
     _nameEditingController.dispose();
     super.dispose();
@@ -137,12 +186,394 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     });
   }
 
-  void _onAddPartPressed() async {
-    final newPart = Part(
+  TargetedBodyPart _defaultTargetForRoutine() {
+    switch (_routineEditState.mainTargetedBodyPart) {
+      case MainTargetedBodyPart.Abs:
+        return TargetedBodyPart.Abs;
+      case MainTargetedBodyPart.Arm:
+        return TargetedBodyPart.Arm;
+      case MainTargetedBodyPart.Back:
+        return TargetedBodyPart.Back;
+      case MainTargetedBodyPart.Chest:
+        return TargetedBodyPart.Chest;
+      case MainTargetedBodyPart.Leg:
+        return TargetedBodyPart.Leg;
+      case MainTargetedBodyPart.Shoulder:
+        return TargetedBodyPart.Shoulder;
+      case MainTargetedBodyPart.FullBody:
+      case MainTargetedBodyPart.Other:
+        return TargetedBodyPart.FullBody;
+    }
+  }
+
+  List<_QuickPartTemplate> get _quickPartTemplates {
+    final baseTarget = _defaultTargetForRoutine();
+    return [
+      _QuickPartTemplate(
+        title: 'Main Lift Focus',
+        subtitle: 'One heavy movement with progression-friendly setup',
+        icon: Icons.trending_up_rounded,
+        setType: SetType.Regular,
+        targetedBodyPart: baseTarget,
+        exercises: [
+          Exercise(
+            name: '${targetedBodyPartToStringConverter(baseTarget)} Main Lift',
+            weight: 35,
+            sets: 4,
+            reps: '6-8',
+            primaryTarget: baseTarget,
+          ),
+        ],
+      ),
+      const _QuickPartTemplate(
+        title: 'Push Superset',
+        subtitle: 'High tension + pump in one block',
+        icon: Icons.bolt_rounded,
+        setType: SetType.Super,
+        targetedBodyPart: TargetedBodyPart.Chest,
+        exercises: [
+          Exercise(
+            name: 'Incline Dumbbell Press',
+            weight: 20,
+            sets: 3,
+            reps: '8-12',
+            primaryTarget: TargetedBodyPart.Chest,
+          ),
+          Exercise(
+            name: 'Cable Lateral Raise',
+            weight: 7.5,
+            sets: 3,
+            reps: '12-15',
+            primaryTarget: TargetedBodyPart.Shoulder,
+          ),
+        ],
+      ),
+      const _QuickPartTemplate(
+        title: 'Pull Strength Pair',
+        subtitle: 'Back thickness + lat width',
+        icon: Icons.swap_vert_circle_outlined,
+        setType: SetType.Super,
+        targetedBodyPart: TargetedBodyPart.Back,
+        exercises: [
+          Exercise(
+            name: 'Chest Supported Row',
+            weight: 30,
+            sets: 4,
+            reps: '6-10',
+            primaryTarget: TargetedBodyPart.Back,
+          ),
+          Exercise(
+            name: 'Lat Pulldown',
+            weight: 35,
+            sets: 4,
+            reps: '8-12',
+            primaryTarget: TargetedBodyPart.Back,
+          ),
+        ],
+      ),
+      const _QuickPartTemplate(
+        title: 'Leg Power Tri-Set',
+        subtitle: 'Strength + stability + hypertrophy',
+        icon: Icons.run_circle_outlined,
+        setType: SetType.Tri,
+        targetedBodyPart: TargetedBodyPart.Leg,
+        exercises: [
+          Exercise(
+            name: 'Back Squat',
+            weight: 50,
+            sets: 4,
+            reps: '5-8',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+          Exercise(
+            name: 'Romanian Deadlift',
+            weight: 45,
+            sets: 3,
+            reps: '8-10',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+          Exercise(
+            name: 'Walking Lunge',
+            weight: 12,
+            sets: 3,
+            reps: '10/side',
+            primaryTarget: TargetedBodyPart.Leg,
+          ),
+        ],
+      ),
+      const _QuickPartTemplate(
+        title: 'Core + Stability',
+        subtitle: 'Timed core control circuit',
+        icon: Icons.self_improvement_outlined,
+        setType: SetType.Tri,
+        targetedBodyPart: TargetedBodyPart.Abs,
+        exercises: [
+          Exercise(
+            name: 'Front Plank',
+            weight: 0,
+            sets: 3,
+            reps: '45',
+            workoutType: WorkoutType.Timed,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+          Exercise(
+            name: 'Dead Bug',
+            weight: 0,
+            sets: 3,
+            reps: '40',
+            workoutType: WorkoutType.Timed,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+          Exercise(
+            name: 'Hollow Body Hold',
+            weight: 0,
+            sets: 3,
+            reps: '30',
+            workoutType: WorkoutType.Timed,
+            primaryTarget: TargetedBodyPart.Abs,
+          ),
+        ],
+      ),
+      const _QuickPartTemplate(
+        title: 'Conditioning Finisher',
+        subtitle: 'Heart-rate spike with minimal setup',
+        icon: Icons.local_fire_department_outlined,
+        setType: SetType.Giant,
+        targetedBodyPart: TargetedBodyPart.FullBody,
+        exercises: [
+          Exercise(
+            name: 'Bike Sprint',
+            weight: 0,
+            sets: 4,
+            reps: '45',
+            workoutType: WorkoutType.Cardio,
+            primaryTarget: TargetedBodyPart.FullBody,
+          ),
+          Exercise(
+            name: 'Kettlebell Swing',
+            weight: 16,
+            sets: 4,
+            reps: '20',
+            workoutType: WorkoutType.Cardio,
+            primaryTarget: TargetedBodyPart.FullBody,
+          ),
+          Exercise(
+            name: 'Burpee',
+            weight: 0,
+            sets: 4,
+            reps: '12',
+            workoutType: WorkoutType.Cardio,
+            primaryTarget: TargetedBodyPart.FullBody,
+          ),
+          Exercise(
+            name: 'Mountain Climber',
+            weight: 0,
+            sets: 4,
+            reps: '40',
+            workoutType: WorkoutType.Cardio,
+            primaryTarget: TargetedBodyPart.FullBody,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<_RoutineBlueprint> get _routineBlueprints {
+    final templates = _quickPartTemplates;
+    final mainLift = templates.first;
+    final push = templates[1];
+    final pull = templates[2];
+    final legs = templates[3];
+    final core = templates[4];
+    final finisher = templates[5];
+    return [
+      _RoutineBlueprint(
+        title: 'Power Push-Pull',
+        subtitle: 'Strength-first split with balanced upper volume',
+        icon: Icons.flash_on_rounded,
+        colors: const [Color(0xFF2DD4BF), Color(0xFF2563EB)],
+        partTemplates: [mainLift, push, pull],
+        suggestedWeekdays: const [1, 3, 5],
+      ),
+      _RoutineBlueprint(
+        title: 'Athletic Full Body',
+        subtitle: 'Move fast, lift heavy, finish strong',
+        icon: Icons.sports_mma_rounded,
+        colors: const [Color(0xFFF97316), Color(0xFFEF4444)],
+        partTemplates: [mainLift, legs, core, finisher],
+        suggestedWeekdays: const [1, 3, 6],
+      ),
+      _RoutineBlueprint(
+        title: 'Lean Hybrid',
+        subtitle: 'Hypertrophy + conditioning for body recomposition',
+        icon: Icons.auto_graph_rounded,
+        colors: const [Color(0xFF14B8A6), Color(0xFF06B6D4)],
+        partTemplates: [push, pull, core, finisher],
+        suggestedWeekdays: const [2, 4, 6],
+      ),
+      _RoutineBlueprint(
+        title: 'Legs + Core Priority',
+        subtitle: 'Lower body progression with resilient trunk work',
+        icon: Icons.directions_run_rounded,
+        colors: const [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+        partTemplates: [legs, core, mainLift],
+        suggestedWeekdays: const [1, 4, 6],
+      ),
+    ];
+  }
+
+  Future<void> _onBlueprintTap(_RoutineBlueprint blueprint) async {
+    bool replace = true;
+    if (_routineEditState.parts.isNotEmpty) {
+      final action = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Apply "${blueprint.title}"',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(sheetContext, 'replace'),
+                    child: const Text('Replace current parts'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(sheetContext, 'append'),
+                    child: const Text('Append to current parts'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      if (!mounted || action == null) return;
+      replace = action == 'replace';
+    }
+    _applyBlueprint(blueprint, replace: replace);
+  }
+
+  void _applyBlueprint(_RoutineBlueprint blueprint, {required bool replace}) {
+    final generatedParts =
+        blueprint.partTemplates.map((template) => template.toPart()).toList();
+    final nextParts =
+        replace
+            ? generatedParts
+            : [..._routineEditState.parts, ...generatedParts];
+    final nextWeekdays =
+        _routineEditState.weekdays.isEmpty
+            ? List<int>.from(blueprint.suggestedWeekdays)
+            : _routineEditState.weekdays;
+
+    setState(() {
+      _routineEditState = _routineEditState.copyWith(
+        parts: nextParts,
+        weekdays: nextWeekdays,
+      );
+      _selectedWeekdaysBool = List.generate(
+        7,
+        (index) => nextWeekdays.contains(index + 1),
+      );
+      if (_nameEditingController.text.trim().isEmpty) {
+        _nameEditingController.text = blueprint.title;
+      }
+      _isDirty = true;
+    });
+
+    _showSnackBar(
+      replace
+          ? '${blueprint.title} applied'
+          : '${blueprint.title} parts added to routine',
+    );
+    _scrollToEnd();
+  }
+
+  Future<Part?> _showAddPartTemplateSheet() {
+    final templates = _quickPartTemplates;
+    final blankPart = Part(
       setType: SetType.Regular,
-      targetedBodyPart: TargetedBodyPart.Chest,
+      targetedBodyPart: _defaultTargetForRoutine(),
       exercises: [],
     );
+    return showModalBottomSheet<Part>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Add New Part',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Pick a quick template or start from scratch.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: () => Navigator.pop(sheetContext, blankPart),
+                  icon: const Icon(Icons.edit_note_rounded),
+                  label: const Text('Start Blank Part'),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 320,
+                  child: ListView.separated(
+                    itemCount: templates.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final template = templates[index];
+                      return ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        tileColor:
+                            Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                        leading: Icon(template.icon),
+                        title: Text(template.title),
+                        subtitle: Text(template.subtitle),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap:
+                            () =>
+                                Navigator.pop(sheetContext, template.toPart()),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _onAddPartPressed() async {
+    final newPart = await _showAddPartTemplateSheet();
+    if (newPart == null) return;
+    if (!mounted) return;
 
     try {
       final Part? editedPart = await Navigator.push<Part?>(
@@ -371,7 +802,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        if (await _onWillPop() && mounted) {
+        if (await _onWillPop() && context.mounted) {
           Navigator.pop(context);
         }
       },
@@ -388,7 +819,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             tooltip: 'Back',
             onPressed: () async {
               if (await _onWillPop()) {
-                if (mounted) Navigator.pop(context);
+                if (context.mounted) Navigator.pop(context);
               }
             },
           ),
@@ -412,6 +843,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
           padding: EdgeInsets.zero,
           children: [
             _buildHeroHeader(),
+            if (widget.addOrEdit == AddOrEdit.add) _buildBlueprintReel(),
             _buildRoutineNameCard(),
             _buildWeekdaySelectorCard(),
             // Reorderable parts list (non-scrollable; outer ListView scrolls)
@@ -439,7 +871,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         ),
         floatingActionButton: FloatingActionButton.extended(
           icon: const Icon(Icons.add),
-          label: const Text('ADD PART'),
+          label: const Text('ADD PART+'),
           onPressed: _onAddPartPressed,
         ),
         bottomNavigationBar: SafeArea(
@@ -460,7 +892,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
                   child: OutlinedButton.icon(
                     onPressed: () async {
                       if (await _onWillPop()) {
-                        if (mounted) Navigator.maybePop(context);
+                        if (context.mounted) Navigator.maybePop(context);
                       }
                     },
                     icon: const Icon(Icons.close),
@@ -510,6 +942,138 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         onEdit: () => _onEditPart(part, index),
       );
     });
+  }
+
+  Widget _buildBlueprintReel() {
+    final blueprints = _routineBlueprints;
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Card(
+        elevation: 0,
+        color: cs.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Routine Blueprints',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Swipe, preview, and inject a complete routine style in one tap.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 162,
+                child: PageView.builder(
+                  controller: _blueprintPageController,
+                  itemCount: blueprints.length,
+                  onPageChanged: (value) {
+                    setState(() {
+                      _activeBlueprintPage = value;
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    final blueprint = blueprints[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: blueprint.colors,
+                          ),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(blueprint.icon, color: Colors.white),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      blueprint.title,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                blueprint.subtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.92),
+                                ),
+                              ),
+                              const Spacer(),
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: FilledButton(
+                                  onPressed: () => _onBlueprintTap(blueprint),
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    foregroundColor: Colors.black87,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                  child: const Text('Apply'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(blueprints.length, (index) {
+                  final selected = index == _activeBlueprintPage;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: selected ? 18 : 7,
+                    height: 7,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: selected ? cs.primary : cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildRoutineNameCard() {
@@ -713,7 +1277,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Name it, pick days, then add parts. You can reorder parts anytime.',
+                    'Swipe blueprints, set your schedule, then add custom parts. Reorder anytime.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: cs.onPrimaryContainer.withOpacity(0.95),
                     ),

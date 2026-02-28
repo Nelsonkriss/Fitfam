@@ -22,6 +22,7 @@ import 'ui/setting_page.dart';
 import 'ui/recommend_page.dart';
 import 'ui/onboarding_page.dart';
 import 'ui/loading_screen.dart';
+import 'config/app_config.dart';
 
 // Global provider instances are created in their respective files
 // (e.g., final dbProvider = createDbProvider(); in db_provider.dart)
@@ -33,6 +34,7 @@ final NotificationService notificationService = NotificationService();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   print('[MAIN] Flutter Binding Initialized.');
+  await AppConfig.loadEnvFile();
 
   // Optimize app performance
   SystemChrome.setSystemUIOverlayStyle(

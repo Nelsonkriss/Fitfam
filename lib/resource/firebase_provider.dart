@@ -1,11 +1,11 @@
 import 'dart:convert'; // Needed for jsonEncode/Decode
 import 'dart:async'; // Needed for Future
 import 'package:flutter/foundation.dart'; // For kDebugMode, kIsWeb
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 // Used indirectly by some imports/framework
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-// import 'package:flutter/services.dart'; // Not directly used in this snippet, keep if needed elsewhere
 import 'package:uuid/uuid.dart'; // For generating IDs if needed elsewhere
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
@@ -510,12 +510,25 @@ class FirebaseProvider {
         await _handleGoogleAuthUpdate(authResult.user!);
       }
       return authResult.user;
+    } on PlatformException catch (e, s) {
+      debugPrint("FirebaseProvider: Google sign-in platform error: $e\n$s");
+      final raw = e.message ?? e.details?.toString() ?? e.toString();
+      if (e.code == 'sign_in_failed' && raw.contains('ApiException: 10')) {
+        throw Exception(
+          'Google Sign-In failed (ApiException 10 / DEVELOPER_ERROR). '
+          'Android OAuth is not configured for this app signing key. '
+          'Add this build fingerprint (SHA-1 + SHA-256) for package '
+          'com.example.dumbbell_new in Firebase Console, download updated '
+          'google-services.json, and rebuild.',
+        );
+      }
+      throw Exception('Google Sign-In failed: $raw');
     } catch (e, s) {
       debugPrint("FirebaseProvider: Google sign-in error: $e\n$s");
       if (e is FirebaseAuthException && e.code == 'popup-closed-by-user') {
         return null;
       }
-      throw Exception("Google Sign-In failed.");
+      throw Exception("Google Sign-In failed: $e");
     }
   }
 

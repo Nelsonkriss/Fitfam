@@ -242,13 +242,48 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return parts.first;
   }
 
+  String? _validateName(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Please enter your name';
+    if (trimmed.length < 2) return 'Name is too short';
+    return null;
+  }
+
+  String? _validateHeight(String? value) {
+    if (value == null || value.isEmpty) return 'Please enter your height';
+    final height = double.tryParse(value);
+    if (height == null || height < 100 || height > 250) {
+      return 'Enter a valid height (100-250 cm)';
+    }
+    return null;
+  }
+
+  String? _validateWeight(String? value) {
+    if (value == null || value.isEmpty) return 'Please enter your weight';
+    final weight = double.tryParse(value);
+    final weightKg = _weightToKg(weight);
+    if (weight == null || weightKg == null || weightKg < 30 || weightKg > 300) {
+      return 'Enter a valid weight';
+    }
+    return null;
+  }
+
   Future<void> _completeOnboarding() async {
     final name = _nameController.text.trim();
-    if (_nameFormKey.currentState?.validate() == false || name.isEmpty) {
+    final nameValid =
+        (_nameFormKey.currentState?.validate() ??
+            (_validateName(name) == null)) &&
+        name.isNotEmpty;
+    if (!nameValid) {
       _jumpToPage(1);
       return;
     }
-    if (!_formKey.currentState!.validate()) {
+
+    final physicalInfoValid =
+        _formKey.currentState?.validate() ??
+        (_validateHeight(_heightController.text) == null &&
+            _validateWeight(_weightController.text) == null);
+    if (!physicalInfoValid) {
       _jumpToPage(2);
       return;
     }
@@ -710,7 +745,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
             _buildNameField(),
             const SizedBox(height: 24),
             _primaryButton('Continue', () {
-              if (_nameFormKey.currentState!.validate()) {
+              final isValid =
+                  _nameFormKey.currentState?.validate() ??
+                  (_validateName(_nameController.text) == null);
+              if (isValid) {
                 _nextPage();
               }
             }),
@@ -825,14 +863,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
       textInputAction: TextInputAction.done,
       autofillHints: const [AutofillHints.name],
       validator: (value) {
-        final trimmed = value?.trim() ?? '';
-        if (trimmed.isEmpty) return 'Please enter your name';
-        if (trimmed.length < 2) return 'Name is too short';
-        return null;
+        return _validateName(value);
       },
       scrollPadding: const EdgeInsets.only(bottom: 140),
       onFieldSubmitted: (_) {
-        if (_nameFormKey.currentState!.validate()) {
+        final isValid =
+            _nameFormKey.currentState?.validate() ??
+            (_validateName(_nameController.text) == null);
+        if (isValid) {
           _nextPage();
         }
       },
@@ -860,15 +898,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               hint: 'e.g., 175',
               icon: Icons.height,
               controller: _heightController,
-              validator: (value) {
-                if (value == null || value.isEmpty)
-                  return 'Please enter your height';
-                final height = double.tryParse(value);
-                if (height == null || height < 100 || height > 250) {
-                  return 'Enter a valid height (100-250 cm)';
-                }
-                return null;
-              },
+              validator: _validateHeight,
             ),
             const SizedBox(height: 16),
             _buildInputField(
@@ -876,25 +906,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
               hint: _weightUnit == 'lb' ? 'e.g., 160' : 'e.g., 70',
               icon: Icons.monitor_weight,
               controller: _weightController,
-              validator: (value) {
-                if (value == null || value.isEmpty)
-                  return 'Please enter your weight';
-                final weight = double.tryParse(value);
-                final weightKg = _weightToKg(weight);
-                if (weight == null ||
-                    weightKg == null ||
-                    weightKg < 30 ||
-                    weightKg > 300) {
-                  return 'Enter a valid weight';
-                }
-                return null;
-              },
+              validator: _validateWeight,
             ),
             const SizedBox(height: 20),
             _buildSnapshotCard(),
             const SizedBox(height: 24),
             _primaryButton('Continue', () {
-              if (_formKey.currentState!.validate()) {
+              final isValid =
+                  _formKey.currentState?.validate() ??
+                  (_validateHeight(_heightController.text) == null &&
+                      _validateWeight(_weightController.text) == null);
+              if (isValid) {
                 _nextPage();
               }
             }),

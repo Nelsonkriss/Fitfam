@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'design_system.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:workout_planner/resource/ai_parse_isolate.dart';
 import 'package:workout_planner/services/progressive_plan_service.dart';
 import 'package:workout_planner/config/app_config.dart';
+import 'package:flutter/services.dart';
 // For optional prompt templates
 
 class RecommendPage extends StatefulWidget {
@@ -23,6 +25,11 @@ class RecommendPage extends StatefulWidget {
 }
 
 class _RecommendPageState extends State<RecommendPage> {
+  static const String _missingApiKeyMessage =
+      "AI engine is offline. Add OPENROUTER_API_KEY in .env or via --dart-define.";
+  static const String _dartDefineHint =
+      "OPENROUTER_API_KEY=your_key (.env) or flutter run --dart-define=OPENROUTER_API_KEY=your_key";
+
   final ScrollController _scrollController = ScrollController();
   bool _showAppBarShadow = false;
 
@@ -43,8 +50,6 @@ class _RecommendPageState extends State<RecommendPage> {
     final model = AppConfig.openRouterModel;
     if (apiKey.isEmpty) {
       _apiKeyMissing = true;
-      _aiError =
-          "OpenRouter API Key is missing. Pass OPENROUTER_API_KEY via --dart-define.";
       _openRouterService = OpenRouterService(apiKey: '', defaultModel: model);
       debugPrint("[RecommendPage] API Key missing in initState.");
     } else {
@@ -65,6 +70,16 @@ class _RecommendPageState extends State<RecommendPage> {
         }
       }
     });
+  }
+
+  void _showMissingApiKeySnackBar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(_missingApiKeyMessage),
+        backgroundColor: AppColors.warning,
+      ),
+    );
   }
 
   void _handleScroll() {
@@ -110,11 +125,7 @@ class _RecommendPageState extends State<RecommendPage> {
     }
 
     if (_apiKeyMissing) {
-      if (mounted) {
-        setState(() {
-          _aiError = "OpenRouter API Key is missing. Cannot generate routine.";
-        });
-      }
+      _showMissingApiKeySnackBar();
       return;
     }
 
@@ -204,143 +215,514 @@ class _RecommendPageState extends State<RecommendPage> {
   @override
   Widget build(BuildContext context) {
     final routinesBlocInstance = context.watch<RoutinesBloc>();
+    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.4,
+    );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFF040A12),
       appBar: AppBar(
-        title: const Text("AI Routine Coach"),
-        elevation: _showAppBarShadow ? 4.0 : 0.0,
-        shadowColor: Colors.black.withOpacity(0.3),
+        title: Text("AI Routine Coach", style: titleStyle),
+        backgroundColor: const Color(0xFF0A111B).withValues(alpha: 0.95),
+        surfaceTintColor: Colors.transparent,
+        elevation: _showAppBarShadow ? 8.0 : 0.0,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
       ),
-      body: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(bottom: 24),
+      body: Stack(
         children: [
-          // Featured and quick picks (restored design)
-          _buildFeaturedForStudents(context),
-          _buildQuickPicks(context),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  "Generate with AI",
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          const Positioned.fill(child: _NebulaBackground()),
+          ListView(
+            controller: _scrollController,
+            padding: const EdgeInsets.only(bottom: 28),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: _buildHeroConsole(context),
+              ),
+              _buildFeaturedForStudents(context),
+              _buildQuickPicks(context),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _buildAiComposerPanel(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+                child: _buildSectionTitle(
+                  context,
+                  title: "AI-Generated Routines",
+                  subtitle: "Saved neural plans grouped by focus",
                 ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _aiPromptController,
-                  decoration: InputDecoration(
-                    hintText: "e.g., 3-day full body for beginners",
-                    // border: const OutlineInputBorder(), // Will pick up from InputDecorationTheme
-                    errorText: _aiError,
-                  ),
-                  minLines: 2,
-                  maxLines: 4,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted:
-                      (_) =>
-                          (_isGeneratingAiRoutine || _apiKeyMissing)
-                              ? null
-                              : _generateAndSaveAiRoutine(),
-                  readOnly: _apiKeyMissing,
-                ),
-                const SizedBox(height: 12),
-                if (_apiKeyMissing)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Text(
-                      _aiError ??
-                          "API Key is missing. Configure .env file and restart.",
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                _isGeneratingAiRoutine
-                    ? const Center(
+              ),
+              StreamBuilder<List<Routine>>(
+                stream: routinesBlocInstance.allRoutinesStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return const Center(
                       child: Padding(
-                        padding: EdgeInsets.all(8.0),
+                        padding: EdgeInsets.all(16.0),
                         child: CircularProgressIndicator(),
                       ),
-                    )
-                    : ElevatedButton.icon(
-                      icon: const Icon(Icons.auto_awesome),
-                      label: const Text("Generate Routine"),
-                      onPressed:
-                          _apiKeyMissing ? null : _generateAndSaveAiRoutine,
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 48),
-                        backgroundColor: AppColors.accent,
+                    );
+                  }
+                  if (snapshot.hasError) {
+                    return Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: _buildErrorCard(
+                        context,
+                        'Error loading routines: ${snapshot.error}',
                       ),
+                    );
+                  }
+                  final aiGeneratedRoutines =
+                      snapshot.data?.where((r) => r.isAiGenerated).toList() ??
+                      [];
+                  if (aiGeneratedRoutines.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: _buildEmptyAiState(),
+                    );
+                  }
+                  final count = _calculateListItemCount(aiGeneratedRoutines);
+                  return Column(
+                    children: List.generate(
+                      count,
+                      (index) =>
+                          _buildListItem(context, aiGeneratedRoutines, index),
                     ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroConsole(BuildContext context) {
+    final bool online = !_apiKeyMissing;
+    final statusColor =
+        online ? const Color(0xFF3CFFCC) : const Color(0xFFFFB37A);
+    final statusLabel = online ? 'AI CORE ONLINE' : 'AI CORE OFFLINE';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0E1C2D), Color(0xFF131128), Color(0xFF102739)],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF20E0FF).withValues(alpha: 0.14),
+            blurRadius: 30,
+            spreadRadius: 1,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: statusColor.withValues(alpha: 0.55),
+                      blurRadius: 10,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                statusLabel,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              _buildModelChip(),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Neural Routine Forge',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              height: 1.2,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            online
+                ? 'Generate structured programs with adaptive progression and high-signal prompts.'
+                : 'Connect your OpenRouter key to unlock AI generation from templates and custom prompts.',
+            style: const TextStyle(
+              color: Color(0xCCFFFFFF),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+          if (_apiKeyMissing) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _dartDefineHint,
+                    style: const TextStyle(
+                      color: Color(0xCCFFFFFF),
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      const ClipboardData(text: _dartDefineHint),
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Command copied.')),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.24),
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
               ],
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModelChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        'MODEL ${AppConfig.openRouterModel.toUpperCase()}',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiComposerPanel(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF081320).withValues(alpha: 0.9),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF24D8FF).withValues(alpha: 0.1),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                "AI-Generated Routines",
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildSectionTitle(
+            context,
+            title: "Generate with AI",
+            subtitle: "Describe split, duration, equipment, and training level",
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF030814),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color:
+                    _aiError == null
+                        ? Colors.white.withValues(alpha: 0.22)
+                        : AppColors.danger.withValues(alpha: 0.75),
+                width: 1.2,
               ),
             ),
+            child: TextField(
+              controller: _aiPromptController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                hintText: "e.g., 3-day upper/lower for intermediate, 45 min",
+                hintStyle: TextStyle(color: Color(0x88FFFFFF)),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.fromLTRB(14, 14, 14, 14),
+              ),
+              minLines: 2,
+              maxLines: 4,
+              textInputAction: TextInputAction.done,
+              onSubmitted:
+                  (_) =>
+                      (_isGeneratingAiRoutine || _apiKeyMissing)
+                          ? null
+                          : _generateAndSaveAiRoutine(),
+              readOnly: _apiKeyMissing,
+            ),
           ),
-          StreamBuilder<List<Routine>>(
-            stream: routinesBlocInstance.allRoutinesStream,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: CircularProgressIndicator(),
+          if (_aiError != null) ...[
+            const SizedBox(height: 8),
+            _buildInlineErrorChip(_aiError!),
+          ],
+          if (_apiKeyMissing) ...[
+            const SizedBox(height: 10),
+            _buildApiKeyMissingBanner(),
+          ],
+          const SizedBox(height: 14),
+          _buildGenerateButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlineErrorChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            color: AppColors.danger,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiKeyMissingBanner() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFA55A).withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFFFB37A).withValues(alpha: 0.6),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.hub_rounded, color: Color(0xFFFFC287), size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _missingApiKeyMessage,
+              style: TextStyle(color: Color(0xFFFFD8B8), fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGenerateButton() {
+    final enabled = !_apiKeyMissing && !_isGeneratingAiRoutine;
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: enabled ? 1 : 0.62,
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient:
+              enabled
+                  ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFF24F0CF), Color(0xFF26B9FF)],
+                  )
+                  : const LinearGradient(
+                    colors: [Color(0xFF2C333D), Color(0xFF303845)],
                   ),
-                );
-              }
-              if (snapshot.hasError) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      'Error loading routines: ${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
+          boxShadow:
+              enabled
+                  ? [
+                    BoxShadow(
+                      color: const Color(0xFF22E7D6).withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ]
+                  : const [],
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: enabled ? _generateAndSaveAiRoutine : null,
+            child: Center(
+              child:
+                  _isGeneratingAiRoutine
+                      ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                      : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.auto_awesome_rounded,
+                            color: enabled ? Colors.black87 : Colors.white70,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            "Generate Routine",
+                            style: TextStyle(
+                              color: enabled ? Colors.black87 : Colors.white70,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                );
-              }
-              final aiGeneratedRoutines =
-                  snapshot.data?.where((r) => r.isAiGenerated).toList() ?? [];
-              if (aiGeneratedRoutines.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Center(
-                    child: Text(
-                      'No AI-generated routines yet. Try creating one above!',
-                    ),
-                  ),
-                );
-              }
-              final count = _calculateListItemCount(aiGeneratedRoutines);
-              return Column(
-                children: List.generate(
-                  count,
-                  (index) =>
-                      _buildListItem(context, aiGeneratedRoutines, index),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            height: 1.1,
+            letterSpacing: 0.2,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            color: Color(0x9FFFFFFF),
+            fontSize: 12.8,
+            height: 1.3,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildErrorCard(BuildContext context, String text) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.danger.withValues(alpha: 0.55)),
+      ),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildEmptyAiState() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A1220).withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.rocket_launch_rounded,
+                color: Color(0xFF36E9CC),
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                'No AI routines yet',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
                 ),
-              );
-            },
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Use a featured preset or write a custom prompt above to generate your first routine.',
+            style: TextStyle(color: Color(0xBBFFFFFF), fontSize: 13),
           ),
         ],
       ),
@@ -350,31 +732,34 @@ class _RecommendPageState extends State<RecommendPage> {
   // --------------------- Restored Featured + Quick Picks ---------------------
   Widget _buildFeaturedForStudents(BuildContext context) {
     final items = _featuredItems();
+    final canGenerate = !_apiKeyMissing && !_isGeneratingAiRoutine;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Featured',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+          child: _buildSectionTitle(
+            context,
+            title: 'Featured Signals',
+            subtitle: 'High-performing templates tuned for consistency',
           ),
         ),
         SizedBox(
-          height: 180,
+          height: 206,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemBuilder:
                 (_, i) => _FeaturedCard(
                   data: items[i],
+                  enabled: canGenerate,
                   onTap:
-                      () => _generateFromPrompt(
-                        items[i].prompt,
-                        title: items[i].title,
-                      ),
+                      canGenerate
+                          ? () => _generateFromPrompt(
+                            items[i].prompt,
+                            title: items[i].title,
+                          )
+                          : null,
                 ),
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemCount: items.length,
@@ -386,31 +771,34 @@ class _RecommendPageState extends State<RecommendPage> {
 
   Widget _buildQuickPicks(BuildContext context) {
     final items = _quickPickItems();
+    final canGenerate = !_apiKeyMissing && !_isGeneratingAiRoutine;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text(
-            'Quick Picks',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: _buildSectionTitle(
+            context,
+            title: 'Quick Picks',
+            subtitle: 'Swipe and launch one-tap micro-presets',
           ),
         ),
         SizedBox(
-          height: 180,
+          height: 132,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemBuilder:
-                (_, i) => _FeaturedCard(
+                (_, i) => _QuickPickCard(
                   data: items[i],
+                  enabled: canGenerate,
                   onTap:
-                      () => _generateFromPrompt(
-                        items[i].prompt,
-                        title: items[i].title,
-                      ),
+                      canGenerate
+                          ? () => _generateFromPrompt(
+                            items[i].prompt,
+                            title: items[i].title,
+                          )
+                          : null,
                 ),
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemCount: items.length,
@@ -437,14 +825,7 @@ class _RecommendPageState extends State<RecommendPage> {
     }
 
     if (_apiKeyMissing) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _aiError ?? 'Missing API Key. Configure .env to use AI.',
-          ),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
+      _showMissingApiKeySnackBar();
       return;
     }
     final routinesBloc = context.read<RoutinesBloc>();
@@ -857,111 +1238,204 @@ List<_RecoData> _quickPickItems() {
 
 class _FeaturedCard extends StatelessWidget {
   final _RecoData data;
-  final VoidCallback onTap;
-  const _FeaturedCard({required this.data, required this.onTap});
+  final VoidCallback? onTap;
+  final bool enabled;
+  const _FeaturedCard({
+    required this.data,
+    required this.onTap,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 280,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: data.gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 220),
+      opacity: enabled ? 1 : 0.6,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 298,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            gradient: LinearGradient(
+              colors: data.gradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
-        ),
-        child: Stack(
-          children: [
-            if (data.assetOverlay != null)
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            boxShadow: [
+              BoxShadow(
+                color: data.gradient.first.withValues(alpha: 0.23),
+                blurRadius: 26,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
               Positioned(
-                right: 8,
-                bottom: 8,
-                child: Opacity(
-                  opacity: 0.85,
-                  child: Image.asset(
-                    data.assetOverlay!,
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.contain,
+                right: -18,
+                top: -14,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
                   ),
                 ),
               ),
-            Positioned(
-              right: 12,
-              top: 12,
-              child: Text(
-                data.emojis ?? '',
-                style: const TextStyle(fontSize: 24, color: Colors.white),
+              Positioned(
+                left: -24,
+                bottom: -24,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withValues(alpha: 0.08),
+                  ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    data.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
+              if (data.assetOverlay != null)
+                Positioned(
+                  right: 12,
+                  bottom: 12,
+                  child: Opacity(
+                    opacity: 0.93,
+                    child: Image.asset(
+                      data.assetOverlay!,
+                      width: 84,
+                      height: 84,
+                      fit: BoxFit.contain,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: 220,
-                    child: Text(
+                ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      data.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 29,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    Text(
                       data.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.95),
+                        color: Colors.white.withValues(alpha: 0.95),
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white24),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.auto_awesome, color: Colors.white, size: 18),
-                        SizedBox(width: 8),
-                        Text(
-                          'Generate',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
                         ),
-                      ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            enabled
+                                ? Icons.auto_awesome_rounded
+                                : Icons.lock_outline_rounded,
+                            color: Colors.white,
+                            size: 17,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            enabled ? 'Generate' : 'Locked',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _NebulaBackground extends StatelessWidget {
+  const _NebulaBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF060D17), Color(0xFF030811), Color(0xFF02060D)],
+            ),
+          ),
+        ),
+        Positioned(
+          top: -90,
+          right: -40,
+          child: _glowOrb(
+            size: 220,
+            color: const Color(0xFF2DF5D3).withValues(alpha: 0.18),
+          ),
+        ),
+        Positioned(
+          top: 180,
+          left: -80,
+          child: _glowOrb(
+            size: 260,
+            color: const Color(0xFF2C8BFF).withValues(alpha: 0.16),
+          ),
+        ),
+        Positioned(
+          bottom: -110,
+          right: -40,
+          child: _glowOrb(
+            size: 280,
+            color: const Color(0xFFFF6FA8).withValues(alpha: 0.11),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _glowOrb({required double size, required Color color}) {
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       ),
     );
   }
@@ -969,66 +1443,89 @@ class _FeaturedCard extends StatelessWidget {
 
 class _QuickPickCard extends StatelessWidget {
   final _RecoData data;
-  final VoidCallback onTap;
-  const _QuickPickCard({required this.data, required this.onTap});
+  final VoidCallback? onTap;
+  final bool enabled;
+  const _QuickPickCard({
+    required this.data,
+    required this.onTap,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 165,
-        height: 66,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: data.gradient,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        padding: const EdgeInsets.all(8),
-        child: Stack(
-          children: [
-            if (data.assetOverlay != null)
-              Positioned(
-                right: 6,
-                bottom: 6,
-                child: Opacity(
-                  opacity: 0.85,
-                  child: Image.asset(data.assetOverlay!, width: 32, height: 32),
-                ),
-              ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.max,
-              children: [
-                Text(
-                  data.emojis ?? '',
-                  style: const TextStyle(fontSize: 14, color: Colors.white),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  data.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                Text(
-                  data.subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.95),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 220),
+      opacity: enabled ? 1 : 0.58,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 212,
+          height: 122,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              colors: data.gradient,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-          ],
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          padding: const EdgeInsets.all(12),
+          child: Stack(
+            children: [
+              if (data.assetOverlay != null)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Opacity(
+                    opacity: 0.9,
+                    child: Image.asset(
+                      data.assetOverlay!,
+                      width: 48,
+                      height: 48,
+                    ),
+                  ),
+                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    data.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 22,
+                      height: 1.05,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    data.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.95),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    enabled ? 'Launch preset' : 'AI key required',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.25,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
