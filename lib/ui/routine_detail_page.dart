@@ -10,13 +10,13 @@ import 'package:flutter/material.dart';
 import 'design_system.dart';
 // import 'package:flutter/rendering.dart'; // Not directly used here
 import 'package:provider/provider.dart'; // Import Provider
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 // import 'package:permission_handler/permission_handler.dart'; // Keep if used for saving QR
 // import 'package:image_gallery_saver/image_gallery_saver.dart'; // Keep if used for saving QR
 
 // Import local providers, bloc, models, components, utils (ADJUST PATHS AS NEEDED)
 import 'package:workout_planner/resource/firebase_provider.dart';
-import 'package:workout_planner/utils/routine_helpers.dart';
 import 'package:workout_planner/ui/components/part_card.dart';
 import 'package:workout_planner/ui/part_history_page.dart';
 import 'package:workout_planner/ui/routine_edit_page.dart';
@@ -37,7 +37,6 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
   // Keys and Controllers
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final ScrollController _scrollController = ScrollController();
-  final GlobalKey _globalKeyQrCode = GlobalKey(); // Key for QR RepaintBoundary
 
   // State
   late String _shareDataString; // Unique ID string ("-r...") for sharing
@@ -63,23 +62,19 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? Colors.redAccent : null,
-          duration: const Duration(seconds: 3)
+        content: Text(message),
+        backgroundColor: isError ? Colors.redAccent : null,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
 
   /// Checks internet connectivity and shows a SnackBar if offline.
   Future<bool> _checkConnection() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       if (!mounted) return false;
-      // Use custom snackbar if defined, otherwise default
-      ScaffoldMessenger.of(context).showSnackBar(
-          noNetworkSnackBar ?? // Use custom snackbar if available
-              const SnackBar(content: Text('No Internet Connection'), backgroundColor: Colors.red)
-      );
+      ScaffoldMessenger.of(context).showSnackBar(noNetworkSnackBar);
       return false;
     }
     return true;
@@ -100,10 +95,12 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
       // Listen to the stream for the currently selected routine
       stream: routinesBlocInstance.currentRoutineStream,
       builder: (context, snapshot) {
-        final Routine? currentRoutine = snapshot.data; // The routine from the stream
+        final Routine? currentRoutine =
+            snapshot.data; // The routine from the stream
 
         // Handle loading/no data state
-        if (snapshot.connectionState == ConnectionState.waiting && currentRoutine == null) {
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            currentRoutine == null) {
           return Scaffold(
             appBar: AppBar(title: const Text("Loading...")),
             body: const Center(child: CircularProgressIndicator()),
@@ -113,7 +110,9 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
         if (currentRoutine == null) {
           return Scaffold(
             appBar: AppBar(title: const Text("No Routine Selected")),
-            body: const Center(child: Text('Please select or create a routine.')),
+            body: const Center(
+              child: Text('Please select or create a routine.'),
+            ),
           );
         }
 
@@ -127,28 +126,29 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
               tag: 'routine_title_${currentRoutine.id}',
               child: Material(
                 type: MaterialType.transparency,
-                child: Text(
-                  currentRoutine.routineName,
-                ),
+                child: Text(currentRoutine.routineName),
               ),
             ),
             actions: _buildAppBarActions(context, currentRoutine),
           ),
           // Body contains header card and list of part cards
           body: ListView(
-              controller: _scrollController,
-              children: _buildBodyChildren(context, currentRoutine)
+            controller: _scrollController,
+            children: _buildBodyChildren(context, currentRoutine),
           ),
-          floatingActionButton: !widget.isRecRoutine && currentRoutine.parts.isNotEmpty
-              ? FloatingActionButton.extended(
-                  onPressed: () => _startRoutine(context, currentRoutine),
-                  label: const Text('Start Workout'),
-                  icon: const Icon(Icons.play_arrow), // Or Icons.fitness_center
-                  backgroundColor: AppColors.accent,
-                )
-              : null,
+          floatingActionButton:
+              !widget.isRecRoutine && currentRoutine.parts.isNotEmpty
+                  ? FloatingActionButton.extended(
+                    onPressed: () => _startRoutine(context, currentRoutine),
+                    label: const Text('Start Workout'),
+                    icon: const Icon(
+                      Icons.play_arrow,
+                    ), // Or Icons.fitness_center
+                    backgroundColor: AppColors.accent,
+                  )
+                  : null,
         );
-     },
+      },
     );
   }
 
@@ -163,12 +163,18 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
         IconButton(
           icon: const Icon(Icons.calendar_today_outlined),
           tooltip: "Set Weekdays",
-          onPressed: () => _showWeekdaySelector(context, routine, routinesBlocInstance), // Pass BLoC
+          onPressed:
+              () => _showWeekdaySelector(
+                context,
+                routine,
+                routinesBlocInstance,
+              ), // Pass BLoC
         ),
         IconButton(
           icon: const Icon(Icons.edit_outlined),
           tooltip: "Edit Routine",
-          onPressed: () => _navigateToEditPage(context, routine), // Pass routine
+          onPressed:
+              () => _navigateToEditPage(context, routine), // Pass routine
         ),
         IconButton(
           icon: const Icon(Icons.share_outlined),
@@ -181,7 +187,12 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
         IconButton(
           icon: const Icon(Icons.add_circle_outline),
           tooltip: "Add to My Routines",
-          onPressed: () => _handleAddRecPressed(context, routine, routinesBlocInstance), // Pass BLoC
+          onPressed:
+              () => _handleAddRecPressed(
+                context,
+                routine,
+                routinesBlocInstance,
+              ), // Pass BLoC
         ),
     ];
   }
@@ -195,29 +206,32 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
           child: Center(
-              child: Text(
-                "This routine has no exercise parts yet.",
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
-              )
+            child: Text(
+              "This routine has no exercise parts yet.",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
         )
-      else // Map parts to PartCard widgets
-        ...routine.parts.map((part) => PartCard(
-          // Key helps Flutter identify widgets during rebuilds/reorders
-          key: ObjectKey(part), // Assumes Part has stable identity or implements ==
-          part: part,
-          // Provide an empty function for onDelete if not applicable or implemented
-          onDelete: widget.isRecRoutine ? () {} : () {
-            _showSnackBar("Delete Part feature not implemented.");
-            // To implement:
-            // 1. Show confirmation dialog.
-            // 2. Create updated routine state with part removed (using copyWith).
-            // 3. Call context.read<RoutinesBloc>().updateRoutine(updatedRoutine);
-          },
-          // Navigate to history only for non-recommended routines
-          onPartTap: widget.isRecRoutine ? null : () => _navigateToPartHistory(context, part),
-        )),
+      else
+        ...routine.parts.asMap().entries.map((entry) {
+          final partIndex = entry.key;
+          final part = entry.value;
+          return PartCard(
+            key: ObjectKey(part),
+            part: part,
+            onDelete:
+                widget.isRecRoutine
+                    ? () {}
+                    : () => _deletePartFromRoutine(routine, partIndex),
+            onPartTap:
+                widget.isRecRoutine
+                    ? null
+                    : () => _navigateToPartHistory(context, part),
+          );
+        }),
       const SizedBox(height: 80), // Space at the bottom below the list
     ];
   }
@@ -241,24 +255,46 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant // Or onPrimaryContainer if card is primaryContainer color
+                  color:
+                      Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant, // Or onPrimaryContainer if card is primaryContainer color
                 ),
               ),
               if (!widget.isRecRoutine) ...[
-              const SizedBox(height: 16), // Increased spacing
-              Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround, // Use spaceAround for better distribution
+                const SizedBox(height: 16), // Increased spacing
+                Row(
+                  mainAxisAlignment:
+                      MainAxisAlignment
+                          .spaceAround, // Use spaceAround for better distribution
                   children: [
-                    _buildStatColumn(context, "COMPLETED", routine.completionCount.toString()),
-                    _buildStatColumn(context, "CREATED", _formatDate(routine.createdDate)),
-                    if(routine.lastCompletedDate != null)
-                      _buildStatColumn(context, "LAST DONE", _formatDate(routine.lastCompletedDate!)),
-                    if(routine.lastCompletedDate == null && routine.parts.isNotEmpty) // Only add spacer if there's content
-                      const Expanded(child: SizedBox.shrink()), // Use Expanded for proper spacing with spaceAround
-                  ]
-              ),
-              const SizedBox(height: 8), // Adjusted spacing
-            ],
+                    _buildStatColumn(
+                      context,
+                      "COMPLETED",
+                      routine.completionCount.toString(),
+                    ),
+                    _buildStatColumn(
+                      context,
+                      "CREATED",
+                      _formatDate(routine.createdDate),
+                    ),
+                    if (routine.lastCompletedDate != null)
+                      _buildStatColumn(
+                        context,
+                        "LAST DONE",
+                        _formatDate(routine.lastCompletedDate!),
+                      ),
+                    if (routine.lastCompletedDate == null &&
+                        routine
+                            .parts
+                            .isNotEmpty) // Only add spacer if there's content
+                      const Expanded(
+                        child: SizedBox.shrink(),
+                      ), // Use Expanded for proper spacing with spaceAround
+                  ],
+                ),
+                const SizedBox(height: 8), // Adjusted spacing
+              ],
             ],
           ),
         ),
@@ -272,9 +308,20 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
     return Column(
       mainAxisSize: MainAxisSize.min, // Ensure column takes minimum space
       children: [
-        Text(value, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          value,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
         const SizedBox(height: 4), // Adjusted spacing
-        Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7))),
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant.withOpacity(0.7),
+          ),
+        ),
       ],
     );
   }
@@ -282,25 +329,33 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
   // --- Action Methods ---
 
   /// Shows the bottom sheet for selecting weekdays.
-  void _showWeekdaySelector(BuildContext context, Routine routine, RoutinesBloc bloc) {
+  void _showWeekdaySelector(
+    BuildContext context,
+    Routine routine,
+    RoutinesBloc bloc,
+  ) {
     // Make a copy of current weekdays to pass as initial state
     final currentWeekdays = List<int>.from(routine.weekdays);
 
     showCupertinoModalPopup(
       context: context,
-      builder: (modalContext) => Material( // Wrap with Material
-        child: WeekdayModalBottomSheet(
-          // Pass the list positionally as required by constructor
-          currentWeekdays,
-          checkedCallback: (selectedWeekdays) {
-            // Create the updated routine immutably
-            final updatedRoutine = routine.copyWith(weekdays: selectedWeekdays);
-            // Update the routine via the BLoC
-            bloc.updateRoutine(updatedRoutine);
-            // Optional feedback (removed snackbar for less noise on every check)
-          },
-        ),
-      ),
+      builder:
+          (modalContext) => Material(
+            // Wrap with Material
+            child: WeekdayModalBottomSheet(
+              // Pass the list positionally as required by constructor
+              currentWeekdays,
+              checkedCallback: (selectedWeekdays) {
+                // Create the updated routine immutably
+                final updatedRoutine = routine.copyWith(
+                  weekdays: selectedWeekdays,
+                );
+                // Update the routine via the BLoC
+                bloc.updateRoutine(updatedRoutine);
+                // Optional feedback (removed snackbar for less noise on every check)
+              },
+            ),
+          ),
     );
   }
 
@@ -317,7 +372,8 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
 
   /// Navigates to the Routine Step Page to start the workout.
   void _startRoutine(BuildContext context, Routine routine) {
-    if (routine.parts.isEmpty || routine.parts.every((p) => p.exercises.isEmpty)) {
+    if (routine.parts.isEmpty ||
+        routine.parts.every((p) => p.exercises.isEmpty)) {
       _showSnackBar("Cannot start an empty routine.", isError: true);
       return;
     }
@@ -330,24 +386,59 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
     );
   }
 
+  Future<void> _deletePartFromRoutine(Routine routine, int partIndex) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Delete Part'),
+            content: const Text('Remove this part from the routine?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+
+    if (shouldDelete != true || !mounted) return;
+
+    final updatedParts = List<Part>.from(routine.parts)..removeAt(partIndex);
+    final updatedRoutine = routine.copyWith(parts: updatedParts);
+    context.read<RoutinesBloc>().updateRoutine(updatedRoutine);
+    _showSnackBar('Part deleted.');
+  }
+
   /// Handles adding a recommended routine to the user's list.
-  void _handleAddRecPressed(BuildContext context, Routine recRoutine, RoutinesBloc bloc) {
+  void _handleAddRecPressed(
+    BuildContext context,
+    Routine recRoutine,
+    RoutinesBloc bloc,
+  ) {
     showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Add to My Routines?'),
-        content: Text('Add "${recRoutine.routineName}" to your personal routines list?'),
-        actions: [
-          TextButton(
-            child: const Text('Cancel'),
-            onPressed: () => Navigator.pop(dialogContext, false),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Add to My Routines?'),
+            content: Text(
+              'Add "${recRoutine.routineName}" to your personal routines list?',
+            ),
+            actions: [
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () => Navigator.pop(dialogContext, false),
+              ),
+              ElevatedButton(
+                child: const Text('Add'),
+                onPressed: () => Navigator.pop(dialogContext, true),
+              ),
+            ],
           ),
-          ElevatedButton(
-            child: const Text('Add'),
-            onPressed: () => Navigator.pop(dialogContext, true),
-          ),
-        ],
-      ),
     ).then((shouldAdd) {
       if (shouldAdd ?? false) {
         try {
@@ -364,7 +455,10 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
           // Optionally pop back after adding
           // if (mounted) Navigator.pop(context);
         } catch (e) {
-          _showSnackBar("Failed to add routine: ${e.toString()}", isError: true);
+          _showSnackBar(
+            "Failed to add routine: ${e.toString()}",
+            isError: true,
+          );
         }
       }
     });
@@ -379,11 +473,19 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
 
       // 1. Prepare the routine data for sharing (immutable copy, clear history)
       final routineToShare = routine.copyWith(
-          routineHistory: [], // Clear personal history
-          // Deep copy parts and exercises, optionally clear exercise history
-          parts: routine.parts.map((p) => p.copyWith(
-              exercises: p.exercises.map((e) => e.copyWith(exHistory: {})).toList()
-          )).toList()
+        routineHistory: [], // Clear personal history
+        // Deep copy parts and exercises, optionally clear exercise history
+        parts:
+            routine.parts
+                .map(
+                  (p) => p.copyWith(
+                    exercises:
+                        p.exercises
+                            .map((e) => e.copyWith(exHistory: {}))
+                            .toList(),
+                  ),
+                )
+                .toList(),
       );
 
       // 2. Encode the prepared routine to JSON stri
@@ -398,17 +500,16 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
           .collection("userShares") // Ensure this collection name is correct
           .doc(docId)
           .set({
-        "id": docId,
-        "routineName": routineToShare.routineName, // Store name for context
-        "routine": routineJson,
-        "createdAt": FieldValue.serverTimestamp(),
-      });
+            "id": docId,
+            "routineName": routineToShare.routineName, // Store name for context
+            "routine": routineJson,
+            "createdAt": FieldValue.serverTimestamp(),
+          });
 
       debugPrint("Routine shared successfully with ID: $docId");
 
       // 5. Show the QR/Share Dialog
-      if (mounted) _showQRDialog(routine.routineName);
-
+      if (mounted) await _showQRDialog(routine.routineName);
     } catch (e) {
       debugPrint("Error during share process: $e");
       _showSnackBar("Failed to share routine: ${e.toString()}", isError: true);
@@ -416,15 +517,53 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
   }
 
   /// Shows the dialog with QR code and share options.
-  void _showQRDialog(String routineName) {
-    final String shareText = 'Check out this workout routine: $routineName. You can import it in the app with the ID: $_shareDataString';
-    Share.share(shareText);
-  }
-
-  /// Placeholder for saving QR image to gallery.
-  Future<void> _saveQrToGallery() async {
-    _showSnackBar('Save QR to gallery: Not implemented yet.');
-    // Requires image_gallery_saver, permission_handler, RepaintBoundary logic
+  Future<void> _showQRDialog(String routineName) async {
+    final String shareText =
+        'Check out this workout routine: $routineName. You can import it in the app with the ID: $_shareDataString';
+    await showDialog<void>(
+      context: context,
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Share Routine'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Scan this code in FitFarm, or share the import text.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  color: Colors.white,
+                  child: QrImageView(
+                    data: _shareDataString,
+                    size: 180,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  _shareDataString,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close'),
+              ),
+              FilledButton.icon(
+                onPressed: () async {
+                  await SharePlus.instance.share(ShareParams(text: shareText));
+                },
+                icon: const Icon(Icons.share),
+                label: const Text('Share Text'),
+              ),
+            ],
+          ),
+    );
   }
 
   /// Navigates to the Part History Page.
@@ -437,7 +576,6 @@ class _RoutineDetailPageState extends State<RoutineDetailPage> {
   }
 } // End of _RoutineDetailPageState
 
-
 // --- WeekdayModalBottomSheet Widget ---
 
 typedef WeekdaysCheckedCallback = void Function(List<int> selectedWeekdays);
@@ -447,22 +585,46 @@ class WeekdayModalBottomSheet extends StatefulWidget {
   final WeekdaysCheckedCallback? checkedCallback;
 
   // Constructor takes initial weekdays as the first positional argument
-  const WeekdayModalBottomSheet(this.initialWeekdays, {this.checkedCallback, super.key});
+  const WeekdayModalBottomSheet(
+    this.initialWeekdays, {
+    this.checkedCallback,
+    super.key,
+  });
 
   @override
-  State<WeekdayModalBottomSheet> createState() => _WeekdayModalBottomSheetState();
+  State<WeekdayModalBottomSheet> createState() =>
+      _WeekdayModalBottomSheetState();
 }
 
 class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
-  final List<String> weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  final List<IconData> weekDayIcons = [ Icons.filter_1, Icons.filter_2, Icons.filter_3, Icons.filter_4, Icons.filter_5, Icons.filter_6, Icons.filter_7 ];
+  final List<String> weekDays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  final List<IconData> weekDayIcons = [
+    Icons.filter_1,
+    Icons.filter_2,
+    Icons.filter_3,
+    Icons.filter_4,
+    Icons.filter_5,
+    Icons.filter_6,
+    Icons.filter_7,
+  ];
   late List<bool> _isCheckedList;
 
   @override
   void initState() {
     super.initState();
     // Initialize checkbox state based on the passed initial weekdays
-    _isCheckedList = List.generate(7, (index) => widget.initialWeekdays.contains(index + 1));
+    _isCheckedList = List.generate(
+      7,
+      (index) => widget.initialWeekdays.contains(index + 1),
+    );
   }
 
   @override
@@ -471,9 +633,12 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
     return Material(
       child: CupertinoActionSheet(
         title: const Text('Schedule Routine Days'),
-        actions: List.generate(7, (index) => CupertinoActionSheetAction(
-          // Toggle selection when the action row is pressed
-            onPressed: () => _updateWeekdaySelection(index, !_isCheckedList[index]),
+        actions: List.generate(
+          7,
+          (index) => CupertinoActionSheetAction(
+            // Toggle selection when the action row is pressed
+            onPressed:
+                () => _updateWeekdaySelection(index, !_isCheckedList[index]),
             child: Row(
               children: [
                 // Checkbox for visual state (still allows row press)
@@ -484,12 +649,21 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
                   activeColor: Theme.of(context).colorScheme.primary, // Themed
                 ),
                 const SizedBox(width: 10),
-                Icon(weekDayIcons[index], size: 20, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7)), // Themed
+                Icon(
+                  weekDayIcons[index],
+                  size: 20,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.7),
+                ), // Themed
                 const SizedBox(width: 15),
-                Text(weekDays[index]), // Text will inherit from Material's DefaultTextStyle
+                Text(
+                  weekDays[index],
+                ), // Text will inherit from Material's DefaultTextStyle
               ],
-            )
-        )),
+            ),
+          ),
+        ),
         cancelButton: CupertinoActionSheetAction(
           isDefaultAction: true,
           onPressed: () {
@@ -511,7 +685,8 @@ class _WeekdayModalBottomSheetState extends State<WeekdayModalBottomSheet> {
 
   /// Update internal state and notify parent via callback
   void _updateWeekdaySelection(int index, bool? value) {
-    if (value == null || _isCheckedList[index] == value) return; // No change needed
+    if (value == null || _isCheckedList[index] == value)
+      return; // No change needed
 
     setState(() {
       _isCheckedList[index] = value;

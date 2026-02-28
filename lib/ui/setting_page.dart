@@ -88,7 +88,9 @@ class _SettingPageState extends State<SettingPage> {
   }
 
   Future<void> _loadSelectedRoutines() async {
-    final selectedIds = await sharedPrefsProvider.getWeeklyProgressRoutineIds(); // Need to implement this method
+    final selectedIds =
+        await sharedPrefsProvider
+            .getWeeklyProgressRoutineIds(); // Need to implement this method
     if (mounted) {
       setState(() {
         _selectedRoutineIds = selectedIds.toSet(); // Convert list to set
@@ -97,7 +99,9 @@ class _SettingPageState extends State<SettingPage> {
   }
 
   Future<void> _saveSelectedRoutines() async {
-    await sharedPrefsProvider.setWeeklyProgressRoutineIds(_selectedRoutineIds.toList()); // Need to implement this method
+    await sharedPrefsProvider.setWeeklyProgressRoutineIds(
+      _selectedRoutineIds.toList(),
+    ); // Need to implement this method
   }
 
   // Helper to show messages consistently
@@ -106,28 +110,30 @@ class _SettingPageState extends State<SettingPage> {
     if (!mounted) return;
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(title),
-        content: content != null ? Text(content) : null,
-        actions: [
-          TextButton(
-            child: const Text('OK'),
-            onPressed: () => Navigator.pop(context),
+      builder:
+          (_) => AlertDialog(
+            title: Text(title),
+            content: content != null ? Text(content) : null,
+            actions: [
+              TextButton(
+                child: const Text('OK'),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   // Helper to show SnackBars
   void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).removeCurrentSnackBar(); // Remove previous snackbar
+    ScaffoldMessenger.of(
+      context,
+    ).removeCurrentSnackBar(); // Remove previous snackbar
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
-
 
   // --- Action Handlers ---
 
@@ -137,19 +143,26 @@ class _SettingPageState extends State<SettingPage> {
     try {
       // Check if user is signed in (needed for restore)
       if (firebaseProvider.currentUser == null) {
-        _showMsgDialog("Not Signed In", content: "You must be signed in to restore data.");
+        _showMsgDialog(
+          "Not Signed In",
+          content: "You must be signed in to restore data.",
+        );
         return;
       }
 
       // Check if data exists before attempting restore (optional but good UX)
       final userExists = await firebaseProvider.checkUserExists();
       if (!userExists) {
-        _showMsgDialog("Restore Failed", content: "No backup data found for your account.");
+        _showMsgDialog(
+          "Restore Failed",
+          content: "No backup data found for your account.",
+        );
         return;
       }
 
       _showSnackBar("Restoring data from cloud..."); // Show progress indicator?
-      final List<Routine> restoredRoutines = await firebaseProvider.restoreRoutines();
+      final List<Routine> restoredRoutines =
+          await firebaseProvider.restoreRoutines();
 
       if (restoredRoutines.isNotEmpty) {
         // Replace local DB data with restored data
@@ -158,13 +171,22 @@ class _SettingPageState extends State<SettingPage> {
 
         // Refresh the BLoC stream by fetching from the updated DB
         await bloc.fetchAllRoutines();
-        _showMsgDialog("Restore Successful", content: "${restoredRoutines.length} routines restored.");
+        _showMsgDialog(
+          "Restore Successful",
+          content: "${restoredRoutines.length} routines restored.",
+        );
       } else {
-        _showMsgDialog("Restore Info", content: "No routines found in your cloud backup.");
+        _showMsgDialog(
+          "Restore Info",
+          content: "No routines found in your cloud backup.",
+        );
       }
     } catch (e) {
       debugPrint("Restore error: $e");
-      _showMsgDialog("Restore Failed", content: "An error occurred: ${e.toString()}");
+      _showMsgDialog(
+        "Restore Failed",
+        content: "An error occurred: ${e.toString()}",
+      );
     }
   }
 
@@ -187,25 +209,32 @@ class _SettingPageState extends State<SettingPage> {
 
       _showSnackBar('Backing up data...'); // Show progress indicator?
       await firebaseProvider.uploadRoutines(currentRoutines);
-      _showMsgDialog('Backup Successful', content: 'Your routines have been backed up to the cloud.');
-
+      _showMsgDialog(
+        'Backup Successful',
+        content: 'Your routines have been backed up to the cloud.',
+      );
     } catch (e) {
       debugPrint("Backup error: $e");
-      _showMsgDialog("Backup Failed", content: "An error occurred: ${e.toString()}");
+      _showMsgDialog(
+        "Backup Failed",
+        content: "An error occurred: ${e.toString()}",
+      );
     }
   }
 
   Future<bool> _checkConnection() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       _showSnackBar('No Internet Connection');
       return false;
     }
     return true;
   }
 
-
-  Future<void> _signInAndPotentiallyRestore(SignInMethod signInMethod, RoutinesBloc bloc) async {
+  Future<void> _signInAndPotentiallyRestore(
+    SignInMethod signInMethod,
+    RoutinesBloc bloc,
+  ) async {
     User? user;
     _showSnackBar("Signing in..."); // Indicate progress
     try {
@@ -223,9 +252,13 @@ class _SettingPageState extends State<SettingPage> {
         // Check if user existed *before* sign-in potentially created them
         // Or check if they have existing data to restore
         // We can check if they have routines stored in Firebase
-        final userExistsWithData = await firebaseProvider.checkUserExists(); // Re-check after sign-in completes profile creation
+        final userExistsWithData =
+            await firebaseProvider
+                .checkUserExists(); // Re-check after sign-in completes profile creation
         if (userExistsWithData) {
-          final routinesInCloud = await firebaseProvider.restoreRoutines(); // Check if routines exist
+          final routinesInCloud =
+              await firebaseProvider
+                  .restoreRoutines(); // Check if routines exist
           if (routinesInCloud.isNotEmpty) {
             _showRestoreConfirmationDialog(bloc); // Show restore confirmation
           } else {
@@ -244,7 +277,6 @@ class _SettingPageState extends State<SettingPage> {
     }
   }
 
-
   // Removed duplicate _signInWithApple and _signInWithGoogle as they exist in firebaseProvider
 
   void _showRestoreConfirmationDialog(RoutinesBloc bloc) {
@@ -252,40 +284,56 @@ class _SettingPageState extends State<SettingPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text('Restore Data?'),
-        content: const Text('Cloud backup found for this account. Would you like to restore it now? This will replace your current local routines.'),
-        actions: [
-          TextButton(
-            child: const Text('Later'),
-            onPressed: () => Navigator.pop(context),
+      builder:
+          (_) => AlertDialog(
+            title: const Text('Restore Data?'),
+            content: const Text(
+              'Cloud backup found for this account. Would you like to restore it now? This will replace your current local routines.',
+            ),
+            actions: [
+              TextButton(
+                child: const Text('Later'),
+                onPressed: () => Navigator.pop(context),
+              ),
+              ElevatedButton(
+                // Make restore more prominent
+                child: const Text('Restore Now'),
+                onPressed: () async {
+                  Navigator.pop(context); // Close dialog first
+                  await _handleRestore(bloc); // Call restore logic
+                },
+              ),
+            ],
           ),
-          ElevatedButton( // Make restore more prominent
-            child: const Text('Restore Now'),
-            onPressed: () async {
-              Navigator.pop(context); // Close dialog first
-              await _handleRestore(bloc); // Call restore logic
-            },
-          ),
-        ],
-      ),
     );
   }
 
   Future<void> _handleSignOut() async {
     // Optionally confirm sign out
     if (!mounted) return;
-    bool confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text("Sign Out?"),
-          content: const Text("Are you sure you want to sign out?"),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Sign Out", style: TextStyle(color: Colors.red))),
-          ],
-        )
-    ) ?? false; // Default to false if dialog dismissed
+    bool confirm =
+        await showDialog<bool>(
+          context: context,
+          builder:
+              (ctx) => AlertDialog(
+                title: const Text("Sign Out?"),
+                content: const Text("Are you sure you want to sign out?"),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text("Cancel"),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text(
+                      "Sign Out",
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
+        ) ??
+        false; // Default to false if dialog dismissed
 
     if (confirm) {
       try {
@@ -302,40 +350,49 @@ class _SettingPageState extends State<SettingPage> {
     if (!mounted) return;
     showCupertinoModalPopup<SignInMethod?>(
       context: context,
-      builder: (_) => CupertinoActionSheet( // Use ActionSheet for better iOS look
-        // title: const Text("Sign In Options"), // Optional title
-        // message: const Text("Choose a sign-in method"), // Optional message
-          actions: <CupertinoActionSheetAction>[
-            CupertinoActionSheetAction(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(FontAwesomeIcons.google, color: Colors.redAccent.shade700),
-                  const SizedBox(width: 15),
-                  const Text('Sign in with Google'),
-                ],
-              ),
-              onPressed: () => Navigator.pop(context, SignInMethod.google),
-            ),
-            // Only show Apple Sign In if available (usually non-web)
-            if (!kIsWeb)
+      builder:
+          (_) => CupertinoActionSheet(
+            // Use ActionSheet for better iOS look
+            // title: const Text("Sign In Options"), // Optional title
+            // message: const Text("Choose a sign-in method"), // Optional message
+            actions: <CupertinoActionSheetAction>[
               CupertinoActionSheetAction(
-                child: const Row(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      FontAwesomeIcons.google,
+                      color: Colors.redAccent.shade700,
+                    ),
+                    const SizedBox(width: 15),
+                    const Text('Sign in with Google'),
+                  ],
+                ),
+                onPressed: () => Navigator.pop(context, SignInMethod.google),
+              ),
+              // Only show Apple Sign In if available (usually non-web)
+              if (!kIsWeb)
+                CupertinoActionSheetAction(
+                  child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(FontAwesomeIcons.apple, color: Colors.black),
                       SizedBox(width: 15),
                       Text('Sign in with Apple'),
-                    ]),
-                onPressed: () => Navigator.pop(context, SignInMethod.apple),
-              ),
-          ],
-          cancelButton: CupertinoActionSheetAction( // Add cancel button
-            isDefaultAction: true,
-            onPressed: () { Navigator.pop(context); },
-            child: const Text('Cancel'),
-          )
-      ),
+                    ],
+                  ),
+                  onPressed: () => Navigator.pop(context, SignInMethod.apple),
+                ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              // Add cancel button
+              isDefaultAction: true,
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Cancel'),
+            ),
+          ),
     ).then((method) {
       // Handle the selected method
       if (method != null) {
@@ -353,10 +410,7 @@ class _SettingPageState extends State<SettingPage> {
       // key: scaffoldKey, // Only needed if interacting with Scaffold directly
       // Removed outer Material widget as Scaffold provides it
       // Consider adding an AppBar
-      appBar: AppBar(
-        title: const Text("Settings & Sync"),
-        elevation: 1,
-      ),
+      appBar: AppBar(title: const Text("Settings & Sync"), elevation: 1),
       body: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
@@ -364,8 +418,8 @@ class _SettingPageState extends State<SettingPage> {
           final firebaseUser = snapshot.data;
           // *** Removed: firebaseProvider.firebaseUser = firebaseUser; ***
 
-      return ListView(
-        children: [
+          return ListView(
+            children: [
               // --- Sync Section ---
               _buildSectionHeader(context, "Cloud Sync"),
               ListTile(
@@ -373,14 +427,19 @@ class _SettingPageState extends State<SettingPage> {
                 title: const Text("Back up Routines"),
                 subtitle: const Text("Save your current routines to the cloud"),
                 enabled: firebaseUser != null, // Disable if not signed in
-                onTap: firebaseUser != null ? () => _handleBackup(routinesBlocInstance) : null,
+                onTap:
+                    firebaseUser != null
+                        ? () => _handleBackup(routinesBlocInstance)
+                        : null,
               ),
               _buildDivider(),
 
               // --- Stats weight calculation ---
               _buildSectionHeader(context, "Statistics"),
               SwitchListTile(
-                title: const Text('Use tonnage for body-part stats (sets × reps × weight)'),
+                title: const Text(
+                  'Use tonnage for body-part stats (sets × reps × weight)',
+                ),
                 subtitle: const Text('If off, stats use reps volume only'),
                 value: _useTonnage,
                 onChanged: (v) async {
@@ -391,9 +450,14 @@ class _SettingPageState extends State<SettingPage> {
               ListTile(
                 leading: const Icon(Icons.cloud_download_outlined),
                 title: const Text("Restore Routines"),
-                subtitle: const Text("Replace local routines with cloud backup"),
+                subtitle: const Text(
+                  "Replace local routines with cloud backup",
+                ),
                 enabled: firebaseUser != null, // Disable if not signed in
-                onTap: firebaseUser != null ? () => _handleRestore(routinesBlocInstance) : null,
+                onTap:
+                    firebaseUser != null
+                        ? () => _handleRestore(routinesBlocInstance)
+                        : null,
               ),
 
               // --- Personalization ---
@@ -405,13 +469,20 @@ class _SettingPageState extends State<SettingPage> {
                 onTap: () async {
                   final unit = await showDialog<String>(
                     context: context,
-                    builder: (_) => SimpleDialog(
-                      title: const Text('Select Unit'),
-                      children: [
-                        SimpleDialogOption(child: const Text('KG'), onPressed: () => Navigator.pop(context, 'kg')),
-                        SimpleDialogOption(child: const Text('LB'), onPressed: () => Navigator.pop(context, 'lb')),
-                      ],
-                    ),
+                    builder:
+                        (_) => SimpleDialog(
+                          title: const Text('Select Unit'),
+                          children: [
+                            SimpleDialogOption(
+                              child: const Text('KG'),
+                              onPressed: () => Navigator.pop(context, 'kg'),
+                            ),
+                            SimpleDialogOption(
+                              child: const Text('LB'),
+                              onPressed: () => Navigator.pop(context, 'lb'),
+                            ),
+                          ],
+                        ),
                   );
                   if (unit != null) {
                     await sharedPrefsProvider.setWeightUnit(unit);
@@ -422,23 +493,39 @@ class _SettingPageState extends State<SettingPage> {
               ListTile(
                 leading: const Icon(Icons.exposure_plus_1),
                 title: const Text('Weight Increment'),
-                subtitle: Text('${_weightIncrement.toStringAsFixed(2)} ${_weightUnit.toUpperCase()}'),
+                subtitle: Text(
+                  '${_weightIncrement.toStringAsFixed(2)} ${_weightUnit.toUpperCase()}',
+                ),
                 onTap: () async {
-                  final controller = TextEditingController(text: _weightIncrement.toString());
+                  final controller = TextEditingController(
+                    text: _weightIncrement.toString(),
+                  );
                   final ok = await showDialog<bool>(
                     context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Set Weight Increment'),
-                      content: TextField(
-                        controller: controller,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: InputDecoration(hintText: 'e.g. ${_weightUnit == 'kg' ? '2.5' : '5.0'}'),
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-                      ],
-                    ),
+                    builder:
+                        (_) => AlertDialog(
+                          title: const Text('Set Weight Increment'),
+                          content: TextField(
+                            controller: controller,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: InputDecoration(
+                              hintText:
+                                  'e.g. ${_weightUnit == 'kg' ? '2.5' : '5.0'}',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Save'),
+                            ),
+                          ],
+                        ),
                   );
                   if (ok == true) {
                     final v = double.tryParse(controller.text);
@@ -465,23 +552,33 @@ class _SettingPageState extends State<SettingPage> {
                   int tmp = _targetRpe;
                   final ok = await showDialog<bool>(
                     context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Set Target RPE'),
-                      content: StatefulBuilder(
-                        builder: (ctx, setState) => Slider(
-                          min: 6,
-                          max: 10,
-                          divisions: 4,
-                          value: tmp.toDouble(),
-                          label: tmp.toString(),
-                          onChanged: (val) => setState(() => tmp = val.round()),
+                    builder:
+                        (_) => AlertDialog(
+                          title: const Text('Set Target RPE'),
+                          content: StatefulBuilder(
+                            builder:
+                                (ctx, setState) => Slider(
+                                  min: 6,
+                                  max: 10,
+                                  divisions: 4,
+                                  value: tmp.toDouble(),
+                                  label: tmp.toString(),
+                                  onChanged:
+                                      (val) =>
+                                          setState(() => tmp = val.round()),
+                                ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text('Save'),
+                            ),
+                          ],
                         ),
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-                      ],
-                    ),
                   );
                   if (ok == true) {
                     await sharedPrefsProvider.setTargetRPE(tmp);
@@ -503,20 +600,33 @@ class _SettingPageState extends State<SettingPage> {
                   title: const Text('Deload interval (weeks)'),
                   subtitle: Text('$_deloadEveryWeeks'),
                   onTap: () async {
-                    final controller = TextEditingController(text: _deloadEveryWeeks.toString());
+                    final controller = TextEditingController(
+                      text: _deloadEveryWeeks.toString(),
+                    );
                     final ok = await showDialog<bool>(
                       context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Deload every N weeks'),
-                        content: TextField(keyboardType: TextInputType.number, controller: controller),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-                        ],
-                      ),
+                      builder:
+                          (_) => AlertDialog(
+                            title: const Text('Deload every N weeks'),
+                            content: TextField(
+                              keyboardType: TextInputType.number,
+                              controller: controller,
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Save'),
+                              ),
+                            ],
+                          ),
                     );
                     if (ok == true) {
-                      final v = int.tryParse(controller.text) ?? _deloadEveryWeeks;
+                      final v =
+                          int.tryParse(controller.text) ?? _deloadEveryWeeks;
                       await sharedPrefsProvider.setDeloadEveryWeeks(v);
                       if (mounted) setState(() => _deloadEveryWeeks = v);
                     }
@@ -527,17 +637,29 @@ class _SettingPageState extends State<SettingPage> {
                   title: const Text('Deload percent'),
                   subtitle: Text('${(_deloadPercent * 100).round()}%'),
                   onTap: () async {
-                    final controller = TextEditingController(text: (_deloadPercent * 100).toStringAsFixed(0));
+                    final controller = TextEditingController(
+                      text: (_deloadPercent * 100).toStringAsFixed(0),
+                    );
                     final ok = await showDialog<bool>(
                       context: context,
-                      builder: (_) => AlertDialog(
-                        title: const Text('Deload percent (50-95)'),
-                        content: TextField(keyboardType: TextInputType.number, controller: controller),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-                        ],
-                      ),
+                      builder:
+                          (_) => AlertDialog(
+                            title: const Text('Deload percent (50-95)'),
+                            content: TextField(
+                              keyboardType: TextInputType.number,
+                              controller: controller,
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Save'),
+                              ),
+                            ],
+                          ),
                     );
                     if (ok == true) {
                       final raw = double.tryParse(controller.text);
@@ -553,22 +675,35 @@ class _SettingPageState extends State<SettingPage> {
               ListTile(
                 leading: const Icon(Icons.auto_graph),
                 title: const Text('Progression rule'),
-                subtitle: Text({
-                  'reps': 'Reps-based',
-                  'rpe': 'RPE-based',
-                  'fixed': 'Fixed increment',
-                }[_progressionRule] ?? 'Reps-based'),
+                subtitle: Text(
+                  {
+                        'reps': 'Reps-based',
+                        'rpe': 'RPE-based',
+                        'fixed': 'Fixed increment',
+                      }[_progressionRule] ??
+                      'Reps-based',
+                ),
                 onTap: () async {
                   final rule = await showDialog<String>(
                     context: context,
-                    builder: (_) => SimpleDialog(
-                      title: const Text('Select progression rule'),
-                      children: [
-                        SimpleDialogOption(child: const Text('Reps-based'), onPressed: () => Navigator.pop(context, 'reps')),
-                        SimpleDialogOption(child: const Text('RPE-based'), onPressed: () => Navigator.pop(context, 'rpe')),
-                        SimpleDialogOption(child: const Text('Fixed increment'), onPressed: () => Navigator.pop(context, 'fixed')),
-                      ],
-                    ),
+                    builder:
+                        (_) => SimpleDialog(
+                          title: const Text('Select progression rule'),
+                          children: [
+                            SimpleDialogOption(
+                              child: const Text('Reps-based'),
+                              onPressed: () => Navigator.pop(context, 'reps'),
+                            ),
+                            SimpleDialogOption(
+                              child: const Text('RPE-based'),
+                              onPressed: () => Navigator.pop(context, 'rpe'),
+                            ),
+                            SimpleDialogOption(
+                              child: const Text('Fixed increment'),
+                              onPressed: () => Navigator.pop(context, 'fixed'),
+                            ),
+                          ],
+                        ),
                   );
                   if (rule != null) {
                     await sharedPrefsProvider.setProgressionRule(rule);
@@ -580,11 +715,18 @@ class _SettingPageState extends State<SettingPage> {
               // --- Account Section ---
               _buildSectionHeader(context, "Account"),
               ListTile(
-                leading: Icon(firebaseUser != null ? Icons.logout : Icons.login),
+                leading: Icon(
+                  firebaseUser != null ? Icons.logout : Icons.login,
+                ),
                 title: Text(firebaseUser == null ? 'Sign In' : 'Sign Out'),
-                subtitle: firebaseUser != null
-                    ? Text(firebaseUser.displayName ?? firebaseUser.email ?? 'Signed In')
-                    : const Text('Back up & restore across devices'),
+                subtitle:
+                    firebaseUser != null
+                        ? Text(
+                          firebaseUser.displayName ??
+                              firebaseUser.email ??
+                              'Signed In',
+                        )
+                        : const Text('Back up & restore across devices'),
                 onTap: () {
                   if (firebaseUser == null) {
                     _showSignInModalSheet(routinesBlocInstance);
@@ -604,16 +746,18 @@ class _SettingPageState extends State<SettingPage> {
                   try {
                     final packageInfo = await PackageInfo.fromPlatform();
                     // Example share text
-                    final String shareText = 'Check out this Workout Planner app: ${packageInfo.appName}!';
+                    final String shareText =
+                        'Check out this Workout Planner app: ${packageInfo.appName}!';
                     // Example link (replace with your actual app store links)
                     // final String appLink = Platform.isAndroid
                     //    ? "https://play.google.com/store/apps/details?id=${packageInfo.packageName}"
                     //    : "https://apps.apple.com/app/id<YOUR_APP_ID>"; // Replace <YOUR_APP_ID>
-                    await Share.share(shareText); // Share text only for simplicity
-                  } catch(e) {
+                    await SharePlus.instance.share(
+                      ShareParams(text: shareText),
+                    );
+                  } catch (e) {
                     _showSnackBar("Could not get app info to share.");
                   }
-
                 },
               ),
               _buildDivider(),
@@ -622,11 +766,16 @@ class _SettingPageState extends State<SettingPage> {
                 future: PackageInfo.fromPlatform(),
                 builder: (context, snapshot) {
                   // Show placeholder or hide while loading
-                  if (!snapshot.hasData) return const ListTile(leading: Icon(Icons.info_outline), title: Text("About App"));
+                  if (!snapshot.hasData)
+                    return const ListTile(
+                      leading: Icon(Icons.info_outline),
+                      title: Text("About App"),
+                    );
 
                   final packageInfo = snapshot.data!;
                   return AboutListTile(
-                    applicationIcon: Padding( // Add padding to icon
+                    applicationIcon: Padding(
+                      // Add padding to icon
                       padding: const EdgeInsets.all(8.0),
                       child: Image.asset(
                         'assets/app_icon.png', // Verify asset path
@@ -637,16 +786,20 @@ class _SettingPageState extends State<SettingPage> {
                     ),
                     applicationName: packageInfo.appName,
                     applicationVersion: 'Version ${packageInfo.version}',
-                    applicationLegalese: '© ${DateTime.now().year} Workout Planner', // Update if needed
+                    applicationLegalese:
+                        '© ${DateTime.now().year} Workout Planner', // Update if needed
                     aboutBoxChildren: [
                       // Link Buttons within the About Box
                       _buildAboutLinkButton(
                         icon: FontAwesomeIcons.github,
                         text: "Source Code (GitHub)",
-                        url: "https://github.com/Nelsonkriss/Fitfam", // Verify URL
+                        url:
+                            "https://github.com/Nelsonkriss/Fitfam", // Verify URL
                       ),
                       _buildAboutLinkButton(
-                        icon: FontAwesomeIcons.solidUser, // Example different icon
+                        icon:
+                            FontAwesomeIcons
+                                .solidUser, // Example different icon
                         text: "Developer (Nelsonkriss)",
                         url: "https://github.com/Nelsonkriss", // Verify URL
                       ),
@@ -661,7 +814,10 @@ class _SettingPageState extends State<SettingPage> {
               _buildSectionHeader(context, "Preferences"),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text("Default Weekly Workout Target", style: Theme.of(context).textTheme.titleSmall),
+                child: Text(
+                  "Default Weekly Workout Target",
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
               ),
               if (_selectedWeeklyAmount != null) // Only show if loaded
                 Padding(
@@ -669,40 +825,60 @@ class _SettingPageState extends State<SettingPage> {
                   child: DropdownButton<int>(
                     value: _selectedWeeklyAmount,
                     isExpanded: true, // Take full width
-                    items: List.generate(7, (index) => index + 1) // Generate 1 to 7
-                        .map((amount) => DropdownMenuItem<int>(
-                      value: amount,
-                      child: Text('$amount day${amount > 1 ? 's' : ''} per week'),
-                    ))
-                        .toList(),
+                    items:
+                        List.generate(
+                              7,
+                              (index) => index + 1,
+                            ) // Generate 1 to 7
+                            .map(
+                              (amount) => DropdownMenuItem<int>(
+                                value: amount,
+                                child: Text(
+                                  '$amount day${amount > 1 ? 's' : ''} per week',
+                                ),
+                              ),
+                            )
+                            .toList(),
                     onChanged: (newValue) async {
                       if (newValue != null) {
                         await sharedPrefsProvider.setWeeklyAmount(newValue);
                         setState(() {
                           _selectedWeeklyAmount = newValue;
                         });
-                        _showSnackBar("Weekly target updated to $newValue days.");
+                        _showSnackBar(
+                          "Weekly target updated to $newValue days.",
+                        );
                       }
                     },
                   ),
                 )
               else // Show loading indicator while preference loads
                 const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                  padding: EdgeInsets.all(16.0),
+                  child: Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
                 ),
               _buildDivider(),
 
               // --- Theme Settings Section ---
               _buildSectionHeader(context, "Appearance"),
-              Consumer<ThemeProvider>( // Use Consumer to listen to ThemeProvider
+              Consumer<ThemeProvider>(
+                // Use Consumer to listen to ThemeProvider
                 builder: (context, themeProvider, child) {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                        child: Text("App Theme", style: Theme.of(context).textTheme.titleSmall),
+                        child: Text(
+                          "App Theme",
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
                       ),
                       RadioListTile<ThemeMode>(
                         title: const Text('System Default'),
@@ -739,11 +915,14 @@ class _SettingPageState extends State<SettingPage> {
               StreamBuilder<List<Routine>>(
                 stream: routinesBlocInstance.allRoutinesStream,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error loading routines: ${snapshot.error}'));
+                    return Center(
+                      child: Text('Error loading routines: ${snapshot.error}'),
+                    );
                   }
                   final routines = snapshot.data ?? [];
 
@@ -756,14 +935,17 @@ class _SettingPageState extends State<SettingPage> {
 
                   return ListView.builder(
                     shrinkWrap: true, // Important for nested ListViews
-                    physics: const NeverScrollableScrollPhysics(), // Disable scrolling for this inner ListView
+                    physics:
+                        const NeverScrollableScrollPhysics(), // Disable scrolling for this inner ListView
                     itemCount: routines.length,
                     itemBuilder: (context, index) {
                       final routine = routines[index];
                       // Ensure routine.id is not null before using it as a key
                       if (routine.id == null) return const SizedBox.shrink();
 
-                      final isSelected = _selectedRoutineIds.contains(routine.id);
+                      final isSelected = _selectedRoutineIds.contains(
+                        routine.id,
+                      );
 
                       return CheckboxListTile(
                         title: Text(routine.routineName),
@@ -816,9 +998,15 @@ class _SettingPageState extends State<SettingPage> {
   }
 
   // Helper for buttons in AboutListTile
-  Widget _buildAboutLinkButton({required IconData icon, required String text, required String url}) {
+  Widget _buildAboutLinkButton({
+    required IconData icon,
+    required String text,
+    required String url,
+  }) {
     return TextButton(
-      style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+      ),
       child: Row(
         children: [
           FaIcon(icon, size: 18), // Use FaIcon
@@ -836,5 +1024,4 @@ class _SettingPageState extends State<SettingPage> {
       },
     );
   }
-
 }

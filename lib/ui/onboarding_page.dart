@@ -11,10 +11,7 @@ import 'design_system.dart';
 class OnboardingPage extends StatefulWidget {
   final VoidCallback onOnboardingComplete;
 
-  const OnboardingPage({
-    super.key,
-    required this.onOnboardingComplete,
-  });
+  const OnboardingPage({super.key, required this.onOnboardingComplete});
 
   @override
   _OnboardingPageState createState() => _OnboardingPageState();
@@ -28,7 +25,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final TextEditingController _heightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   FitnessLevel _selectedFitnessLevel = FitnessLevel.beginner;
-  FitnessGoal _selectedFitnessGoal = FitnessGoal.buildMuscle;
+  final Set<FitnessGoal> _selectedFitnessGoals = {FitnessGoal.buildMuscle};
   final Set<AvailableEquipment> _selectedEquipment = {};
 
   final GlobalKey<FormState> _nameFormKey = GlobalKey<FormState>();
@@ -96,7 +93,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
         final displayName = firebaseUser?.displayName?.trim();
         if (displayName != null && displayName.isNotEmpty) {
           _nameController.text = displayName;
-        } else if (firebaseUser?.email != null && firebaseUser!.email!.contains('@')) {
+        } else if (firebaseUser?.email != null &&
+            firebaseUser!.email!.contains('@')) {
           _nameController.text = firebaseUser.email!.split('@').first;
         }
       }
@@ -137,9 +135,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     if (_weightUnit == unit) return;
     final currentWeight = double.tryParse(_weightController.text);
     if (currentWeight != null && currentWeight > 0) {
-      final converted = unit == 'lb'
-          ? currentWeight * 2.20462
-          : currentWeight / 2.20462;
+      final converted =
+          unit == 'lb' ? currentWeight * 2.20462 : currentWeight / 2.20462;
       _weightController.text = converted.toStringAsFixed(1);
     }
     setState(() {
@@ -171,6 +168,22 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
   }
 
+  List<FitnessGoal> _orderedSelectedGoals() {
+    return FitnessGoal.values.where(_selectedFitnessGoals.contains).toList();
+  }
+
+  FitnessGoal get _primaryFitnessGoal {
+    final orderedGoals = _orderedSelectedGoals();
+    if (orderedGoals.isEmpty) return FitnessGoal.buildMuscle;
+    return orderedGoals.first;
+  }
+
+  String get _selectedGoalsLabel {
+    final orderedGoals = _orderedSelectedGoals();
+    if (orderedGoals.isEmpty) return 'Not selected';
+    return orderedGoals.map((goal) => goal.displayName).join(', ');
+  }
+
   Future<void> _handleSignIn(SignInMethod method) async {
     if (_isSigningIn) return;
     setState(() {
@@ -179,16 +192,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
     try {
       final firebaseProvider = context.read<FirebaseProvider>();
-      final user = method == SignInMethod.google
-          ? await firebaseProvider.signInWithGoogle()
-          : await firebaseProvider.signInWithApple();
+      final user =
+          method == SignInMethod.google
+              ? await firebaseProvider.signInWithGoogle()
+              : await firebaseProvider.signInWithApple();
 
       if (!mounted) return;
 
       if (user == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sign in cancelled.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Sign in cancelled.')));
         return;
       }
 
@@ -201,9 +215,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
         }
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Signed in successfully.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Signed in successfully.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -252,7 +266,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
         height: height,
         weight: weightKg,
         fitnessLevel: _selectedFitnessLevel,
-        fitnessGoal: _selectedFitnessGoal,
+        fitnessGoal: _primaryFitnessGoal,
+        fitnessGoals: _orderedSelectedGoals(),
         availableEquipment: _selectedEquipment.toList(),
         displayName: name.isEmpty ? null : name,
       );
@@ -268,7 +283,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
         final firebaseProvider = context.read<FirebaseProvider>();
         final user = firebaseProvider.currentUser;
         if (user != null) {
-          if (name.isNotEmpty && (user.displayName == null || user.displayName!.trim().isEmpty || user.displayName != name)) {
+          if (name.isNotEmpty &&
+              (user.displayName == null ||
+                  user.displayName!.trim().isEmpty ||
+                  user.displayName != name)) {
             await user.updateDisplayName(name);
           }
           await firebaseProvider.saveUserProfile(userProfile);
@@ -362,7 +380,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    colors: [AppColors.accent.withOpacity(0.25), Colors.transparent],
+                    colors: [
+                      AppColors.accent.withOpacity(0.25),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
@@ -376,7 +397,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
-                    colors: [AppColors.accentAlt.withOpacity(0.2), Colors.transparent],
+                    colors: [
+                      AppColors.accentAlt.withOpacity(0.2),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
@@ -429,9 +453,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
     return AnimatedBuilder(
       animation: _pageController,
       builder: (context, _) {
-        final page = _pageController.hasClients
-            ? (_pageController.page ?? _currentPage.toDouble())
-            : _currentPage.toDouble();
+        final page =
+            _pageController.hasClients
+                ? (_pageController.page ?? _currentPage.toDouble())
+                : _currentPage.toDouble();
         final delta = (page - index).abs().clamp(0.0, 1.0);
         final opacity = (1 - delta * 0.35).clamp(0.0, 1.0);
         final translate = 30 * delta;
@@ -440,10 +465,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           opacity: opacity,
           child: Transform.translate(
             offset: Offset(0, translate),
-            child: Transform.scale(
-              scale: scale,
-              child: child,
-            ),
+            child: Transform.scale(scale: scale, child: child),
           ),
         );
       },
@@ -451,28 +473,31 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   List<Widget Function()> get _pages => [
-        _buildWelcomePage,
-        _buildIdentityPage,
-        _buildPhysicalInfoPage,
-        _buildFitnessLevelPage,
-        _buildFitnessGoalPage,
-        _buildEquipmentPage,
-      ];
+    _buildWelcomePage,
+    _buildIdentityPage,
+    _buildPhysicalInfoPage,
+    _buildFitnessLevelPage,
+    _buildFitnessGoalPage,
+    _buildEquipmentPage,
+  ];
 
   List<List<Color>> get _pageGradients => const [
-        [Color(0xFF10121A), Color(0xFF0E0F12)],
-        [Color(0xFF11141A), Color(0xFF1B1E24)],
-        [Color(0xFF0E1218), Color(0xFF141B22)],
-        [Color(0xFF0F1117), Color(0xFF1A1E28)],
-        [Color(0xFF10121A), Color(0xFF1A1B20)],
-        [Color(0xFF0D1014), Color(0xFF132028)],
-      ];
+    [Color(0xFF10121A), Color(0xFF0E0F12)],
+    [Color(0xFF11141A), Color(0xFF1B1E24)],
+    [Color(0xFF0E1218), Color(0xFF141B22)],
+    [Color(0xFF0F1117), Color(0xFF1A1E28)],
+    [Color(0xFF10121A), Color(0xFF1A1B20)],
+    [Color(0xFF0D1014), Color(0xFF132028)],
+  ];
 
   Widget _scrollablePage({required Widget child}) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final minHeight = (constraints.maxHeight - bottomInset).clamp(0.0, double.infinity);
+        final minHeight = (constraints.maxHeight - bottomInset).clamp(
+          0.0,
+          double.infinity,
+        );
         return SingleChildScrollView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.fromLTRB(24, 12, 24, bottomInset + 24),
@@ -546,7 +571,11 @@ class _OnboardingPageState extends State<OnboardingPage> {
             ),
             Align(
               alignment: Alignment.center,
-              child: Icon(Icons.fitness_center, size: 72, color: AppColors.accentAlt),
+              child: Icon(
+                Icons.fitness_center,
+                size: 72,
+                color: AppColors.accentAlt,
+              ),
             ),
             Positioned(
               bottom: 20,
@@ -571,7 +600,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
         children: [
           Icon(icon, size: 16, color: AppColors.accentAlt),
           const SizedBox(width: 6),
-          Text(label, style: AppText.caption.copyWith(color: AppColors.onSurface)),
+          Text(
+            label,
+            style: AppText.caption.copyWith(color: AppColors.onSurface),
+          ),
         ],
       ),
     );
@@ -583,20 +615,35 @@ class _OnboardingPageState extends State<OnboardingPage> {
       runSpacing: 12,
       alignment: WrapAlignment.center,
       children: const [
-        _FeatureCard(title: 'Adaptive', subtitle: 'Weights that scale with you', icon: Icons.auto_awesome),
-        _FeatureCard(title: 'Focused', subtitle: 'Goal-driven routines', icon: Icons.flag),
-        _FeatureCard(title: 'Simple', subtitle: 'Log sets in seconds', icon: Icons.flash_on),
+        _FeatureCard(
+          title: 'Adaptive',
+          subtitle: 'Weights that scale with you',
+          icon: Icons.auto_awesome,
+        ),
+        _FeatureCard(
+          title: 'Focused',
+          subtitle: 'Goal-driven routines',
+          icon: Icons.flag,
+        ),
+        _FeatureCard(
+          title: 'Simple',
+          subtitle: 'Log sets in seconds',
+          icon: Icons.flash_on,
+        ),
       ],
     );
   }
 
   Widget _buildIdentityPage() {
     final firebaseUser = context.read<FirebaseProvider>().currentUser;
-    final signedInLabel = (firebaseUser?.displayName?.trim().isNotEmpty ?? false)
-        ? firebaseUser!.displayName!.trim()
-        : firebaseUser?.email;
-    final showApple = !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS);
+    final signedInLabel =
+        (firebaseUser?.displayName?.trim().isNotEmpty ?? false)
+            ? firebaseUser!.displayName!.trim()
+            : firebaseUser?.email;
+    final showApple =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
 
     return _scrollablePage(
       child: Form(
@@ -614,16 +661,30 @@ class _OnboardingPageState extends State<OnboardingPage> {
             Text('Sign in or create account', style: AppText.title),
             const SizedBox(height: 12),
             _buildSignInButton(
-              icon: FaIcon(FontAwesomeIcons.google, color: Colors.redAccent.shade200, size: 18),
+              icon: FaIcon(
+                FontAwesomeIcons.google,
+                color: Colors.redAccent.shade200,
+                size: 18,
+              ),
               label: 'Continue with Google',
-              onPressed: _isSigningIn ? null : () => _handleSignIn(SignInMethod.google),
+              onPressed:
+                  _isSigningIn
+                      ? null
+                      : () => _handleSignIn(SignInMethod.google),
             ),
             if (showApple) ...[
               const SizedBox(height: 12),
               _buildSignInButton(
-                icon: const FaIcon(FontAwesomeIcons.apple, color: Colors.white, size: 18),
+                icon: const FaIcon(
+                  FontAwesomeIcons.apple,
+                  color: Colors.white,
+                  size: 18,
+                ),
                 label: 'Continue with Apple',
-                onPressed: _isSigningIn ? null : () => _handleSignIn(SignInMethod.apple),
+                onPressed:
+                    _isSigningIn
+                        ? null
+                        : () => _handleSignIn(SignInMethod.apple),
               ),
             ],
             if (_isSigningIn)
@@ -674,13 +735,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
       child: OutlinedButton.icon(
         onPressed: onPressed,
         icon: icon,
-        label: Text(label, style: AppText.title.copyWith(color: AppColors.onSurface)),
+        label: Text(
+          label,
+          style: AppText.title.copyWith(color: AppColors.onSurface),
+        ),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.onSurface,
           backgroundColor: Colors.white10,
           side: const BorderSide(color: Colors.white24),
           padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
     );
@@ -795,7 +861,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
               icon: Icons.height,
               controller: _heightController,
               validator: (value) {
-                if (value == null || value.isEmpty) return 'Please enter your height';
+                if (value == null || value.isEmpty)
+                  return 'Please enter your height';
                 final height = double.tryParse(value);
                 if (height == null || height < 100 || height > 250) {
                   return 'Enter a valid height (100-250 cm)';
@@ -810,10 +877,14 @@ class _OnboardingPageState extends State<OnboardingPage> {
               icon: Icons.monitor_weight,
               controller: _weightController,
               validator: (value) {
-                if (value == null || value.isEmpty) return 'Please enter your weight';
+                if (value == null || value.isEmpty)
+                  return 'Please enter your weight';
                 final weight = double.tryParse(value);
                 final weightKg = _weightToKg(weight);
-                if (weight == null || weightKg == null || weightKg < 30 || weightKg > 300) {
+                if (weight == null ||
+                    weightKg == null ||
+                    weightKg < 30 ||
+                    weightKg > 300) {
                   return 'Enter a valid weight';
                 }
                 return null;
@@ -874,17 +945,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final weight = _parseWeightInput();
     final weightKg = _weightToKg(weight);
     final hasMetrics = height != null && weightKg != null;
-    final bmi = hasMetrics ? (weightKg! / ((height! / 100) * (height / 100))) : null;
+    final bmi =
+        hasMetrics ? (weightKg! / ((height! / 100) * (height / 100))) : null;
     final bmiText = bmi == null ? '--' : bmi.toStringAsFixed(1);
-    final bmiCategory = hasMetrics
-        ? (bmi! < 18.5
-            ? 'Underweight'
-            : bmi < 25
+    final bmiCategory =
+        hasMetrics
+            ? (bmi! < 18.5
+                ? 'Underweight'
+                : bmi < 25
                 ? 'Normal'
                 : bmi < 30
-                    ? 'Overweight'
-                    : 'High')
-        : 'Enter metrics';
+                ? 'Overweight'
+                : 'High')
+            : 'Enter metrics';
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -896,17 +969,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Your snapshot', style: AppText.title.copyWith(color: Colors.white)),
+          Text(
+            'Your snapshot',
+            style: AppText.title.copyWith(color: Colors.white),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: _snapshotTile('BMI', bmiText),
-              ),
+              Expanded(child: _snapshotTile('BMI', bmiText)),
               const SizedBox(width: 12),
-              Expanded(
-                child: _snapshotTile('Status', bmiCategory),
-              ),
+              Expanded(child: _snapshotTile('Status', bmiCategory)),
             ],
           ),
           const SizedBox(height: 12),
@@ -965,13 +1037,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
           Text('What is your goal?', style: AppText.headline),
           const SizedBox(height: 8),
           Text(
-            'Your plan will prioritize this focus every week.',
+            'Select one or more goals. Your plan will balance these priorities each week.',
             style: AppText.body,
           ),
           const SizedBox(height: 20),
           ...FitnessGoal.values.map(_buildFitnessGoalCard),
           const SizedBox(height: 24),
-          _primaryButton('Continue', _nextPage),
+          _primaryButton(
+            'Continue',
+            _selectedFitnessGoals.isEmpty ? null : _nextPage,
+          ),
         ],
       ),
     );
@@ -979,9 +1054,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   Widget _buildEquipmentPage() {
     final greetingName = _firstName(_nameController.text);
-    final greeting = greetingName.isEmpty
-        ? 'Your plan is ready to go.'
-        : 'Great to meet you, $greetingName.';
+    final greeting =
+        greetingName.isEmpty
+            ? 'Your plan is ready to go.'
+            : 'Great to meet you, $greetingName.';
 
     return _scrollablePage(
       child: Column(
@@ -997,9 +1073,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
           Wrap(
             spacing: 12,
             runSpacing: 12,
-            children: AvailableEquipment.values
-                .map((equipment) => _buildEquipmentChip(equipment))
-                .toList(),
+            children:
+                AvailableEquipment.values
+                    .map((equipment) => _buildEquipmentChip(equipment))
+                    .toList(),
           ),
           const SizedBox(height: 16),
           _buildSummaryGreeting(greeting),
@@ -1068,7 +1145,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
       decoration: BoxDecoration(
         color: isSelected ? Colors.white10 : AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+        border: Border.all(
+          color: isSelected ? AppColors.accentAlt : Colors.white12,
+        ),
       ),
       child: InkWell(
         onTap: () => setState(() => _selectedFitnessLevel = level),
@@ -1078,12 +1157,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : Colors.white10,
+                color:
+                    isSelected
+                        ? AppColors.accentAlt.withOpacity(0.2)
+                        : Colors.white10,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 _getFitnessLevelIcon(level),
-                color: isSelected ? AppColors.accentAlt : AppColors.onSurfaceSubtle,
+                color:
+                    isSelected
+                        ? AppColors.accentAlt
+                        : AppColors.onSurfaceSubtle,
                 size: 28,
               ),
             ),
@@ -1110,7 +1195,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Widget _buildFitnessGoalCard(FitnessGoal goal) {
-    final isSelected = _selectedFitnessGoal == goal;
+    final isSelected = _selectedFitnessGoals.contains(goal);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       margin: const EdgeInsets.only(bottom: 12),
@@ -1118,22 +1203,37 @@ class _OnboardingPageState extends State<OnboardingPage> {
       decoration: BoxDecoration(
         color: isSelected ? Colors.white10 : AppColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+        border: Border.all(
+          color: isSelected ? AppColors.accentAlt : Colors.white12,
+        ),
       ),
       child: InkWell(
-        onTap: () => setState(() => _selectedFitnessGoal = goal),
+        onTap:
+            () => setState(() {
+              if (isSelected) {
+                _selectedFitnessGoals.remove(goal);
+              } else {
+                _selectedFitnessGoals.add(goal);
+              }
+            }),
         borderRadius: BorderRadius.circular(16),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : Colors.white10,
+                color:
+                    isSelected
+                        ? AppColors.accentAlt.withOpacity(0.2)
+                        : Colors.white10,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
                 _goalIcons[goal],
-                color: isSelected ? AppColors.accentAlt : AppColors.onSurfaceSubtle,
+                color:
+                    isSelected
+                        ? AppColors.accentAlt
+                        : AppColors.onSurfaceSubtle,
                 size: 28,
               ),
             ),
@@ -1142,7 +1242,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(goal.displayName, style: AppText.title.copyWith(color: AppColors.onSurface)),
+                  Text(
+                    goal.displayName,
+                    style: AppText.title.copyWith(color: AppColors.onSurface),
+                  ),
                   const SizedBox(height: 6),
                   Text(_goalDescriptions[goal] ?? '', style: AppText.body),
                 ],
@@ -1173,14 +1276,23 @@ class _OnboardingPageState extends State<OnboardingPage> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.accentAlt.withOpacity(0.2) : AppColors.surface,
+          color:
+              isSelected
+                  ? AppColors.accentAlt.withOpacity(0.2)
+                  : AppColors.surface,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: isSelected ? AppColors.accentAlt : Colors.white12),
+          border: Border.all(
+            color: isSelected ? AppColors.accentAlt : Colors.white12,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_equipmentIcons[equipment], size: 18, color: AppColors.onSurfaceSubtle),
+            Icon(
+              _equipmentIcons[equipment],
+              size: 18,
+              color: AppColors.onSurfaceSubtle,
+            ),
             const SizedBox(width: 8),
             Text(
               equipment.displayName,
@@ -1207,7 +1319,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
               children: [
                 Text('Final summary', style: AppText.caption),
                 const SizedBox(height: 6),
-                Text(greeting, style: AppText.title.copyWith(color: AppColors.onSurface)),
+                Text(
+                  greeting,
+                  style: AppText.title.copyWith(color: AppColors.onSurface),
+                ),
               ],
             ),
           ),
@@ -1217,9 +1332,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Widget _buildPlanPreviewCard() {
-    final equipmentText = _selectedEquipment.isEmpty
-        ? 'Any equipment'
-        : _selectedEquipment.map((e) => e.displayName).take(3).join(', ');
+    final equipmentText =
+        _selectedEquipment.isEmpty
+            ? 'Any equipment'
+            : _selectedEquipment.map((e) => e.displayName).take(3).join(', ');
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1227,9 +1343,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Your plan preview', style: AppText.title.copyWith(color: AppColors.onSurface)),
+          Text(
+            'Your plan preview',
+            style: AppText.title.copyWith(color: AppColors.onSurface),
+          ),
           const SizedBox(height: 8),
-          _previewRow('Goal', _selectedFitnessGoal.displayName),
+          _previewRow('Goals', _selectedGoalsLabel),
           _previewRow('Level', _selectedFitnessLevel.displayName),
           _previewRow('Frequency', '${_recommendedFrequency()} days/week'),
           _previewRow('Equipment', equipmentText),
@@ -1243,19 +1362,23 @@ class _OnboardingPageState extends State<OnboardingPage> {
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: AppText.caption),
-          ),
+          SizedBox(width: 90, child: Text(label, style: AppText.caption)),
           Expanded(
-            child: Text(value, style: AppText.body.copyWith(color: AppColors.onSurface)),
+            child: Text(
+              value,
+              style: AppText.body.copyWith(color: AppColors.onSurface),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _primaryButton(String label, VoidCallback? onPressed, {bool isLoading = false}) {
+  Widget _primaryButton(
+    String label,
+    VoidCallback? onPressed, {
+    bool isLoading = false,
+  }) {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
@@ -1264,11 +1387,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
           backgroundColor: AppColors.accentAlt,
           foregroundColor: Colors.black,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
-        child: isLoading
-            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-            : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        child:
+            isLoading
+                ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                : Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
       ),
     );
   }

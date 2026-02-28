@@ -87,6 +87,7 @@ class UserProfile {
   final double weight; // in kg
   final FitnessLevel fitnessLevel;
   final FitnessGoal fitnessGoal;
+  final List<FitnessGoal> fitnessGoals;
   final List<AvailableEquipment> availableEquipment;
   final String? displayName;
   final DateTime createdAt;
@@ -97,6 +98,7 @@ class UserProfile {
     required this.weight,
     required this.fitnessLevel,
     required this.fitnessGoal,
+    required this.fitnessGoals,
     required this.availableEquipment,
     this.displayName,
     required this.createdAt,
@@ -109,16 +111,23 @@ class UserProfile {
     double? weight,
     FitnessLevel? fitnessLevel,
     FitnessGoal? fitnessGoal,
+    List<FitnessGoal>? fitnessGoals,
     List<AvailableEquipment>? availableEquipment,
     String? displayName,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
+    final nextPrimaryGoal = fitnessGoal ?? this.fitnessGoal;
+    final nextGoals = _normalizeFitnessGoals(
+      fitnessGoals ?? this.fitnessGoals,
+      nextPrimaryGoal,
+    );
     return UserProfile(
       height: height ?? this.height,
       weight: weight ?? this.weight,
       fitnessLevel: fitnessLevel ?? this.fitnessLevel,
-      fitnessGoal: fitnessGoal ?? this.fitnessGoal,
+      fitnessGoal: nextPrimaryGoal,
+      fitnessGoals: nextGoals,
       availableEquipment: availableEquipment ?? this.availableEquipment,
       displayName: displayName ?? this.displayName,
       createdAt: createdAt ?? this.createdAt,
@@ -157,7 +166,7 @@ class UserProfile {
     }
 
     final baseWeight = weight * multiplier;
-    
+
     return {
       'bench_press': (baseWeight * 0.8).roundToDouble(),
       'squat': (baseWeight * 1.2).roundToDouble(),
@@ -210,6 +219,7 @@ class UserProfile {
       'weight': weight,
       'fitnessLevel': fitnessLevel.name,
       'fitnessGoal': fitnessGoal.name,
+      'fitnessGoals': fitnessGoals.map((e) => e.name).toList(),
       'availableEquipment': availableEquipment.map((e) => e.name).toList(),
       'displayName': displayName,
       'createdAt': createdAt.toIso8601String(),
@@ -219,14 +229,26 @@ class UserProfile {
 
   /// Creates a UserProfile from a JSON map
   factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final parsedGoals = _parseFitnessGoals(json['fitnessGoals']);
+    final parsedPrimaryGoal = _parseFitnessGoal(json['fitnessGoal']);
+    final primaryGoal =
+        parsedPrimaryGoal ??
+        (parsedGoals.isNotEmpty ? parsedGoals.first : FitnessGoal.buildMuscle);
+    final normalizedGoals = _normalizeFitnessGoals(
+      parsedGoals.isNotEmpty ? parsedGoals : [primaryGoal],
+      primaryGoal,
+    );
+
     return UserProfile(
       height: (json['height'] as num).toDouble(),
       weight: (json['weight'] as num).toDouble(),
       fitnessLevel: FitnessLevel.values.byName(json['fitnessLevel'] as String),
-      fitnessGoal: FitnessGoal.values.byName(json['fitnessGoal'] as String),
-      availableEquipment: (json['availableEquipment'] as List<dynamic>)
-          .map((e) => AvailableEquipment.values.byName(e as String))
-          .toList(),
+      fitnessGoal: primaryGoal,
+      fitnessGoals: normalizedGoals,
+      availableEquipment:
+          (json['availableEquipment'] as List<dynamic>)
+              .map((e) => AvailableEquipment.values.byName(e as String))
+              .toList(),
       displayName: json['displayName'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
       updatedAt: DateTime.parse(json['updatedAt'] as String),
@@ -250,15 +272,21 @@ class UserProfile {
     required double weight,
     required FitnessLevel fitnessLevel,
     required FitnessGoal fitnessGoal,
+    List<FitnessGoal>? fitnessGoals,
     required List<AvailableEquipment> availableEquipment,
     String? displayName,
   }) {
     final now = DateTime.now();
+    final normalizedGoals = _normalizeFitnessGoals(
+      fitnessGoals ?? [fitnessGoal],
+      fitnessGoal,
+    );
     return UserProfile(
       height: height,
       weight: weight,
       fitnessLevel: fitnessLevel,
       fitnessGoal: fitnessGoal,
+      fitnessGoals: normalizedGoals,
       availableEquipment: availableEquipment,
       displayName: displayName,
       createdAt: now,
@@ -272,6 +300,7 @@ class UserProfile {
     double? weight,
     FitnessLevel? fitnessLevel,
     FitnessGoal? fitnessGoal,
+    List<FitnessGoal>? fitnessGoals,
     List<AvailableEquipment>? availableEquipment,
     String? displayName,
   }) {
@@ -280,15 +309,58 @@ class UserProfile {
       weight: weight,
       fitnessLevel: fitnessLevel,
       fitnessGoal: fitnessGoal,
+      fitnessGoals: fitnessGoals,
       availableEquipment: availableEquipment,
       displayName: displayName,
       updatedAt: DateTime.now(),
     );
   }
 
+  static FitnessGoal? _parseFitnessGoal(dynamic value) {
+    if (value is! String) return null;
+    for (final goal in FitnessGoal.values) {
+      if (goal.name == value) return goal;
+    }
+    return null;
+  }
+
+  static List<FitnessGoal> _parseFitnessGoals(dynamic value) {
+    if (value is! List) return <FitnessGoal>[];
+    final goals = <FitnessGoal>[];
+    for (final item in value) {
+      final goal = _parseFitnessGoal(item);
+      if (goal != null && !goals.contains(goal)) {
+        goals.add(goal);
+      }
+    }
+    return goals;
+  }
+
+  static List<FitnessGoal> _normalizeFitnessGoals(
+    List<FitnessGoal> goals,
+    FitnessGoal primaryGoal,
+  ) {
+    final normalized = <FitnessGoal>[primaryGoal];
+    for (final goal in goals) {
+      if (!normalized.contains(goal)) {
+        normalized.add(goal);
+      }
+    }
+    return List<FitnessGoal>.unmodifiable(normalized);
+  }
+
+  static bool _listEquals<T>(List<T> a, List<T> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   @override
   String toString() {
-    return 'UserProfile(height: ${height}cm, weight: ${weight}kg, level: ${fitnessLevel.displayName}, goal: ${fitnessGoal.displayName}, name: ${displayName ?? ''}, bmi: ${bmi.toStringAsFixed(1)})';
+    return 'UserProfile(height: ${height}cm, weight: ${weight}kg, level: ${fitnessLevel.displayName}, goal: ${fitnessGoal.displayName}, goals: ${fitnessGoals.map((g) => g.displayName).join(', ')}, name: ${displayName ?? ''}, bmi: ${bmi.toStringAsFixed(1)})';
   }
 
   @override
@@ -299,7 +371,8 @@ class UserProfile {
         other.weight == weight &&
         other.fitnessLevel == fitnessLevel &&
         other.fitnessGoal == fitnessGoal &&
-        other.availableEquipment == availableEquipment &&
+        _listEquals(other.fitnessGoals, fitnessGoals) &&
+        _listEquals(other.availableEquipment, availableEquipment) &&
         other.displayName == displayName &&
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt;
@@ -307,6 +380,16 @@ class UserProfile {
 
   @override
   int get hashCode {
-    return Object.hash(height, weight, fitnessLevel, fitnessGoal, availableEquipment, displayName, createdAt, updatedAt);
+    return Object.hash(
+      height,
+      weight,
+      fitnessLevel,
+      fitnessGoal,
+      Object.hashAll(fitnessGoals),
+      Object.hashAll(availableEquipment),
+      displayName,
+      createdAt,
+      updatedAt,
+    );
   }
 }

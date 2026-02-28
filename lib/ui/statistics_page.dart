@@ -17,6 +17,7 @@ import 'package:workout_planner/resource/shared_prefs_provider.dart'; // For get
 
 // Import Models and UI Components
 import 'package:workout_planner/models/workout_session.dart';
+import 'package:workout_planner/models/set_performance.dart';
 // Import Part model
 import 'package:workout_planner/ui/calender_page.dart'; // Your Calendar Page implementation
 import 'package:workout_planner/ui/components/chart.dart'; // Assuming DonutAutoLabelChart is here
@@ -40,6 +41,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   // Dashboard range selection
   DashboardRange _range = DashboardRange.week;
   bool _useTonnage = false;
+  String _weightUnit = 'kg';
 
   @override
   void initState() {
@@ -48,18 +50,27 @@ class _StatisticsPageState extends State<StatisticsPage> {
     _loadSelectedWeeklyProgressRoutines(); // Load selected routines for weekly progress
     _loadWeeklyAmount(); // Load weekly workout amount
     _loadSavedRange(); // Load persisted dashboard range
+    _loadWeightUnit();
   }
 
   Future<void> _loadSavedRange() async {
     final saved = await sharedPrefsProvider.getStatsDashboardRange();
     final tonnage = await sharedPrefsProvider.getStatsUseTonnage();
     if (!mounted) return;
-    if (saved != null) {
-      setState(() {
+    setState(() {
+      if (saved != null) {
         _range = saved == 1 ? DashboardRange.days30 : DashboardRange.week;
-        _useTonnage = tonnage;
-      });
-    }
+      }
+      _useTonnage = tonnage;
+    });
+  }
+
+  Future<void> _loadWeightUnit() async {
+    final unit = await sharedPrefsProvider.getWeightUnit();
+    if (!mounted) return;
+    setState(() {
+      _weightUnit = unit;
+    });
   }
 
   /// Asynchronously loads the first run date from SharedPreferences.
@@ -167,6 +178,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
                       _buildHeader(context, routines, sessions),
                       const SizedBox(height: 16),
                       _buildHighlights(context, routines, sessions),
+                      const SizedBox(height: 16),
+                      _buildWeeklyReview(context, sessions),
+                      const SizedBox(height: 16),
+                      _buildPersonalRecords(context, sessions),
+                      const SizedBox(height: 16),
+                      _buildVolumeTrend(context, sessions),
                       const SizedBox(height: 16),
                       _buildTrend(context, sessions),
                       const SizedBox(height: 16),
@@ -327,6 +344,238 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 
+  Widget _buildWeeklyReview(BuildContext context, List<WorkoutSession> sessions) {
+    final now = DateTime.now();
+    final startThisWeek = _startOfWeek(now);
+    final startLastWeek = startThisWeek.subtract(const Duration(days: 7));
+    final endLastWeek = startThisWeek.subtract(const Duration(days: 1));
+
+    final thisWeekSessions = _completedSessionsInRange(sessions, startThisWeek, now);
+    final lastWeekSessions = _completedSessionsInRange(sessions, startLastWeek, endLastWeek);
+
+    final thisWeekWorkouts = thisWeekSessions.length;
+    final lastWeekWorkouts = lastWeekSessions.length;
+    final thisWeekMinutes = _sumCompletedMinutes(thisWeekSessions);
+    final lastWeekMinutes = _sumCompletedMinutes(lastWeekSessions);
+    final thisWeekVolume = _sumVolume(thisWeekSessions);
+    final lastWeekVolume = _sumVolume(lastWeekSessions);
+
+    final recentPrs = _findPersonalRecords(sessions, since: startLastWeek);
+    final thisWeekPrs = recentPrs.where((pr) => !_isBeforeDay(pr.date, startThisWeek)).length;
+    final lastWeekPrs = recentPrs.where((pr) => _isBeforeDay(pr.date, startThisWeek)).length;
+
+    final rangeLabel = '${DateFormat.MMMd().format(startThisWeek)} - ${DateFormat.MMMd().format(now)}';
+    final volumeUnit = _useTonnage ? _weightUnit : 'reps';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sectionCard(
+        context,
+        title: 'Weekly Review',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This week · $rangeLabel',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _reviewTile(
+                    context,
+                    icon: Icons.event_available,
+                    label: 'Workouts',
+                    value: thisWeekWorkouts.toString(),
+                    delta: _formatDeltaLabel(thisWeekWorkouts - lastWeekWorkouts),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _reviewTile(
+                    context,
+                    icon: Icons.timer,
+                    label: 'Minutes',
+                    value: '${thisWeekMinutes}m',
+                    delta: _formatDeltaLabel(thisWeekMinutes - lastWeekMinutes, suffix: 'm'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _reviewTile(
+                    context,
+                    icon: Icons.auto_graph,
+                    label: 'Volume ($volumeUnit)',
+                    value: _formatCompact(thisWeekVolume),
+                    delta: _formatDeltaLabel(thisWeekVolume - lastWeekVolume),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _reviewTile(
+                    context,
+                    icon: Icons.emoji_events,
+                    label: 'PRs',
+                    value: thisWeekPrs.toString(),
+                    delta: _formatDeltaLabel(thisWeekPrs - lastWeekPrs),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonalRecords(BuildContext context, List<WorkoutSession> sessions) {
+    final rangeStart = _range == DashboardRange.week
+        ? _startOfWeek(DateTime.now())
+        : DateUtils.dateOnly(DateTime.now().subtract(const Duration(days: 29)));
+    final recentPrs = _findPersonalRecords(sessions, since: rangeStart)
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final items = recentPrs.take(5).toList();
+    final rangeLabel = _range == DashboardRange.week ? 'This week' : 'Last 30 days';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sectionCard(
+        context,
+        title: 'Personal Records',
+        child: items.isEmpty
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text('No PRs yet for $rangeLabel.', style: Theme.of(context).textTheme.bodyMedium),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    rangeLabel,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 12),
+                  ...List.generate(items.length, (index) {
+                    final item = items[index];
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 12),
+                      child: _recordRow(context, item),
+                    );
+                  }),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildVolumeTrend(BuildContext context, List<WorkoutSession> sessions) {
+    final rangeDays = _range == DashboardRange.week ? 7 : 30;
+    final data = _buildDailyVolumeSeries(sessions, days: rangeDays);
+    final hasVolume = data.any((entry) => entry.value > 0);
+    if (data.isEmpty || !hasVolume) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: _sectionCard(
+          context,
+          title: 'Volume Trend',
+          child: const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('Complete some workouts to see your volume trend.'),
+          ),
+        ),
+      );
+    }
+
+    final spots = <FlSpot>[];
+    for (int i = 0; i < data.length; i++) {
+      spots.add(FlSpot(i.toDouble(), data[i].value));
+    }
+    final maxValue = data.map((e) => e.value).fold<double>(0, (a, b) => b > a ? b : a);
+    final interval = (maxValue / 3).clamp(1, double.infinity).toDouble();
+    final yFormat = NumberFormat.compact();
+    final volumeUnit = _useTonnage ? _weightUnit : 'reps';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: _sectionCard(
+        context,
+        title: 'Volume Trend ($volumeUnit)',
+        child: SizedBox(
+          height: 180,
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (v) => FlLine(
+                  color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
+                  strokeWidth: .5,
+                ),
+              ),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 36,
+                    interval: interval,
+                    getTitlesWidget: (v, m) => Text(
+                      yFormat.format(v),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10),
+                    ),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 22,
+                    interval: (data.length / 5).clamp(1, 7).toDouble(),
+                    getTitlesWidget: (v, m) {
+                      final idx = v.toInt();
+                      if (idx < 0 || idx >= data.length) return const SizedBox.shrink();
+                      return Text(
+                        DateFormat.Md().format(data[idx].key),
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: Theme.of(context).colorScheme.secondary,
+                  barWidth: 3,
+                  isStrokeCapRound: true,
+                  dotData: FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    gradient: LinearGradient(
+                      colors: [
+                        Theme.of(context).colorScheme.secondary.withValues(alpha: 0.35),
+                        Colors.transparent,
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTrend(BuildContext context, List<WorkoutSession> sessions) {
     final rangeDays = _range == DashboardRange.week ? 7 : 30;
     final data = _buildDailyCountSeries(sessions, days: rangeDays);
@@ -428,6 +677,81 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 
+  Widget _reviewTile(BuildContext context, {required IconData icon, required String label, required String value, required String delta}) {
+    final cs = Theme.of(context).colorScheme;
+    final deltaColor = delta.startsWith('+')
+        ? AppColors.success
+        : delta.startsWith('-')
+            ? AppColors.danger
+            : cs.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: cs.primary),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 6),
+          Text(delta, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: deltaColor, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordRow(BuildContext context, _PersonalRecord record) {
+    final cs = Theme.of(context).colorScheme;
+    final icon = _recordIcon(record.workoutType);
+    final dateLabel = DateFormat.MMMd().format(record.date);
+    final valueLabel = _formatRecordValue(record);
+
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: cs.primaryContainer.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: cs.onPrimaryContainer),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                record.exerciseName,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                dateLabel,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          valueLabel,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+
   Widget _kpiCard(BuildContext context, {required IconData icon, required String label, required Gradient gradient, Widget? valueWidget, String? value}) {
     return Container(
       width: 180,
@@ -482,6 +806,175 @@ class _StatisticsPageState extends State<StatisticsPage> {
         child: Text(text, style: style),
       ),
     );
+  }
+
+  DateTime _dateOnly(DateTime date) => DateUtils.dateOnly(date.toLocal());
+
+  DateTime _startOfWeek(DateTime date) {
+    final day = _dateOnly(date);
+    return day.subtract(Duration(days: day.weekday - 1));
+  }
+
+  bool _isBeforeDay(DateTime date, DateTime boundary) {
+    return _dateOnly(date).isBefore(_dateOnly(boundary));
+  }
+
+  List<WorkoutSession> _completedSessionsInRange(List<WorkoutSession> sessions, DateTime start, DateTime end) {
+    final startDay = _dateOnly(start);
+    final endDay = _dateOnly(end);
+    return sessions.where((s) {
+      if (!s.isCompleted || s.endTime == null) return false;
+      final day = _dateOnly(s.endTime!);
+      return !day.isBefore(startDay) && !day.isAfter(endDay);
+    }).toList();
+  }
+
+  double _sumVolume(List<WorkoutSession> sessions) {
+    double total = 0;
+    for (final session in sessions) {
+      if (!session.isCompleted || session.endTime == null) continue;
+      total += _sessionVolume(session);
+    }
+    return total;
+  }
+
+  double _sessionVolume(WorkoutSession session) {
+    double total = 0;
+    for (final exercise in session.exercises) {
+      for (final set in exercise.sets) {
+        total += _setVolume(set, exercise.workoutType);
+      }
+    }
+    return total;
+  }
+
+  double _setVolume(SetPerformance set, WorkoutType type) {
+    final isCompleted = set.isCompleted || set.actualReps > 0 || set.actualWeight > 0;
+    if (!isCompleted) return 0;
+    final reps = set.actualReps > 0 ? set.actualReps : set.targetReps;
+    if (reps <= 0) return 0;
+    if (type == WorkoutType.Weight && _useTonnage) {
+      final weight = set.actualWeight > 0 ? set.actualWeight : set.targetWeight;
+      if (weight <= 0) return 0;
+      return reps * weight;
+    }
+    return reps.toDouble();
+  }
+
+  List<MapEntry<DateTime, double>> _buildDailyVolumeSeries(List<WorkoutSession> sessions, {int days = 30}) {
+    final now = _dateOnly(DateTime.now());
+    final start = now.subtract(Duration(days: days - 1));
+    final volume = <DateTime, double>{};
+    for (int i = 0; i < days; i++) {
+      volume[start.add(Duration(days: i))] = 0;
+    }
+    for (final s in sessions) {
+      if (!s.isCompleted || s.endTime == null) continue;
+      final d = _dateOnly(s.endTime!);
+      if (d.isBefore(start) || d.isAfter(now)) continue;
+      volume[d] = (volume[d] ?? 0) + _sessionVolume(s);
+    }
+    final list = volume.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    return list;
+  }
+
+  List<_PersonalRecord> _findPersonalRecords(List<WorkoutSession> sessions, {DateTime? since}) {
+    final completed = sessions.where((s) => s.isCompleted && s.endTime != null).toList()
+      ..sort((a, b) => a.endTime!.compareTo(b.endTime!));
+    final bestByExercise = <String, _PersonalRecord>{};
+    final records = <_PersonalRecord>[];
+
+    for (final session in completed) {
+      final date = session.endTime!.toLocal();
+      for (final exercise in session.exercises) {
+        for (final set in exercise.sets) {
+          final record = _recordFromSet(exercise.exerciseName, exercise.workoutType, set, date);
+          if (record == null) continue;
+          final key = '${exercise.exerciseName.toLowerCase()}|${exercise.workoutType.name}';
+          final existing = bestByExercise[key];
+          if (existing == null || record.value > existing.value) {
+            bestByExercise[key] = record;
+            if (since == null || !_isBeforeDay(date, since)) {
+              records.add(record);
+            }
+          }
+        }
+      }
+    }
+    return records;
+  }
+
+  _PersonalRecord? _recordFromSet(String exerciseName, WorkoutType type, SetPerformance set, DateTime date) {
+    final isCompleted = set.isCompleted || set.actualReps > 0 || set.actualWeight > 0;
+    if (!isCompleted) return null;
+    final reps = set.actualReps > 0 ? set.actualReps : set.targetReps;
+    if (reps <= 0) return null;
+
+    if (type == WorkoutType.Weight) {
+      final weight = set.actualWeight > 0 ? set.actualWeight : set.targetWeight;
+      if (weight <= 0) return null;
+      return _PersonalRecord(
+        exerciseName: exerciseName,
+        workoutType: type,
+        value: weight,
+        reps: reps,
+        date: date,
+      );
+    }
+
+    return _PersonalRecord(
+      exerciseName: exerciseName,
+      workoutType: type,
+      value: reps.toDouble(),
+      reps: reps,
+      date: date,
+    );
+  }
+
+  IconData _recordIcon(WorkoutType type) {
+    switch (type) {
+      case WorkoutType.Timed:
+        return Icons.timer;
+      case WorkoutType.Cardio:
+        return Icons.directions_run;
+      case WorkoutType.Weight:
+        return Icons.fitness_center;
+    }
+  }
+
+  String _formatRecordValue(_PersonalRecord record) {
+    switch (record.workoutType) {
+      case WorkoutType.Weight:
+        final repsLabel = record.reps > 0 ? ' x ${record.reps}' : '';
+        return '${_formatWeightValue(record.value)} $_weightUnit$repsLabel';
+      case WorkoutType.Timed:
+        return '${record.value.toStringAsFixed(0)} sec';
+      case WorkoutType.Cardio:
+        return '${record.value.toStringAsFixed(0)} reps';
+    }
+  }
+
+  String _formatWeightValue(double value) {
+    return value % 1 == 0 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
+  }
+
+  String _formatCompact(num value, {int fractionDigits = 0}) {
+    final absValue = value.abs();
+    if (absValue >= 1000) {
+      return NumberFormat.compact().format(absValue);
+    }
+    if (value is double && absValue % 1 != 0) {
+      final digits = fractionDigits > 0 ? fractionDigits : 1;
+      return absValue.toStringAsFixed(digits);
+    }
+    return absValue.toStringAsFixed(0);
+  }
+
+  String _formatDeltaLabel(num delta, {String suffix = ''}) {
+    if (delta == 0) return 'No change';
+    final sign = delta > 0 ? '+' : '-';
+    final formatted = _formatCompact(delta.abs(), fractionDigits: 1);
+    return '$sign$formatted$suffix vs last week';
   }
 
   int _countWorkoutsThisWeek(List<Routine> routines) {
@@ -736,6 +1229,22 @@ class _CountUpState extends State<CountUp> {
       },
     );
   }
+}
+
+class _PersonalRecord {
+  final String exerciseName;
+  final WorkoutType workoutType;
+  final double value;
+  final int reps;
+  final DateTime date;
+
+  const _PersonalRecord({
+    required this.exerciseName,
+    required this.workoutType,
+    required this.value,
+    required this.reps,
+    required this.date,
+  });
 }
 
 

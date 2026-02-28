@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'dart:async' show unawaited;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 // Local imports
 import 'firebase_options.dart';
@@ -23,7 +21,6 @@ import 'ui/progress_charts.dart';
 import 'ui/setting_page.dart';
 import 'ui/recommend_page.dart';
 import 'ui/onboarding_page.dart';
-import 'models/workout_session.dart';
 import 'ui/loading_screen.dart';
 
 // Global provider instances are created in their respective files
@@ -33,31 +30,16 @@ import 'ui/loading_screen.dart';
 // Create a global instance (or manage it via a provider/service locator)
 final NotificationService notificationService = NotificationService();
 
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   print('[MAIN] Flutter Binding Initialized.');
 
-  // Initialize dotenv
-  try {
-    await dotenv.load(fileName: ".env");
-    print('[MAIN] Environment variables loaded successfully');
-  } catch (e) {
-    print('[MAIN] Warning: Failed to load .env file: $e');
-    // Continue execution as the app can still function without env vars
-    // Individual features that need env vars will handle their unavailability
-  }
-
   // Optimize app performance
   SystemChrome.setSystemUIOverlayStyle(
-    const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-    ),
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
   );
-  
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+
+  SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(const InitializationLoader());
 }
@@ -77,7 +59,9 @@ class _InitializationLoaderState extends State<InitializationLoader> {
   // Notification helper methods are now part of NotificationService
 
   Future<void> _scheduleDailyWorkoutReminders() async {
-    print("[MAIN] Scheduling weekly workout reminders based on routine weekdays...");
+    print(
+      "[MAIN] Scheduling weekly workout reminders based on routine weekdays...",
+    );
     try {
       final List<Routine> routines = await dbProvider.getAllRoutines();
       const int weeklyReminderIdBase = 20000;
@@ -115,78 +99,71 @@ class _InitializationLoaderState extends State<InitializationLoader> {
 
   Future<void> _initializeApp() async {
     try {
-      // Initialize core services in parallel with error handling
       print('[MAIN] Starting parallel initialization...');
-      
-      final results = await Future.wait([
-        // Firebase initialization
-        Future(() async {
+      Object? criticalInitError;
+
+      await Future.wait<void>([
+        Future<void>(() async {
           print('[MAIN] Starting Firebase initialization...');
           if (Firebase.apps.isEmpty) {
             if (kIsWeb) {
-              // Web requires explicit options
               await Firebase.initializeApp(options: DefaultFirebaseOptions.web);
             } else if (defaultTargetPlatform == TargetPlatform.windows) {
-              // Windows requires explicit options
-              await Firebase.initializeApp(options: DefaultFirebaseOptions.windows);
+              await Firebase.initializeApp(
+                options: DefaultFirebaseOptions.windows,
+              );
             } else {
-              // Android/iOS/macOS: use native configuration (google-services.json / GoogleService-Info.plist)
               await Firebase.initializeApp();
             }
             print('[MAIN] Firebase initialized successfully');
           }
         }).catchError((e, s) {
-          // Do not crash the app if Firebase fails; log and continue without Firebase.
+          // Firebase is optional for local/offline usage.
           print('[MAIN] Firebase initialization error: $e');
-          if (kDebugMode) {
-            print(s);
-          }
-          // swallow
+          if (kDebugMode) print(s);
         }),
-        
-        // Database initialization with retry
-        Future(() async {
+        Future<void>(() async {
           print('[MAIN] Starting DB initialization...');
           for (int i = 0; i < 3; i++) {
             try {
               await dbProvider.initDB();
               print('[MAIN] DB initialized successfully');
-              break;
-            } catch (e) {
-              if (i == 2) rethrow; // Throw on final attempt
+              return;
+            } catch (e, s) {
+              if (i == 2) {
+                criticalInitError = e;
+                if (kDebugMode) print(s);
+                return;
+              }
               print('[MAIN] DB init attempt ${i + 1} failed, retrying...');
-              await Future.delayed(Duration(seconds: 1));
+              await Future.delayed(const Duration(seconds: 1));
             }
           }
-        }).catchError((e) {
-          print('[MAIN] Database initialization error: $e');
-          throw e;
         }),
-        
-        // Notification service initialization
-        Future(() async {
+        Future<void>(() async {
           print('[MAIN] Starting Notification Service initialization...');
           await notificationService.init();
           print('[MAIN] Notification Service initialized');
         }).catchError((e) {
           print('[MAIN] Notification service initialization error: $e');
-          // Don't throw here since notifications aren't critical
         }),
-      ], eagerError: false); // Continue even if some futures fail
-      
-      // Check results
-      final errors = results.whereType<Error>().toList();
-      if (errors.isNotEmpty) {
-        throw Exception('Some services failed to initialize: ${errors.join(', ')}');
+      ], eagerError: false);
+
+      if (criticalInitError != null) {
+        throw Exception('Database initialization failed: $criticalInitError');
       }
-      // Schedule reminders after core services are initialized
+
       await _scheduleDailyWorkoutReminders();
 
-      // Non-critical setup can run in parallel
       unawaited(sharedPrefsProvider.checkAndPrepareOnAppStart());
-      unawaited(firebaseProvider.signInSilently().then((user) {
-        if (kDebugMode) print("[MAIN] Silent sign-in completed. User: ${user?.uid ?? 'None'}");
-      }));
+      unawaited(
+        firebaseProvider.signInSilently().then((user) {
+          if (kDebugMode)
+            print(
+              "[MAIN] Silent sign-in completed. User: ${user?.uid ?? 'None'}",
+            );
+        }),
+      );
 
       setState(() {
         _isInitialized = true;
@@ -194,7 +171,8 @@ class _InitializationLoaderState extends State<InitializationLoader> {
     } catch (e) {
       print('[MAIN] CRITICAL: Unexpected error during initialization: $e');
       setState(() {
-        _errorMessage = 'An unexpected error occurred during initialization:\n$e';
+        _errorMessage =
+            'An unexpected error occurred during initialization:\n$e';
       });
     }
   }
@@ -215,32 +193,35 @@ class _InitializationLoaderState extends State<InitializationLoader> {
         Provider<DbProviderInterface>.value(value: dbProvider),
         Provider<FirebaseProvider>.value(value: firebaseProvider),
         Provider<SharedPrefsProvider>.value(value: sharedPrefsProvider),
-        ChangeNotifierProvider<ThemeProvider>( // Add ThemeProvider
+        ChangeNotifierProvider<ThemeProvider>(
+          // Add ThemeProvider
           create: (_) => ThemeProvider(sharedPrefsProvider),
         ),
         Provider<RoutinesBloc>(
-            create: (_) {
-              print('[PROVIDER] Creating RoutinesBloc...');
-              final bloc = RoutinesBloc();
-              bloc.fetchAllRoutines();
-              // fetchRecommendedRoutines is specific to RecommendPage, let it handle it.
-              // bloc.fetchRecommendedRoutines();
-              return bloc;
-            },
-            dispose: (_, bloc) {
-              print('[PROVIDER] Disposing RoutinesBloc...');
-              bloc.dispose();
-            }
+          create: (_) {
+            print('[PROVIDER] Creating RoutinesBloc...');
+            final bloc = RoutinesBloc();
+            bloc.fetchAllRoutines();
+            // fetchRecommendedRoutines is specific to RecommendPage, let it handle it.
+            // bloc.fetchRecommendedRoutines();
+            return bloc;
+          },
+          dispose: (_, bloc) {
+            print('[PROVIDER] Disposing RoutinesBloc...');
+            bloc.dispose();
+          },
         ),
         Provider<WorkoutSessionBloc>(
-            create: (context) {
-              print('[PROVIDER] Creating WorkoutSessionBloc...');
-              return WorkoutSessionBloc(dbProvider: context.read<DbProviderInterface>());
-            },
-            dispose: (_, bloc) {
-              print('[PROVIDER] Disposing WorkoutSessionBloc...');
-              bloc.close();
-            }
+          create: (context) {
+            print('[PROVIDER] Creating WorkoutSessionBloc...');
+            return WorkoutSessionBloc(
+              dbProvider: context.read<DbProviderInterface>(),
+            );
+          },
+          dispose: (_, bloc) {
+            print('[PROVIDER] Disposing WorkoutSessionBloc...');
+            bloc.close();
+          },
         ),
       ],
       child: const MyApp(), // MyApp will consume ThemeProvider
@@ -302,24 +283,38 @@ class _MyAppState extends State<MyApp> {
         secondary: Colors.teal.shade400, // A complementary accent
         brightness: Brightness.light,
         surface: Colors.grey.shade100, // Background for cards, dialogs
-        onSurface: Colors.black87,     // Text on surface
-        background: Colors.white,      // Scaffold background
-        onBackground: Colors.black87,  // Text on scaffold background
+        onSurface: Colors.black87, // Text on surface
+        background: Colors.white, // Scaffold background
+        onBackground: Colors.black87, // Text on scaffold background
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.deepPurple.shade600,
         foregroundColor: Colors.white,
         elevation: 2,
-        titleTextStyle: const TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w500),
+        titleTextStyle: const TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 20,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       textTheme: const TextTheme(
         bodyMedium: TextStyle(fontSize: 16, color: Colors.black87),
-        headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.black87),
-        titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+        headlineSmall: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 1.0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.0),
+        ),
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -328,7 +323,9 @@ class _MyAppState extends State<MyApp> {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -372,17 +369,32 @@ class _MyAppState extends State<MyApp> {
         backgroundColor: Colors.grey.shade900,
         foregroundColor: Colors.white,
         elevation: 2,
-        titleTextStyle: const TextStyle(fontFamily: 'Roboto', fontSize: 20, fontWeight: FontWeight.w500, color: Colors.white),
+        titleTextStyle: const TextStyle(
+          fontFamily: 'Roboto',
+          fontSize: 20,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+        ),
       ),
       textTheme: const TextTheme(
         bodyMedium: TextStyle(fontSize: 16, color: Colors.white70),
-        headlineSmall: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.white),
-        titleLarge: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+        headlineSmall: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+        ),
       ),
       cardTheme: CardThemeData(
         elevation: 2.0,
         color: Colors.grey.shade800, // Darker card color
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.0),
+        ),
         margin: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -391,7 +403,9 @@ class _MyAppState extends State<MyApp> {
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8.0),
+          ),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -414,7 +428,8 @@ class _MyAppState extends State<MyApp> {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: Colors.deepPurple.shade300, // Match dark primary
-        foregroundColor: Colors.black87, // Icon color for contrast on lighter purple
+        foregroundColor:
+            Colors.black87, // Icon color for contrast on lighter purple
       ),
       scaffoldBackgroundColor: const Color(0xFF121212),
       useMaterial3: true,
@@ -426,15 +441,16 @@ class _MyAppState extends State<MyApp> {
       themeMode: themeProvider.themeMode, // Use themeMode from ThemeProvider
       debugShowCheckedModeBanner: false,
       title: 'Workout Planner',
-      home: _isOnboardingCompleted 
-          ? const MainPage() 
-          : OnboardingPage(
-              onOnboardingComplete: () {
-                setState(() {
-                  _isOnboardingCompleted = true;
-                });
-              },
-            ),
+      home:
+          _isOnboardingCompleted
+              ? const MainPage()
+              : OnboardingPage(
+                onOnboardingComplete: () {
+                  setState(() {
+                    _isOnboardingCompleted = true;
+                  });
+                },
+              ),
     );
   }
 }
@@ -471,17 +487,34 @@ class MainPageState extends State<MainPage> {
   Widget build(BuildContext context) {
     print("[BUILD] MainPage (Tab: $_selectedIndex)");
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _widgetOptions,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _widgetOptions),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem( icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home', ),
-          BottomNavigationBarItem( icon: Icon(Icons.calendar_today_outlined), activeIcon: Icon(Icons.calendar_today), label: 'Calendar', ),
-          BottomNavigationBarItem( icon: Icon(Icons.show_chart_outlined), activeIcon: Icon(Icons.show_chart), label: 'Progress', ),
-          BottomNavigationBarItem( icon: Icon(Icons.auto_awesome_outlined), activeIcon: Icon(Icons.auto_awesome), label: 'AI Coach', ), // Added AI Coach / Recommend
-          BottomNavigationBarItem( icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings', ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today_outlined),
+            activeIcon: Icon(Icons.calendar_today),
+            label: 'Calendar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.show_chart_outlined),
+            activeIcon: Icon(Icons.show_chart),
+            label: 'Progress',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.auto_awesome_outlined),
+            activeIcon: Icon(Icons.auto_awesome),
+            label: 'AI Coach',
+          ), // Added AI Coach / Recommend
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings_outlined),
+            activeIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Theme.of(context).colorScheme.primary,
@@ -505,30 +538,33 @@ class ErrorApp extends StatelessWidget {
       home: Scaffold(
         backgroundColor: Colors.white,
         body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 60, color: Colors.red),
-                  const SizedBox(height: 20),
-                  const Text('Application Error', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 15),
-                  Text(
-                    'Failed to initialize essential services:\n\n$error',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.red.shade900, height: 1.4),
-                  ),
-                  const SizedBox(height: 25),
-                  const Text(
-                      'Please close and restart the app.\nIf the problem persists, please contact support.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey)
-                  ),
-                ],
-              ),
-            )
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 60, color: Colors.red),
+                const SizedBox(height: 20),
+                const Text(
+                  'Application Error',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  'Failed to initialize essential services:\n\n$error',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.red.shade900, height: 1.4),
+                ),
+                const SizedBox(height: 25),
+                const Text(
+                  'Please close and restart the app.\nIf the problem persists, please contact support.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

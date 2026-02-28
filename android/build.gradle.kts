@@ -21,28 +21,26 @@ allprojects {
     }
 }
 
-val sanitizedRootDir = File(rootProject.projectDir.path.replace("\\\\ ", " "))
-val newBuildDir = sanitizedRootDir.resolve("build")
+// Keep Gradle outputs in the Flutter project root (`../build`) so Flutter
+// tooling can locate generated APKs.
+val newBuildDir = File(rootProject.projectDir, "../build").canonicalFile
 rootProject.buildDir = newBuildDir
 
 subprojects {
     buildDir = newBuildDir.resolve(name)
 }
 subprojects {
-    project.evaluationDependsOn(":app")
+    afterEvaluate {
+        extensions.findByType<ApplicationExtension>()?.apply {
+            compileSdk = 36
+        }
+        extensions.findByType<LibraryExtension>()?.apply {
+            compileSdk = 36
+        }
+    }
 }
-
 subprojects {
-    plugins.withId("com.android.application") {
-        extensions.configure<ApplicationExtension> {
-            compileSdk = 36
-        }
-    }
-    plugins.withId("com.android.library") {
-        extensions.configure<LibraryExtension> {
-            compileSdk = 36
-        }
-    }
+    project.evaluationDependsOn(":app")
 }
 
 tasks.register<Delete>("clean") {

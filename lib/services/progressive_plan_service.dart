@@ -1,6 +1,4 @@
 import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/part.dart';
-import 'package:workout_planner/models/exercise.dart';
 
 class ProgressivePlanService {
   /// Builds a progressive multi-week plan by cloning base routines and

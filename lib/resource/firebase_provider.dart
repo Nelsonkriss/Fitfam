@@ -27,11 +27,9 @@ class FirebaseProvider {
   final GoogleSignIn? googleSignIn = kIsWeb ? null : GoogleSignIn();
 
   // Constructor allowing injection for testing
-  FirebaseProvider({
-    FirebaseAuth? auth,
-    FirebaseFirestore? firestoreInstance,
-  })  : firebaseAuth = auth ?? FirebaseAuth.instance,
-        firestore = firestoreInstance ?? FirebaseFirestore.instance;
+  FirebaseProvider({FirebaseAuth? auth, FirebaseFirestore? firestoreInstance})
+    : firebaseAuth = auth ?? FirebaseAuth.instance,
+      firestore = firestoreInstance ?? FirebaseFirestore.instance;
 
   // --- Static Methods ---
   static String generateId() {
@@ -46,31 +44,40 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Attempting to upload routines...");
     final user = firebaseAuth.currentUser;
     if (user == null) {
-      debugPrint("FirebaseProvider: No authenticated user found. Skipping upload.");
+      debugPrint(
+        "FirebaseProvider: No authenticated user found. Skipping upload.",
+      );
       return;
     }
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       debugPrint("FirebaseProvider: No internet connection. Skipping upload.");
       throw Exception("No internet connection. Cannot upload routines.");
     }
     try {
       final userRef = firestore.collection("users").doc(user.uid);
-      final List<String> routinesJsonList = routines.map((routine) {
-        try {
-          return jsonEncode(routine.toMapForDb());
-        } catch (e, s) {
-          debugPrint('FirebaseProvider: Error encoding routine "${routine.routineName}" (ID: ${routine.id}): $e\n$s');
-          throw Exception('Failed to encode routine: "${routine.routineName}"');
-        }
-      }).toList();
+      final List<String> routinesJsonList =
+          routines.map((routine) {
+            try {
+              return jsonEncode(routine.toMapForDb());
+            } catch (e, s) {
+              debugPrint(
+                'FirebaseProvider: Error encoding routine "${routine.routineName}" (ID: ${routine.id}): $e\n$s',
+              );
+              throw Exception(
+                'Failed to encode routine: "${routine.routineName}"',
+              );
+            }
+          }).toList();
       final Map<String, dynamic> userData = {
         "email": user.email,
         "routines": routinesJsonList,
         "lastUpdated": FieldValue.serverTimestamp(),
       };
       await userRef.set(userData, SetOptions(merge: true));
-      debugPrint("FirebaseProvider: Successfully uploaded ${routines.length} routines for user ${user.uid}.");
+      debugPrint(
+        "FirebaseProvider: Successfully uploaded ${routines.length} routines for user ${user.uid}.",
+      );
     } catch (e, s) {
       debugPrint('FirebaseProvider: Error uploading routines: $e\n$s');
       rethrow;
@@ -86,15 +93,22 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Attempting to restore routines...");
     final user = firebaseAuth.currentUser;
     if (user == null) {
-      debugPrint("FirebaseProvider: No authenticated user found. Cannot restore.");
+      debugPrint(
+        "FirebaseProvider: No authenticated user found. Cannot restore.",
+      );
       return [];
     }
     try {
       final docRef = firestore.collection("users").doc(user.uid);
       final docSnapshot = await docRef.get();
       final data = docSnapshot.data();
-      if (!docSnapshot.exists || data == null || data["routines"] == null || data["routines"] is! List) {
-        debugPrint("FirebaseProvider: No routine data found for user ${user.uid} or data is invalid.");
+      if (!docSnapshot.exists ||
+          data == null ||
+          data["routines"] == null ||
+          data["routines"] is! List) {
+        debugPrint(
+          "FirebaseProvider: No routine data found for user ${user.uid} or data is invalid.",
+        );
         return [];
       }
       final routinesData = data["routines"] as List;
@@ -106,13 +120,19 @@ class FirebaseProvider {
             final routine = Routine.fromMap(routineMap);
             restoredRoutines.add(routine);
           } catch (e, s) {
-            debugPrint('FirebaseProvider: Error parsing stored routine JSON: $e\n$s\nJSON: $routineJson');
+            debugPrint(
+              'FirebaseProvider: Error parsing stored routine JSON: $e\n$s\nJSON: $routineJson',
+            );
           }
         } else {
-          debugPrint('FirebaseProvider: Skipping non-string item in routines list: $routineJson');
+          debugPrint(
+            'FirebaseProvider: Skipping non-string item in routines list: $routineJson',
+          );
         }
       }
-      debugPrint("FirebaseProvider: Successfully restored ${restoredRoutines.length} routines.");
+      debugPrint(
+        "FirebaseProvider: Successfully restored ${restoredRoutines.length} routines.",
+      );
       return restoredRoutines;
     } catch (e, s) {
       debugPrint('FirebaseProvider: Error restoring routines: $e\n$s');
@@ -141,13 +161,17 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Attempting to save user profile...");
     final user = firebaseAuth.currentUser;
     if (user == null) {
-      debugPrint("FirebaseProvider: No authenticated user found. Skipping profile save.");
+      debugPrint(
+        "FirebaseProvider: No authenticated user found. Skipping profile save.",
+      );
       return;
     }
 
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
-      debugPrint("FirebaseProvider: No internet connection. Skipping profile save.");
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
+      debugPrint(
+        "FirebaseProvider: No internet connection. Skipping profile save.",
+      );
       throw Exception("No internet connection. Cannot save user profile.");
     }
 
@@ -159,7 +183,9 @@ class FirebaseProvider {
       };
 
       await userRef.set(profileData, SetOptions(merge: true));
-      debugPrint("FirebaseProvider: Successfully saved user profile for user ${user.uid}.");
+      debugPrint(
+        "FirebaseProvider: Successfully saved user profile for user ${user.uid}.",
+      );
     } catch (e, s) {
       debugPrint('FirebaseProvider: Error saving user profile: $e\n$s');
       rethrow;
@@ -171,7 +197,9 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Attempting to restore user profile...");
     final user = firebaseAuth.currentUser;
     if (user == null) {
-      debugPrint("FirebaseProvider: No authenticated user found. Cannot restore profile.");
+      debugPrint(
+        "FirebaseProvider: No authenticated user found. Cannot restore profile.",
+      );
       return null;
     }
 
@@ -181,7 +209,9 @@ class FirebaseProvider {
       final data = docSnapshot.data();
 
       if (!docSnapshot.exists || data == null || data["userProfile"] == null) {
-        debugPrint("FirebaseProvider: No user profile data found for user ${user.uid}.");
+        debugPrint(
+          "FirebaseProvider: No user profile data found for user ${user.uid}.",
+        );
         return null;
       }
 
@@ -201,7 +231,9 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Syncing user profile...");
     final user = firebaseAuth.currentUser;
     if (user == null) {
-      debugPrint("FirebaseProvider: No authenticated user. Using local profile only.");
+      debugPrint(
+        "FirebaseProvider: No authenticated user. Using local profile only.",
+      );
       return await sharedPrefsProvider.getUserProfile();
     }
 
@@ -216,25 +248,33 @@ class FirebaseProvider {
 
       if (localProfile == null) {
         // Only cloud profile exists, save it locally
-        debugPrint("FirebaseProvider: Only cloud profile exists, saving locally.");
+        debugPrint(
+          "FirebaseProvider: Only cloud profile exists, saving locally.",
+        );
         await sharedPrefsProvider.setUserProfile(cloudProfile!);
         return cloudProfile;
       }
 
       if (cloudProfile == null) {
         // Only local profile exists, save it to cloud
-        debugPrint("FirebaseProvider: Only local profile exists, saving to cloud.");
+        debugPrint(
+          "FirebaseProvider: Only local profile exists, saving to cloud.",
+        );
         await saveUserProfile(localProfile);
         return localProfile;
       }
 
       // Both exist, use the most recently updated one
       if (localProfile.updatedAt.isAfter(cloudProfile.updatedAt)) {
-        debugPrint("FirebaseProvider: Local profile is newer, syncing to cloud.");
+        debugPrint(
+          "FirebaseProvider: Local profile is newer, syncing to cloud.",
+        );
         await saveUserProfile(localProfile);
         return localProfile;
       } else {
-        debugPrint("FirebaseProvider: Cloud profile is newer, syncing to local.");
+        debugPrint(
+          "FirebaseProvider: Cloud profile is newer, syncing to local.",
+        );
         await sharedPrefsProvider.setUserProfile(cloudProfile);
         return cloudProfile;
       }
@@ -252,11 +292,16 @@ class FirebaseProvider {
     // (Implementation remains the same as previous correct version)
     debugPrint("FirebaseProvider: Fetching recommended routines...");
     try {
-      const String collectionName = "recommendedRoutines"; // *** VERIFY NAME ***
+      const String collectionName =
+          "recommendedRoutines"; // *** VERIFY NAME ***
       final collectionRef = firestore.collection(collectionName);
-      final querySnapshot = await collectionRef.get(const GetOptions(source: Source.serverAndCache));
+      final querySnapshot = await collectionRef.get(
+        const GetOptions(source: Source.serverAndCache),
+      );
       if (querySnapshot.docs.isEmpty) {
-        debugPrint("FirebaseProvider: No recommended routines found in collection '$collectionName'.");
+        debugPrint(
+          "FirebaseProvider: No recommended routines found in collection '$collectionName'.",
+        );
         return [];
       }
       final List<Routine> routines = [];
@@ -266,13 +311,19 @@ class FirebaseProvider {
           final routine = Routine.fromMap(data);
           routines.add(routine);
         } catch (e, s) {
-          debugPrint("FirebaseProvider: Error parsing recommended routine (ID: ${doc.id}): $e\n$s");
+          debugPrint(
+            "FirebaseProvider: Error parsing recommended routine (ID: ${doc.id}): $e\n$s",
+          );
         }
       }
-      debugPrint("FirebaseProvider: Successfully fetched ${routines.length} recommended routines.");
+      debugPrint(
+        "FirebaseProvider: Successfully fetched ${routines.length} recommended routines.",
+      );
       return routines;
     } catch (e, s) {
-      debugPrint("FirebaseProvider: Error fetching recommended routines collection: $e\n$s");
+      debugPrint(
+        "FirebaseProvider: Error fetching recommended routines collection: $e\n$s",
+      );
       return [];
     }
   }
@@ -282,8 +333,8 @@ class FirebaseProvider {
   /// Example: Gets a daily count from a specific Firestore document.
   Future<int> getDailyData() async {
     // (Implementation remains the same as previous correct version)
-    final connectivityResult = await Connectivity().checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await Connectivity().checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       debugPrint("FirebaseProvider: No connection for getDailyData.");
       return -1;
     }
@@ -298,7 +349,9 @@ class FirebaseProvider {
         return 0;
       }
     } catch (e, s) {
-      debugPrint("FirebaseProvider: Error getting daily data for $dateStr: $e\n$s");
+      debugPrint(
+        "FirebaseProvider: Error getting daily data for $dateStr: $e\n$s",
+      );
       return -1;
     }
   }
@@ -311,7 +364,9 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Checking for persisted user session...");
     final currentUser = firebaseAuth.currentUser;
     if (currentUser != null) {
-      debugPrint("FirebaseProvider: Found persisted user session for ${currentUser.uid}.");
+      debugPrint(
+        "FirebaseProvider: Found persisted user session for ${currentUser.uid}.",
+      );
       return currentUser;
     }
     debugPrint("FirebaseProvider: No persisted user session found.");
@@ -323,28 +378,43 @@ class FirebaseProvider {
     // (Implementation remains the same as previous correct version)
     debugPrint("FirebaseProvider: Attempting Sign In with Apple...");
     if (!kIsWeb && !await SignInWithApple.isAvailable()) {
-      debugPrint('FirebaseProvider: Sign In with Apple not available on this device.');
+      debugPrint(
+        'FirebaseProvider: Sign In with Apple not available on this device.',
+      );
       throw Exception('Sign In with Apple is not available on this device.');
     }
     try {
       final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [ AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName, ],
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
       );
       final oauthProvider = OAuthProvider("apple.com");
       final String? idToken = credential.identityToken;
       final String rawNonce = credential.authorizationCode;
-      if (idToken == null) { throw Exception("Apple ID Token was null."); }
+      if (idToken == null) {
+        throw Exception("Apple ID Token was null.");
+      }
       final AuthCredential oauthCredential = oauthProvider.credential(
         idToken: idToken,
         rawNonce: kIsWeb ? null : rawNonce,
         accessToken: kIsWeb ? rawNonce : null,
       );
-      final authResult = await firebaseAuth.signInWithCredential(oauthCredential);
-      debugPrint("FirebaseProvider: Sign In with Apple successful. User: ${authResult.user?.uid}");
-      if (authResult.user != null) { await _handleAppleUserUpdate(authResult.user!, credential); }
+      final authResult = await firebaseAuth.signInWithCredential(
+        oauthCredential,
+      );
+      debugPrint(
+        "FirebaseProvider: Sign In with Apple successful. User: ${authResult.user?.uid}",
+      );
+      if (authResult.user != null) {
+        await _handleAppleUserUpdate(authResult.user!, credential);
+      }
       return authResult.user;
     } on SignInWithAppleAuthorizationException catch (e) {
-      debugPrint("FirebaseProvider: Sign In with Apple Authorization Exception: Code=${e.code}, Msg=${e.message}");
+      debugPrint(
+        "FirebaseProvider: Sign In with Apple Authorization Exception: Code=${e.code}, Msg=${e.message}",
+      );
       if (e.code == AuthorizationErrorCode.canceled) {
         debugPrint("FirebaseProvider: Sign In with Apple cancelled by user.");
         return null;
@@ -357,24 +427,40 @@ class FirebaseProvider {
   }
 
   /// Updates Firebase user profile with Apple data and saves sign-in method.
-  Future<void> _handleAppleUserUpdate(User user, AuthorizationCredentialAppleID credential) async {
+  Future<void> _handleAppleUserUpdate(
+    User user,
+    AuthorizationCredentialAppleID credential,
+  ) async {
     // (Implementation largely the same, just the fixed call below)
     bool needsUpdate = false;
     String? newDisplayName;
     String? newEmail = user.email ?? credential.email;
-    if ((user.displayName == null || user.displayName!.isEmpty) && credential.givenName != null) {
-      newDisplayName = "${credential.givenName} ${credential.familyName ?? ''}".trim();
-      if (newDisplayName.isNotEmpty) { needsUpdate = true; } else { newDisplayName = null; }
+    if ((user.displayName == null || user.displayName!.isEmpty) &&
+        credential.givenName != null) {
+      newDisplayName =
+          "${credential.givenName} ${credential.familyName ?? ''}".trim();
+      if (newDisplayName.isNotEmpty) {
+        needsUpdate = true;
+      } else {
+        newDisplayName = null;
+      }
     }
-    if ((user.email == null || user.email!.isEmpty) && credential.email != null) {
+    if ((user.email == null || user.email!.isEmpty) &&
+        credential.email != null) {
       newEmail = credential.email;
-      debugPrint("FirebaseProvider: Apple provided email (${credential.email}), consider prompting user to verify if Firebase email is null.");
+      debugPrint(
+        "FirebaseProvider: Apple provided email (${credential.email}), consider prompting user to verify if Firebase email is null.",
+      );
     }
     if (needsUpdate && newDisplayName != null) {
       try {
         await user.updateDisplayName(newDisplayName);
-        debugPrint("FirebaseProvider: Updated Firebase display name from Apple.");
-      } catch (e) { debugPrint("FirebaseProvider: Failed to update display name: $e"); }
+        debugPrint(
+          "FirebaseProvider: Updated Firebase display name from Apple.",
+        );
+      } catch (e) {
+        debugPrint("FirebaseProvider: Failed to update display name: $e");
+      }
     }
     await sharedPrefsProvider.setSignInMethod(SignInMethod.apple);
     if (newEmail != null) {
@@ -391,24 +477,44 @@ class FirebaseProvider {
       AuthCredential? credential;
       if (kIsWeb) {
         final googleProvider = GoogleAuthProvider();
-        final userCredential = await firebaseAuth.signInWithPopup(googleProvider);
-        if (userCredential.user != null) { await _handleGoogleAuthUpdate(userCredential.user!); }
+        final userCredential = await firebaseAuth.signInWithPopup(
+          googleProvider,
+        );
+        if (userCredential.user != null) {
+          await _handleGoogleAuthUpdate(userCredential.user!);
+        }
         return userCredential.user;
       } else {
-        if (googleSignIn == null) { throw Exception("Google Sign-In not configured correctly."); }
+        if (googleSignIn == null) {
+          throw Exception("Google Sign-In not configured correctly.");
+        }
         final googleUser = await googleSignIn?.signIn();
-        if (googleUser == null) { debugPrint("FirebaseProvider: Google Sign-In cancelled by user."); return null; }
+        if (googleUser == null) {
+          debugPrint("FirebaseProvider: Google Sign-In cancelled by user.");
+          return null;
+        }
         final googleAuth = await googleUser.authentication;
-        if (googleAuth.accessToken == null && googleAuth.idToken == null) { throw Exception("Google authentication details were null."); }
-        credential = GoogleAuthProvider.credential( accessToken: googleAuth.accessToken, idToken: googleAuth.idToken, );
+        if (googleAuth.accessToken == null && googleAuth.idToken == null) {
+          throw Exception("Google authentication details were null.");
+        }
+        credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
       }
       final authResult = await firebaseAuth.signInWithCredential(credential);
-      debugPrint("FirebaseProvider: Google Sign-In successful. User: ${authResult.user?.uid}");
-      if (authResult.user != null) { await _handleGoogleAuthUpdate(authResult.user!); }
+      debugPrint(
+        "FirebaseProvider: Google Sign-In successful. User: ${authResult.user?.uid}",
+      );
+      if (authResult.user != null) {
+        await _handleGoogleAuthUpdate(authResult.user!);
+      }
       return authResult.user;
     } catch (e, s) {
       debugPrint("FirebaseProvider: Google sign-in error: $e\n$s");
-      if (e is FirebaseAuthException && e.code == 'popup-closed-by-user') { return null; }
+      if (e is FirebaseAuthException && e.code == 'popup-closed-by-user') {
+        return null;
+      }
       throw Exception("Google Sign-In failed.");
     }
   }
@@ -427,8 +533,12 @@ class FirebaseProvider {
     if (needsUpdate && newDisplayName != null && newDisplayName.isNotEmpty) {
       try {
         await user.updateDisplayName(newDisplayName);
-        debugPrint("FirebaseProvider: Updated Firebase display name from Google/Email.");
-      } catch (e) { debugPrint("FirebaseProvider: Failed to update display name: $e"); }
+        debugPrint(
+          "FirebaseProvider: Updated Firebase display name from Google/Email.",
+        );
+      } catch (e) {
+        debugPrint("FirebaseProvider: Failed to update display name: $e");
+      }
     }
     await sharedPrefsProvider.setSignInMethod(SignInMethod.google);
     if (user.email != null) {
@@ -443,7 +553,9 @@ class FirebaseProvider {
     debugPrint("FirebaseProvider: Signing out...");
     try {
       await firebaseAuth.signOut();
-      if (!kIsWeb && googleSignIn != null) { await googleSignIn?.signOut(); }
+      if (!kIsWeb && googleSignIn != null) {
+        await googleSignIn?.signOut();
+      }
       await sharedPrefsProvider.signOut();
       debugPrint("FirebaseProvider: Sign out complete.");
     } catch (e, s) {

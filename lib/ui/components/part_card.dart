@@ -61,11 +61,11 @@ class PartCardState extends State<PartCard> {
                     contentPadding: EdgeInsets.zero, // Remove ListTile's default padding
                     leading: targetedBodyPartToImageConverter(_part.targetedBodyPart ?? TargetedBodyPart.Arm), // Consider theming this icon if it's an Image asset
                     title: Text(
-                      _part.setType == null ? 'To be edited' : setTypeToStringConverter(_part.setType),
+                      setTypeToStringConverter(_part.setType),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     subtitle: Text(
-                      _part.targetedBodyPart == null ? 'To be edited' : targetedBodyPartToStringConverter(_part.targetedBodyPart),
+                      targetedBodyPartToStringConverter(_part.targetedBodyPart),
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ),

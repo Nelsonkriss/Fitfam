@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart'; // For debugPrint
 import 'package:rxdart/rxdart.dart';
 import 'package:workout_planner/models/routine.dart'; // Assuming Routine model is immutable with copyWith
-import 'package:workout_planner/models/user_profile.dart';
 import 'package:workout_planner/resource/shared_prefs_provider.dart';
 import 'package:workout_planner/services/ai_routine_generation_service.dart';
 

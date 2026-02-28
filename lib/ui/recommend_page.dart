@@ -1,4 +1,4 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'design_system.dart';
 import 'package:provider/provider.dart';
@@ -11,8 +11,7 @@ import 'components/routine_card.dart';
 import 'package:flutter/foundation.dart';
 import 'package:workout_planner/resource/ai_parse_isolate.dart';
 import 'package:workout_planner/services/progressive_plan_service.dart';
-import 'package:flutter/foundation.dart'; // For kDebugMode
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import flutter_dotenv
+import 'package:workout_planner/config/app_config.dart';
 // For optional prompt templates
 
 class RecommendPage extends StatefulWidget {
@@ -40,16 +39,19 @@ class _RecommendPageState extends State<RecommendPage> {
     super.initState();
     _scrollController.addListener(_handleScroll);
 
-    final apiKey = dotenv.env['OPENROUTER_API_KEY'];
-    final model = dotenv.env['OPENROUTER_MODEL'] ?? 'mimo v2flash';
-    if (apiKey == null || apiKey.isEmpty) {
+    final apiKey = AppConfig.openRouterApiKey;
+    final model = AppConfig.openRouterModel;
+    if (apiKey.isEmpty) {
       _apiKeyMissing = true;
       _aiError =
-          "OpenRouter API Key is missing. Please set it in your .env file and restart the app.";
+          "OpenRouter API Key is missing. Pass OPENROUTER_API_KEY via --dart-define.";
       _openRouterService = OpenRouterService(apiKey: '', defaultModel: model);
       debugPrint("[RecommendPage] API Key missing in initState.");
     } else {
-      _openRouterService = OpenRouterService(apiKey: apiKey, defaultModel: model);
+      _openRouterService = OpenRouterService(
+        apiKey: apiKey,
+        defaultModel: model,
+      );
       debugPrint(
         "[RecommendPage] API Key loaded, OpenRouterService initialized.",
       );
@@ -110,8 +112,7 @@ class _RecommendPageState extends State<RecommendPage> {
     if (_apiKeyMissing) {
       if (mounted) {
         setState(() {
-          _aiError =
-              "OpenRouter API Key is missing. Cannot generate routine. Please set it in .env and restart.";
+          _aiError = "OpenRouter API Key is missing. Cannot generate routine.";
         });
       }
       return;
@@ -434,6 +435,7 @@ class _RecommendPageState extends State<RecommendPage> {
         builder: (ctx) => const _GeneratingOverlay(),
       );
     }
+
     if (_apiKeyMissing) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -530,7 +532,10 @@ class _RecommendPageState extends State<RecommendPage> {
                     children: [
                       const Icon(Icons.auto_graph),
                       const SizedBox(width: 8),
-                      Text('Build Progressive Plan', style: Theme.of(ctx).textTheme.titleLarge),
+                      Text(
+                        'Build Progressive Plan',
+                        style: Theme.of(ctx).textTheme.titleLarge,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -542,11 +547,17 @@ class _RecommendPageState extends State<RecommendPage> {
                   Text('Weeks', style: Theme.of(ctx).textTheme.labelLarge),
                   Wrap(
                     spacing: 8,
-                    children: [4,6,8].map((w) => ChoiceChip(
-                      label: Text('$w'),
-                      selected: selectedWeeks == w,
-                      onSelected: (_) => setState(() => selectedWeeks = w),
-                    )).toList(),
+                    children:
+                        [4, 6, 8]
+                            .map(
+                              (w) => ChoiceChip(
+                                label: Text('$w'),
+                                selected: selectedWeeks == w,
+                                onSelected:
+                                    (_) => setState(() => selectedWeeks = w),
+                              ),
+                            )
+                            .toList(),
                   ),
                   const SizedBox(height: 12),
                   SwitchListTile.adaptive(
@@ -576,7 +587,11 @@ class _RecommendPageState extends State<RecommendPage> {
                           if (mounted) Navigator.pop(ctx);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Created ${plan.length} plan routine(s).')),
+                              SnackBar(
+                                content: Text(
+                                  'Created ${plan.length} plan routine(s).',
+                                ),
+                              ),
                             );
                           }
                         },
@@ -684,8 +699,8 @@ class _GeneratingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Container(
         color: Colors.black54,
         alignment: Alignment.center,

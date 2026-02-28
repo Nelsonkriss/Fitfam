@@ -1,9 +1,9 @@
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/models/part.dart';
 import 'package:workout_planner/models/exercise.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
 import 'package:workout_planner/models/user_profile.dart';
+import 'package:workout_planner/config/app_config.dart';
 import 'package:workout_planner/resource/open_router_service.dart';
 import 'package:workout_planner/services/ai_weight_recommendation_service.dart';
 
@@ -11,19 +11,27 @@ class AIRoutineGenerationService {
   final AIWeightRecommendationService _weightRecommendationService;
   final OpenRouterService _openRouterService;
 
-  AIRoutineGenerationService({AIWeightRecommendationService? weightRecommendationService, OpenRouterService? openRouterService})
-      : _weightRecommendationService = weightRecommendationService ?? AIWeightRecommendationService(),
-        _openRouterService = openRouterService ?? OpenRouterService(
-          apiKey: dotenv.env['OPENROUTER_API_KEY'] ?? '',
-          defaultModel: dotenv.env['OPENROUTER_MODEL'] ?? 'mimo v2flash',
-        );
+  AIRoutineGenerationService({
+    AIWeightRecommendationService? weightRecommendationService,
+    OpenRouterService? openRouterService,
+  }) : _weightRecommendationService =
+           weightRecommendationService ?? AIWeightRecommendationService(),
+       _openRouterService =
+           openRouterService ??
+           OpenRouterService(
+             apiKey: AppConfig.openRouterApiKey,
+             defaultModel: AppConfig.openRouterModel,
+           );
 
   Future<List<Routine>> generateRoutines({
     required MainTargetedBodyPart targetedBodyPart,
     required String routineName,
     UserProfile? userProfile,
   }) async {
-    final parts = await _generatePartsForBodyPart(targetedBodyPart, userProfile: userProfile);
+    final parts = await _generatePartsForBodyPart(
+      targetedBodyPart,
+      userProfile: userProfile,
+    );
 
     if (parts.isEmpty) {
       return [];
@@ -39,24 +47,39 @@ class AIRoutineGenerationService {
     );
 
     // Enrich with recommended weights based on profile/history
-    routine = await enrichRoutineWithRecommendedWeights(routine, userProfile: userProfile);
+    routine = await enrichRoutineWithRecommendedWeights(
+      routine,
+      userProfile: userProfile,
+    );
 
     return [routine];
   }
 
-  Future<List<Part>> _generatePartsForBodyPart(MainTargetedBodyPart bodyPart, {UserProfile? userProfile}) async {
+  Future<List<Part>> _generatePartsForBodyPart(
+    MainTargetedBodyPart bodyPart, {
+    UserProfile? userProfile,
+  }) async {
     String userPrompt = "Generate a workout routine for ${bodyPart.name}.";
     if (userProfile != null) {
-      userPrompt += " My fitness level is ${userProfile.fitnessLevel.name}, and my goal is to ${userProfile.fitnessGoal.name}.";
+      final goalNames = userProfile.fitnessGoals.map((g) => g.name).toList();
+      final goalsPrompt =
+          goalNames.length > 1
+              ? "my goals are ${goalNames.join(', ')}"
+              : "my goal is to ${userProfile.fitnessGoal.name}";
+      userPrompt +=
+          " My fitness level is ${userProfile.fitnessLevel.name}, and $goalsPrompt.";
       if (userProfile.availableEquipment.isNotEmpty) {
-        userPrompt += " I have access to the following equipment: ${userProfile.availableEquipment.map((e) => e.name).join(', ')}.";
+        userPrompt +=
+            " I have access to the following equipment: ${userProfile.availableEquipment.map((e) => e.name).join(', ')}.";
       }
     }
 
-    final String? routineJsonString = await _openRouterService.getAiGeneratedRoutineDescription(userPrompt);
+    final String? routineJsonString = await _openRouterService
+        .getAiGeneratedRoutineDescription(userPrompt);
 
     if (routineJsonString != null) {
-      final List<Routine> newRoutines = _openRouterService.parseRoutinesFromJsonString(routineJsonString);
+      final List<Routine> newRoutines = _openRouterService
+          .parseRoutinesFromJsonString(routineJsonString);
       if (newRoutines.isNotEmpty) {
         return newRoutines.first.parts;
       }
@@ -107,11 +130,12 @@ class AIRoutineGenerationService {
           // Only compute if weight is missing or zero
           if (currentWeight <= 0 && reps > 0) {
             try {
-              final recommended = await _weightRecommendationService.getRecommendedWeight(
-                exerciseName: ex.name,
-                userProfile: userProfile,
-                targetReps: reps,
-              );
+              final recommended = await _weightRecommendationService
+                  .getRecommendedWeight(
+                    exerciseName: ex.name,
+                    userProfile: userProfile,
+                    targetReps: reps,
+                  );
               // Round to common gym increment (2.5kg)
               final rounded = _roundToIncrement(recommended, 2.5);
               newExercises.add(ex.copyWith(weight: rounded));

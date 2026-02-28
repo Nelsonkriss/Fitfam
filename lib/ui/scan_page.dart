@@ -31,9 +31,9 @@ class _ScanPageState extends State<ScanPage> {
 
   // State variables
   String? _scannedOrEnteredId; // Stores the raw ID string "-r..."
-  Routine? _fetchedRoutine;   // Stores the successfully fetched routine
-  bool _isLoading = false;     // Tracks loading state for Firestore fetch
-  String? _errorMessage;     // Stores error message if fetch fails
+  Routine? _fetchedRoutine; // Stores the successfully fetched routine
+  bool _isLoading = false; // Tracks loading state for Firestore fetch
+  String? _errorMessage; // Stores error message if fetch fails
 
   @override
   void dispose() {
@@ -54,14 +54,10 @@ class _ScanPageState extends State<ScanPage> {
 
   /// Checks internet connectivity and shows a SnackBar if offline.
   Future<bool> _checkConnection() async {
-    final connectivityResult = await _connectivity.checkConnectivity();
-    if (connectivityResult == ConnectivityResult.none) {
+    final connectivityResults = await _connectivity.checkConnectivity();
+    if (connectivityResults.contains(ConnectivityResult.none)) {
       if (!mounted) return false;
-      // Use custom SnackBar if available, otherwise default
-      ScaffoldMessenger.of(context).showSnackBar(
-          noNetworkSnackBar ?? // Use null-aware operator
-              const SnackBar(content: Text('No Internet Connection'), backgroundColor: Colors.red)
-      );
+      ScaffoldMessenger.of(context).showSnackBar(noNetworkSnackBar);
       return false;
     }
     return true;
@@ -76,7 +72,8 @@ class _ScanPageState extends State<ScanPage> {
   Future<void> _fetchAndSetRoutine(String? id) async {
     if (!_isValidRoutineIdFormat(id)) {
       setState(() {
-        _scannedOrEnteredId = id; // Store invalid ID to potentially show error message
+        _scannedOrEnteredId =
+            id; // Store invalid ID to potentially show error message
         _isLoading = false;
         _fetchedRoutine = null;
         _errorMessage = "Invalid Routine ID format.";
@@ -120,10 +117,11 @@ class _ScanPageState extends State<ScanPage> {
     debugPrint("Fetching routine from Firestore: userShares/$docId");
 
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection("userShares") // Make sure collection name is correct
-          .doc(docId)
-          .get();
+      final snapshot =
+          await FirebaseFirestore.instance
+              .collection("userShares") // Make sure collection name is correct
+              .doc(docId)
+              .get();
 
       if (!snapshot.exists || snapshot.data() == null) {
         throw Exception('Shared routine not found.');
@@ -151,7 +149,6 @@ class _ScanPageState extends State<ScanPage> {
         debugPrint("Routine parsing error: $e");
         throw Exception('Could not understand shared routine data.');
       }
-
     } on FirebaseException catch (e) {
       debugPrint("Firestore error: ${e.code} - ${e.message}");
       throw Exception('Could not reach shared routines (${e.code}).');
@@ -181,7 +178,9 @@ class _ScanPageState extends State<ScanPage> {
       await dbProvider.newRoutine(routineToAdd);
 
       // Show success feedback
-      _showSnackBar('Routine "${_fetchedRoutine!.routineName}" added successfully!');
+      _showSnackBar(
+        'Routine "${_fetchedRoutine!.routineName}" added successfully!',
+      );
 
       // Refresh the main routines list BLoC (optional but good UX)
       await routinesBlocInstance.fetchAllRoutines();
@@ -192,13 +191,11 @@ class _ScanPageState extends State<ScanPage> {
         _scannedOrEnteredId = null; // Reset barcode display
         _errorMessage = null;
       });
-
     } catch (e) {
       debugPrint("Error adding routine to local DB: $e");
       _showSnackBar("Failed to add routine locally: ${e.toString()}");
     }
   }
-
 
   // --- UI Interaction Methods ---
 
@@ -217,35 +214,38 @@ class _ScanPageState extends State<ScanPage> {
 
     if (!mounted) return;
     await showDialog(
-        context: context,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: const Text("Enter Routine ID"),
-            content: TextField(
-              controller: _textEditingController,
-              autofocus: true,
-              decoration: const InputDecoration(
-                  hintText: 'Paste shared routine ID here',
-                  prefixText: "-r" // Show the expected prefix visually
-              ),
-              // Add input formatters if needed
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Enter Routine ID"),
+          content: TextField(
+            controller: _textEditingController,
+            autofocus: true,
+            decoration: const InputDecoration(
+              hintText: 'Paste shared routine ID here',
+              prefixText: "-r", // Show the expected prefix visually
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text("Cancel")),
-              TextButton(
-                  onPressed: () {
-                    final enteredId = _textEditingController.text.trim();
-                    Navigator.pop(dialogContext); // Close dialog first
-                    if (enteredId.isNotEmpty) {
-                      _fetchAndSetRoutine('-r$enteredId'); // Add prefix and fetch
-                    }
-                  },
-                  child: const Text("Load")),
-            ],
-          );
-        });
+            // Add input formatters if needed
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                final enteredId = _textEditingController.text.trim();
+                Navigator.pop(dialogContext); // Close dialog first
+                if (enteredId.isNotEmpty) {
+                  _fetchAndSetRoutine('-r$enteredId'); // Add prefix and fetch
+                }
+              },
+              child: const Text("Load"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// Initiates QR code scanning.
@@ -262,7 +262,8 @@ class _ScanPageState extends State<ScanPage> {
 
     try {
       // --- ACTION REQUIRED: Replace with your QR Scanner implementation ---
-      final String? barcodeResult = await _scanQRCodeWithPlaceholder(); // Call placeholder/actual scanner
+      final String? barcodeResult =
+          await _scanQRCodeWithPlaceholder(); // Call placeholder/actual scanner
       // --- End ACTION REQUIRED ---
 
       if (barcodeResult != null && barcodeResult.isNotEmpty) {
@@ -280,7 +281,9 @@ class _ScanPageState extends State<ScanPage> {
 
   // --- Placeholder for QR Scanning ---
   Future<String?> _scanQRCodeWithPlaceholder() async {
-    debugPrint("QR Scan Action Triggered - Replace with actual scanner implementation!");
+    debugPrint(
+      "QR Scan Action Triggered - Replace with actual scanner implementation!",
+    );
     _showSnackBar("QR Scanner not implemented yet.");
     // Example of how you might integrate mobile_scanner (add dependency first)
     /*
@@ -325,14 +328,15 @@ class _ScanPageState extends State<ScanPage> {
       // key: scaffoldKey, // Usually not needed unless accessing Scaffold state
       appBar: AppBar(
         iconTheme: IconThemeData(
-            color: Theme.of(context).colorScheme.onPrimary // Use theme color
+          color: Theme.of(context).colorScheme.onPrimary, // Use theme color
         ),
         title: const Text('Add Shared Routine'),
         backgroundColor: Theme.of(context).primaryColor, // Theme app bar
         foregroundColor: Theme.of(context).colorScheme.onPrimary,
       ),
       body: Center(
-        child: Padding( // Add overall padding
+        child: Padding(
+          // Add overall padding
           padding: const EdgeInsets.all(16.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start, // Align content top
@@ -343,14 +347,18 @@ class _ScanPageState extends State<ScanPage> {
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Enter Routine ID'),
                 onPressed: _input, // Call internal method
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 icon: const Icon(Icons.qr_code_scanner_rounded),
                 label: const Text('Scan QR Code'),
                 onPressed: _scan, // Call internal method
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
               ),
               const SizedBox(height: 24),
               const Divider(),
@@ -359,10 +367,12 @@ class _ScanPageState extends State<ScanPage> {
               // --- Result Area ---
               // Show Loading Indicator
               if (_isLoading)
-                const Center(child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 32.0),
-                  child: CircularProgressIndicator(),
-                )),
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                ),
 
               // Show Error Message
               if (_errorMessage != null && !_isLoading)
@@ -371,34 +381,49 @@ class _ScanPageState extends State<ScanPage> {
                     padding: const EdgeInsets.symmetric(vertical: 32.0),
                     child: Text(
                       'Error: $_errorMessage',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
                 ),
 
               // Show Invalid ID Format Message (specific case)
-              if (!_isLoading && _errorMessage == null && _scannedOrEnteredId != null && !_isValidRoutineIdFormat(_scannedOrEnteredId))
+              if (!_isLoading &&
+                  _errorMessage == null &&
+                  _scannedOrEnteredId != null &&
+                  !_isValidRoutineIdFormat(_scannedOrEnteredId))
                 Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 32.0),
                     child: Text(
                       'Invalid ID format entered/scanned.',
-                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
                 ),
 
               // Show Fetched Routine Overview (if successful)
-              if (_fetchedRoutine != null && !_isLoading && _errorMessage == null)
+              if (_fetchedRoutine != null &&
+                  !_isLoading &&
+                  _errorMessage == null)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text("Found Shared Routine:", style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      "Found Shared Routine:",
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: 8),
                     // Assuming RoutineOverview takes a Routine
-                    RoutineOverview(routine: _fetchedRoutine!, isRecRoutine: true), // Pass fetched routine
+                    RoutineOverview(
+                      routine: _fetchedRoutine!,
+                      isRecRoutine: true,
+                    ), // Pass fetched routine
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       icon: const Icon(Icons.add_circle_outline),

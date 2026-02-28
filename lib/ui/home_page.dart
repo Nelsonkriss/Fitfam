@@ -954,7 +954,7 @@ class _HomePageState extends State<HomePage> {
                 itemBuilder: (_, i) {
                   final part = items[i].$1;
                   final label = items[i].$2;
-                  final icon = items[i].$3 as IconData;
+                  final icon = items[i].$3;
                   return _CreateTile(
                     label: label,
                     icon: icon,

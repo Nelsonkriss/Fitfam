@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math';
 
 import 'package:confetti/confetti.dart';
@@ -46,9 +46,12 @@ class RoutineStepPageV2 extends StatefulWidget {
   State<RoutineStepPageV2> createState() => _RoutineStepPageV2State();
 }
 
-class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProviderStateMixin {
+class _RoutineStepPageV2State extends State<RoutineStepPageV2>
+    with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final ConfettiController _confettiController = ConfettiController(duration: const Duration(seconds: 5));
+  final ConfettiController _confettiController = ConfettiController(
+    duration: const Duration(seconds: 5),
+  );
 
   late Routine _currentWorkingRoutine;
   late List<Exercise> _currentExercises;
@@ -92,23 +95,40 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   void initState() {
     super.initState();
 
-    _setTransitionController = AnimationController(duration: AndroidAnimations.m3LongDuration, vsync: this);
-    _exerciseTransitionController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _restPeriodController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _preparationController = AnimationController(duration: AndroidAnimations.m3MediumDuration, vsync: this);
-    _completionController = AnimationController(duration: AndroidAnimations.m3ExtraLongDuration, vsync: this);
+    _setTransitionController = AnimationController(
+      duration: AndroidAnimations.m3LongDuration,
+      vsync: this,
+    );
+    _exerciseTransitionController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _restPeriodController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _preparationController = AnimationController(
+      duration: AndroidAnimations.m3MediumDuration,
+      vsync: this,
+    );
+    _completionController = AnimationController(
+      duration: AndroidAnimations.m3ExtraLongDuration,
+      vsync: this,
+    );
     _loadWeightUnit();
 
     // Use resume session's routine if provided
     final baseRoutine = widget.resumeSession?.routine ?? widget.originalRoutine;
     _currentWorkingRoutine = baseRoutine.copyWith(
-      parts: widget.originalRoutine.parts.map((originalPart) {
-        return originalPart.copyWith(
-          exercises: originalPart.exercises.map((originalExercise) {
-            return originalExercise.copyWith();
+      parts:
+          widget.originalRoutine.parts.map((originalPart) {
+            return originalPart.copyWith(
+              exercises:
+                  originalPart.exercises.map((originalExercise) {
+                    return originalExercise.copyWith();
+                  }).toList(),
+            );
           }).toList(),
-        );
-      }).toList(),
     );
 
     _rebuildStateFromRoutine();
@@ -125,12 +145,21 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         }
       } catch (_) {}
       if (_exerciseIndexesInStepOrder.isNotEmpty) {
-        _currentStepIndex = completedSets.clamp(0, _exerciseIndexesInStepOrder.length - 1);
+        _currentStepIndex = completedSets.clamp(
+          0,
+          _exerciseIndexesInStepOrder.length - 1,
+        );
       }
-      debugPrint("RoutineStepPageV2: Resuming session ${_activeWorkoutSession!.id}, completed sets=$completedSets, stepIndex=$_currentStepIndex");
+      debugPrint(
+        "RoutineStepPageV2: Resuming session ${_activeWorkoutSession!.id}, completed sets=$completedSets, stepIndex=$_currentStepIndex",
+      );
     } else {
-      _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
-      debugPrint("RoutineStepPageV2: Starting new session ${_activeWorkoutSession?.id}");
+      _activeWorkoutSession = WorkoutSession.startNew(
+        routine: widget.originalRoutine,
+      );
+      debugPrint(
+        "RoutineStepPageV2: Starting new session ${_activeWorkoutSession?.id}",
+      );
     }
 
     _startSetPreparation();
@@ -145,7 +174,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   }
 
   void _rebuildStateFromRoutine() {
-    _currentExercises = _currentWorkingRoutine.parts.expand((p) => p.exercises).toList();
+    _currentExercises =
+        _currentWorkingRoutine.parts.expand((p) => p.exercises).toList();
     _exerciseIndexesInStepOrder.clear();
     _partIndexesInStepOrder.clear();
     _setsTotalInStepOrder.clear();
@@ -156,7 +186,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
     int exerciseCounter = 0;
 
-    for (int partIdx = 0; partIdx < _currentWorkingRoutine.parts.length; partIdx++) {
+    for (
+      int partIdx = 0;
+      partIdx < _currentWorkingRoutine.parts.length;
+      partIdx++
+    ) {
       final part = _currentWorkingRoutine.parts[partIdx];
       if (part.exercises.isEmpty) continue;
 
@@ -178,13 +212,18 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           break;
       }
 
-      exercisesInThisSetGroup = min(exercisesInThisSetGroup, part.exercises.length);
+      exercisesInThisSetGroup = min(
+        exercisesInThisSetGroup,
+        part.exercises.length,
+      );
       if (exercisesInThisSetGroup == 0) continue;
 
       for (int i = 0; i < exercisesInThisSetGroup; i++) {
         final currentExerciseFlatIndex = exerciseCounter + i;
         if (currentExerciseFlatIndex >= _currentExercises.length) {
-          debugPrint("Warning: Exercise index ($currentExerciseFlatIndex) out of bounds during step generation.");
+          debugPrint(
+            "Warning: Exercise index ($currentExerciseFlatIndex) out of bounds during step generation.",
+          );
           continue;
         }
 
@@ -199,10 +238,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           _setNumberOfStep.add(setNum);
 
           if (!_weightTickerControllers.containsKey(currentExerciseFlatIndex)) {
-            final exerciseTemplate = _currentExercises[currentExerciseFlatIndex];
-            _weightTickerControllers[currentExerciseFlatIndex] = NumberTickerController(
-                initial: exerciseTemplate.lastUsedWeight ?? exerciseTemplate.weight, step: 0.5, minValue: 0);
-            
+            final exerciseTemplate =
+                _currentExercises[currentExerciseFlatIndex];
+            _weightTickerControllers[currentExerciseFlatIndex] =
+                NumberTickerController(
+                  initial:
+                      exerciseTemplate.lastUsedWeight ??
+                      exerciseTemplate.weight,
+                  step: 0.5,
+                  minValue: 0,
+                );
+
             // Handle reps that might be ranges like "6-8" or single numbers
             double initialReps = 8.0; // Default fallback
             try {
@@ -218,18 +264,26 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 initialReps = double.parse(repsString);
               }
             } catch (e) {
-              debugPrint("Error parsing reps '${exerciseTemplate.reps}': $e. Using default value.");
+              debugPrint(
+                "Error parsing reps '${exerciseTemplate.reps}': $e. Using default value.",
+              );
               initialReps = 8.0;
             }
-            
+
             _repsTickerControllers[currentExerciseFlatIndex] =
-                NumberTickerController(initial: initialReps, step: 1, minValue: 0);
+                NumberTickerController(
+                  initial: initialReps,
+                  step: 1,
+                  minValue: 0,
+                );
           }
         }
       }
       exerciseCounter += exercisesInThisSetGroup;
     }
-    debugPrint("Generated ${_exerciseIndexesInStepOrder.length} total steps for the workout.");
+    debugPrint(
+      "Generated ${_exerciseIndexesInStepOrder.length} total steps for the workout.",
+    );
   }
 
   @override
@@ -340,7 +394,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               userProfile: profile,
               targetReps: targetReps,
             );
-            updated = updated.copyWith(weight: recWeight, lastUsedWeight: recWeight);
+            updated = updated.copyWith(
+              weight: recWeight,
+              lastUsedWeight: recWeight,
+            );
             changed = true;
           }
 
@@ -352,7 +409,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       if (!mounted) return;
       if (changed) {
         setState(() {
-          _currentWorkingRoutine = _currentWorkingRoutine.copyWith(parts: updatedParts);
+          _currentWorkingRoutine = _currentWorkingRoutine.copyWith(
+            parts: updatedParts,
+          );
           _rebuildStateFromRoutine();
         });
         _refreshActiveSessionFromRoutine();
@@ -409,7 +468,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     children: [
                       const Icon(Icons.auto_graph),
                       const SizedBox(width: 8),
-                      Text('Build Progressive Plan', style: Theme.of(ctx).textTheme.titleLarge),
+                      Text(
+                        'Build Progressive Plan',
+                        style: Theme.of(ctx).textTheme.titleLarge,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -421,13 +483,15 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   Text('Weeks', style: Theme.of(ctx).textTheme.labelLarge),
                   Wrap(
                     spacing: 8,
-                    children: [4, 6, 8].map((w) {
-                      return ChoiceChip(
-                        label: Text('$w'),
-                        selected: selectedWeeks == w,
-                        onSelected: (_) => setState(() => selectedWeeks = w),
-                      );
-                    }).toList(),
+                    children:
+                        [4, 6, 8].map((w) {
+                          return ChoiceChip(
+                            label: Text('$w'),
+                            selected: selectedWeeks == w,
+                            onSelected:
+                                (_) => setState(() => selectedWeeks = w),
+                          );
+                        }).toList(),
                   ),
                   const SizedBox(height: 12),
                   SwitchListTile.adaptive(
@@ -457,7 +521,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                           if (mounted) Navigator.pop(ctx);
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Created ${plan.length} plan routine(s).')),
+                              SnackBar(
+                                content: Text(
+                                  'Created ${plan.length} plan routine(s).',
+                                ),
+                              ),
                             );
                           }
                         },
@@ -475,8 +543,14 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (await _onWillPop() && mounted) {
+          Navigator.pop(context);
+        }
+      },
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: Colors.black,
@@ -484,8 +558,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         // Simplify primary flow: avoid duplicate Prev/Next dock
         bottomNavigationBar: null,
       ),
-  );
-}
+    );
+  }
 
   Widget _buildFinishedScreen() {
     final theme = Theme.of(context);
@@ -517,15 +591,26 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const ProgressRing(size: 220, progress: 1.0, centerText: 'Done', subtitle: 'Great work'),
+              const ProgressRing(
+                size: 220,
+                progress: 1.0,
+                centerText: 'Done',
+                subtitle: 'Great work',
+              ),
               const SizedBox(height: 16),
               Text(
                 'Workout Complete!',
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white),
+                style: Theme.of(
+                  context,
+                ).textTheme.headlineMedium?.copyWith(color: Colors.white),
               ),
               const SizedBox(height: 20),
-              const Icon(Icons.emoji_events_outlined, size: 80, color: Colors.white70),
+              const Icon(
+                Icons.emoji_events_outlined,
+                size: 80,
+                color: Colors.white70,
+              ),
               const SizedBox(height: 40),
               ElevatedButton(
                 onPressed: () {
@@ -533,7 +618,13 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     Navigator.pop(context);
                   }
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 16,
+                    horizontal: 24,
+                  ),
+                ),
                 child: const Text('Finish'),
               ),
             ],
@@ -661,7 +752,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               _buildSliverAppBar(),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16.0,
+                    vertical: 8.0,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
@@ -673,7 +767,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                       const SizedBox(height: 8),
                       _buildInlineCoaching(exercise, setNum, totalSets),
                       const SizedBox(height: 12),
-                      _buildInputControlsV3(weightController, repsController, exercise),
+                      _buildInputControlsV3(
+                        weightController,
+                        repsController,
+                        exercise,
+                      ),
                       const SizedBox(height: 12),
                       _buildActionButtons(),
                       const SizedBox(height: 8),
@@ -689,11 +787,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           ),
         ),
         if (_isPersonalizing)
-          Positioned(
-            top: 12,
-            right: 12,
-            child: _pill('Personalizing...'),
-          ),
+          Positioned(top: 12, right: 12, child: _pill('Personalizing...')),
         if (_isInRestPeriod) _buildRestPeriodOverlay(),
         if (_isTimedExerciseActive) _timedOverlay(),
       ],
@@ -702,14 +796,21 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
   // Newer, corrected version to avoid encoding glitches and tighten UX
   Widget _buildInputControlsV3(
-      NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
+    NumberTickerController weightController,
+    NumberTickerController repsController,
+    Exercise exercise,
+  ) {
     final isTimed = _isTimed(exercise);
     final isBodyweight = _isBodyweight(exercise);
     final weightLabel = 'Weight ($_weightUnit)';
-    final weightDeltas = _weightUnit == 'lb'
-        ? const [-10.0, -5.0, 5.0, 10.0, 20.0]
-        : const [-5.0, -2.5, 2.5, 5.0, 10.0];
-    final repDeltas = isTimed ? const [-10.0, -5.0, 5.0, 10.0, 20.0] : const [-2.0, -1.0, 1.0, 2.0, 5.0];
+    final weightDeltas =
+        _weightUnit == 'lb'
+            ? const [-10.0, -5.0, 5.0, 10.0, 20.0]
+            : const [-5.0, -2.5, 2.5, 5.0, 10.0];
+    final repDeltas =
+        isTimed
+            ? const [-10.0, -5.0, 5.0, 10.0, 20.0]
+            : const [-2.0, -1.0, 1.0, 2.0, 5.0];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: Row(
@@ -725,16 +826,30 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                       Flexible(
                         child: Text(
                           weightLabel,
-                          style: const TextStyle(color: Colors.white70, fontSize: 16),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 16,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 6),
                       IconButton(
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                        onPressed: () => _applyAIRecommendedWeight(exercise, weightController),
-                        icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                        constraints: const BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        onPressed:
+                            () => _applyAIRecommendedWeight(
+                              exercise,
+                              weightController,
+                            ),
+                        icon: const Icon(
+                          Icons.psychology,
+                          color: Colors.tealAccent,
+                          size: 18,
+                        ),
                         tooltip: 'AI Suggests Weight',
                       ),
                     ],
@@ -747,7 +862,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     suffix: _weightUnit,
                   ),
                   const SizedBox(height: 8),
-                  _buildQuickAdjustRow(weightController, weightDeltas, unitSuffix: _weightUnit),
+                  _buildQuickAdjustRow(
+                    weightController,
+                    weightDeltas,
+                    unitSuffix: _weightUnit,
+                  ),
                 ],
               ),
             ),
@@ -760,14 +879,23 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   style: const TextStyle(color: Colors.white70, fontSize: 16),
                 ),
                 FutureBuilder<int>(
-                  future: _getAiRepsOrSecondsSuggestion(exercise, isTimed: isTimed),
+                  future: _getAiRepsOrSecondsSuggestion(
+                    exercise,
+                    isTimed: isTimed,
+                  ),
                   builder: (context, snap) {
                     if (!snap.hasData) return const SizedBox(height: 0);
                     final v = snap.data!;
-                    final label = isTimed ? 'Apply AI: ${v}s' : 'Apply AI: ${v} reps';
+                    final label =
+                        isTimed ? 'Apply AI: ${v}s' : 'Apply AI: ${v} reps';
                     return Padding(
                       padding: const EdgeInsets.only(top: 6.0),
-                      child: _pillButton(label, onTap: () { repsController.number = v.toDouble(); }),
+                      child: _pillButton(
+                        label,
+                        onTap: () {
+                          repsController.number = v.toDouble();
+                        },
+                      ),
                     );
                   },
                 ),
@@ -776,7 +904,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Wrap(
                       spacing: 8,
-                      children: [20, 30, 45, 60].map((s) => _pillButton('$s s', onTap: () { repsController.number = s.toDouble(); })).toList(),
+                      children:
+                          [20, 30, 45, 60]
+                              .map(
+                                (s) => _pillButton(
+                                  '$s s',
+                                  onTap: () {
+                                    repsController.number = s.toDouble();
+                                  },
+                                ),
+                              )
+                              .toList(),
                     ),
                   ),
                 const SizedBox(height: 8),
@@ -787,21 +925,38 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   suffix: isTimed ? 's' : null,
                 ),
                 const SizedBox(height: 8),
-                _buildQuickAdjustRow(repsController, repDeltas, unitSuffix: isTimed ? 's' : null),
+                _buildQuickAdjustRow(
+                  repsController,
+                  repDeltas,
+                  unitSuffix: isTimed ? 's' : null,
+                ),
                 if (isBodyweight)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
-                    child: Text('Bodyweight set — focus on quality reps', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    child: Text(
+                      'Bodyweight set — focus on quality reps',
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
                 if (isTimed)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: ElevatedButton.icon(
-                      onPressed: () => _startTimed(exercise, repsController.number.toInt()),
+                      onPressed:
+                          () => _startTimed(
+                            exercise,
+                            repsController.number.toInt(),
+                          ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.tealAccent.shade400,
                         foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
                       ),
                       icon: const Icon(Icons.timer),
                       label: const Text('Start Timer'),
@@ -814,6 +969,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       ),
     );
   }
+
   Widget _buildProgressBar() {
     final total = _exerciseIndexesInStepOrder.length;
     final current = (_currentStepIndex + 1).clamp(0, total);
@@ -835,7 +991,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           const SizedBox(height: 6),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('$current of $total steps', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            child: Text(
+              '$current of $total steps',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -844,7 +1003,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
   String _elapsedString() {
     final start = _activeWorkoutSession?.startTime;
-    final dur = start == null ? Duration.zero : DateTime.now().difference(start);
+    final dur =
+        start == null ? Duration.zero : DateTime.now().difference(start);
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(dur.inMinutes)}:${two(dur.inSeconds % 60)}';
   }
@@ -860,27 +1020,36 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         ),
         border: Border(top: BorderSide(color: Colors.white12)),
       ),
-      child: Row(children: [
-        OutlinedButton(
-          onPressed: () {
-            setState(() {
-              _currentStepIndex = (_currentStepIndex - 1).clamp(0, _exerciseIndexesInStepOrder.length - 1);
-            });
-          },
-          child: const Text('Prev'),
-        ),
-        const Spacer(),
-        FilledButton(
-          onPressed: _handleStepContinue, // Next also marks current set complete
-          child: const Text('Next'),
-        ),
-      ]),
+      child: Row(
+        children: [
+          OutlinedButton(
+            onPressed: () {
+              setState(() {
+                _currentStepIndex = (_currentStepIndex - 1).clamp(
+                  0,
+                  _exerciseIndexesInStepOrder.length - 1,
+                );
+              });
+            },
+            child: const Text('Prev'),
+          ),
+          const Spacer(),
+          FilledButton(
+            onPressed:
+                _handleStepContinue, // Next also marks current set complete
+            child: const Text('Next'),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildHeader() {
-    final title = _activeWorkoutSession?.routine.routineName ?? widget.originalRoutine.routineName;
-    final stepText = 'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
+    final title =
+        _activeWorkoutSession?.routine.routineName ??
+        widget.originalRoutine.routineName;
+    final stepText =
+        'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
     final total = _exerciseIndexesInStepOrder.length;
     final current = (_currentStepIndex + 1).clamp(0, total);
     final headerProgress = total == 0 ? 0.0 : current / total;
@@ -901,17 +1070,22 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               borderRadius: BorderRadius.circular(12),
               onTap: () => Navigator.pop(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.06),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.white10),
                 ),
-                child: Row(children: const [
-                  Icon(Icons.arrow_back, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  // Removed label next to back icon for a cleaner header
-                ]),
+                child: Row(
+                  children: const [
+                    Icon(Icons.arrow_back, color: Colors.white, size: 18),
+                    SizedBox(width: 8),
+                    // Removed label next to back icon for a cleaner header
+                  ],
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -919,9 +1093,21 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(stepText, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                  Text(
+                    stepText,
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
                   const SizedBox(height: 6),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(999),
@@ -929,7 +1115,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                       minHeight: 6,
                       value: headerProgress,
                       backgroundColor: Colors.white12,
-                      valueColor: const AlwaysStoppedAnimation(AppColors.accent),
+                      valueColor: const AlwaysStoppedAnimation(
+                        AppColors.accent,
+                      ),
                     ),
                   ),
                 ],
@@ -942,7 +1130,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(color: Colors.white10),
               ),
-              child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              child: Text(
+                'Elapsed: ${_elapsedString()}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
             ),
           ],
         ),
@@ -951,8 +1142,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   }
 
   SliverAppBar _buildSliverAppBar() {
-    final title = _activeWorkoutSession?.routine.routineName ?? widget.originalRoutine.routineName;
-    final stepText = 'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
+    final title =
+        _activeWorkoutSession?.routine.routineName ??
+        widget.originalRoutine.routineName;
+    final stepText =
+        'Step ${(_currentStepIndex + 1).clamp(1, _exerciseIndexesInStepOrder.length)} of ${_exerciseIndexesInStepOrder.length}';
     final total = _exerciseIndexesInStepOrder.length;
     final current = (_currentStepIndex + 1).clamp(0, total);
     final headerProgress = total == 0 ? 0.0 : current / total;
@@ -966,7 +1160,11 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back),
-        onPressed: () => widget.onBackPressed != null ? widget.onBackPressed!() : Navigator.pop(context),
+        onPressed:
+            () =>
+                widget.onBackPressed != null
+                    ? widget.onBackPressed!()
+                    : Navigator.pop(context),
       ),
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       actions: [
@@ -979,7 +1177,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               borderRadius: BorderRadius.circular(999),
               border: Border.all(color: Colors.white10),
             ),
-            child: Text('Elapsed: ${_elapsedString()}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            child: Text(
+              'Elapsed: ${_elapsedString()}',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
           ),
         ),
       ],
@@ -990,7 +1191,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(stepText, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+              Text(
+                stepText,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
               const SizedBox(height: 6),
               ClipRRect(
                 borderRadius: BorderRadius.circular(999),
@@ -1007,6 +1211,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       ),
     );
   }
+
   Widget _buildSafetyBanner() {
     // Safety banner removed per request
     return const SizedBox.shrink();
@@ -1039,7 +1244,8 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   Widget _buildTypeAndRestChips(Exercise exercise, int totalSets) {
     final isTimed = _isTimed(exercise);
     final isBodyweight = _isBodyweight(exercise);
-    final typeLabel = isTimed ? 'Timed' : (isBodyweight ? 'Bodyweight' : 'Weighted');
+    final typeLabel =
+        isTimed ? 'Timed' : (isBodyweight ? 'Bodyweight' : 'Weighted');
     final tip = ExerciseCoachingService.getCoaching(
       exerciseName: exercise.name,
       setIndex: 0,
@@ -1071,9 +1277,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Theme(
-        data: Theme.of(context).copyWith(
-          dividerColor: Colors.white10,
-        ),
+        data: Theme.of(context).copyWith(dividerColor: Colors.white10),
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.04),
@@ -1082,8 +1286,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
           ),
           child: ExpansionTile(
             initiallyExpanded: false,
-            title: const Text('Tips', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            subtitle: Text(tip.headline, style: const TextStyle(color: Colors.white70)),
+            title: const Text(
+              'Tips',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: Text(
+              tip.headline,
+              style: const TextStyle(color: Colors.white70),
+            ),
             iconColor: Colors.white70,
             collapsedIconColor: Colors.white54,
             childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -1106,7 +1319,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Why this set? ${tip.whyThisSet}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
+                child: Text(
+                  'Why this set? ${tip.whyThisSet}',
+                  style: const TextStyle(color: Colors.white60, fontSize: 12),
+                ),
               ),
             ],
           ),
@@ -1116,7 +1332,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   }
 
   Widget _buildInputControls(
-      NumberTickerController weightController, NumberTickerController repsController, Exercise exercise) {
+    NumberTickerController weightController,
+    NumberTickerController repsController,
+    Exercise exercise,
+  ) {
     final isTimed = _isTimed(exercise);
     final isBodyweight = _isBodyweight(exercise);
     return Padding(
@@ -1141,9 +1360,20 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                       const SizedBox(width: 6),
                       IconButton(
                         padding: EdgeInsets.zero,
-                        constraints: BoxConstraints(minWidth: 28, minHeight: 28),
-                        onPressed: () => _applyAIRecommendedWeight(exercise, weightController),
-                        icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
+                        constraints: BoxConstraints(
+                          minWidth: 28,
+                          minHeight: 28,
+                        ),
+                        onPressed:
+                            () => _applyAIRecommendedWeight(
+                              exercise,
+                              weightController,
+                            ),
+                        icon: const Icon(
+                          Icons.psychology,
+                          color: Colors.tealAccent,
+                          size: 18,
+                        ),
                         tooltip: 'AI Suggests Weight',
                       ),
                     ],
@@ -1162,14 +1392,23 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   style: const TextStyle(color: Colors.white70, fontSize: 16),
                 ),
                 FutureBuilder<int>(
-                  future: _getAiRepsOrSecondsSuggestion(exercise, isTimed: isTimed),
+                  future: _getAiRepsOrSecondsSuggestion(
+                    exercise,
+                    isTimed: isTimed,
+                  ),
                   builder: (context, snap) {
                     if (!snap.hasData) return const SizedBox(height: 0);
                     final v = snap.data!;
-                    final label = isTimed ? 'Apply AI: ${v}s' : 'Apply AI: ${v} reps';
+                    final label =
+                        isTimed ? 'Apply AI: ${v}s' : 'Apply AI: ${v} reps';
                     return Padding(
                       padding: const EdgeInsets.only(top: 6.0),
-                      child: _pillButton(label, onTap: () { repsController.number = v.toDouble(); }),
+                      child: _pillButton(
+                        label,
+                        onTap: () {
+                          repsController.number = v.toDouble();
+                        },
+                      ),
                     );
                   },
                 ),
@@ -1178,11 +1417,24 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                     padding: const EdgeInsets.only(top: 6.0),
                     child: Wrap(
                       spacing: 8,
-                      children: [20, 30, 45, 60].map((s) => _pillButton('$s s', onTap: () { repsController.number = s.toDouble(); })).toList(),
+                      children:
+                          [20, 30, 45, 60]
+                              .map(
+                                (s) => _pillButton(
+                                  '$s s',
+                                  onTap: () {
+                                    repsController.number = s.toDouble();
+                                  },
+                                ),
+                              )
+                              .toList(),
                     ),
                   ),
                 const SizedBox(height: 8),
-                _buildTickerRow(repsController, semanticsLabel: isTimed ? 'Seconds' : 'Reps'),
+                _buildTickerRow(
+                  repsController,
+                  semanticsLabel: isTimed ? 'Seconds' : 'Reps',
+                ),
                 if (isBodyweight)
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
@@ -1195,20 +1447,37 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                   Padding(
                     padding: const EdgeInsets.only(top: 6.0),
                     child: IconButton(
-                      onPressed: () => _applyAIRecommendedRepsOrSeconds(exercise, repsController, isTimed: isTimed),
-                      icon: const Icon(Icons.psychology, color: Colors.tealAccent, size: 18),
-                      tooltip: isTimed ? 'AI Suggests Seconds' : 'AI Suggests Reps',
+                      onPressed:
+                          () => _applyAIRecommendedRepsOrSeconds(
+                            exercise,
+                            repsController,
+                            isTimed: isTimed,
+                          ),
+                      icon: const Icon(
+                        Icons.psychology,
+                        color: Colors.tealAccent,
+                        size: 18,
+                      ),
+                      tooltip:
+                          isTimed ? 'AI Suggests Seconds' : 'AI Suggests Reps',
                     ),
                   ),
                 if (isTimed)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: ElevatedButton.icon(
-                      onPressed: () => _startTimed(exercise, repsController.number.toInt()),
+                      onPressed:
+                          () => _startTimed(
+                            exercise,
+                            repsController.number.toInt(),
+                          ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.tealAccent.shade400,
                         foregroundColor: Colors.black,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 10,
+                        ),
                       ),
                       icon: const Icon(Icons.timer),
                       label: const Text('Start Timer'),
@@ -1233,7 +1502,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       children: [
         Semantics(
           button: true,
-          label: semanticsLabel.isEmpty ? 'Decrease' : 'Decrease ' + semanticsLabel,
+          label:
+              semanticsLabel.isEmpty
+                  ? 'Decrease'
+                  : 'Decrease ' + semanticsLabel,
           child: IconButton(
             onPressed: () {
               controller.decrement();
@@ -1248,7 +1520,12 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         const SizedBox(width: 6),
         Expanded(
           child: GestureDetector(
-            onTap: () => _showNumberInputDialog(dialogLabel, controller, suffix: suffix),
+            onTap:
+                () => _showNumberInputDialog(
+                  dialogLabel,
+                  controller,
+                  suffix: suffix,
+                ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: NumberTicker(
@@ -1265,7 +1542,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         const SizedBox(width: 6),
         Semantics(
           button: true,
-          label: semanticsLabel.isEmpty ? 'Increase' : 'Increase ' + semanticsLabel,
+          label:
+              semanticsLabel.isEmpty
+                  ? 'Increase'
+                  : 'Increase ' + semanticsLabel,
           child: IconButton(
             onPressed: () {
               controller.increment();
@@ -1298,15 +1578,19 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       spacing: 8,
       runSpacing: 8,
       alignment: WrapAlignment.center,
-      children: deltas.map((delta) {
-        final sign = delta > 0 ? '+' : '';
-        final unit = unitSuffix == null ? '' : unitSuffix;
-        final label = '$sign${_formatDeltaLabel(delta)}$unit';
-        return _pillButton(label, onTap: () {
-          controller.number = controller.number + delta;
-          HapticFeedback.selectionClick();
-        });
-      }).toList(),
+      children:
+          deltas.map((delta) {
+            final sign = delta > 0 ? '+' : '';
+            final unit = unitSuffix == null ? '' : unitSuffix;
+            final label = '$sign${_formatDeltaLabel(delta)}$unit';
+            return _pillButton(
+              label,
+              onTap: () {
+                controller.number = controller.number + delta;
+                HapticFeedback.selectionClick();
+              },
+            );
+          }).toList(),
     );
   }
 
@@ -1333,7 +1617,10 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
                 side: const BorderSide(color: Colors.white54),
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: const Text('Skip', style: TextStyle(fontSize: 18, color: Colors.white)),
+              child: const Text(
+                'Skip',
+                style: TextStyle(fontSize: 18, color: Colors.white),
+              ),
             ),
           ),
         ],
@@ -1347,10 +1634,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         padding: EdgeInsets.all(16.0),
         child: Text(
           'Last Exercise!',
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 16,
-          ),
+          style: TextStyle(color: Colors.white70, fontSize: 16),
           textAlign: TextAlign.center,
         ),
       );
@@ -1414,8 +1698,17 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
             const SizedBox(height: 16),
             OutlinedButton(
               onPressed: _endRestPeriod,
-              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white54), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)),
-              child: const Text('Skip Rest', style: TextStyle(color: Colors.white)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.white54),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 14,
+                ),
+              ),
+              child: const Text(
+                'Skip Rest',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -1441,15 +1734,19 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       isCompleted: true,
     );
 
-    final exercisePerformances = _activeWorkoutSession!.exercises.map((ep) {
-      if (ep.exerciseName == exercise.name) {
-        final newSets = List<SetPerformance>.from(ep.sets)..add(setPerformance);
-        return ep.copyWith(sets: newSets);
-      }
-      return ep;
-    }).toList();
+    final exercisePerformances =
+        _activeWorkoutSession!.exercises.map((ep) {
+          if (ep.exerciseName == exercise.name) {
+            final newSets = List<SetPerformance>.from(ep.sets)
+              ..add(setPerformance);
+            return ep.copyWith(sets: newSets);
+          }
+          return ep;
+        }).toList();
 
-    _activeWorkoutSession = _activeWorkoutSession?.copyWith(exercises: exercisePerformances);
+    _activeWorkoutSession = _activeWorkoutSession?.copyWith(
+      exercises: exercisePerformances,
+    );
 
     if (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1) {
       setState(() {
@@ -1564,14 +1861,16 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       }
     }
     if (lastWeights.isEmpty) return base;
-    final updatedParts = base.parts.map((part) {
-      final updatedExercises = part.exercises.map((exercise) {
-        final weight = lastWeights[exercise.name];
-        if (weight == null || weight <= 0) return exercise;
-        return exercise.copyWith(lastUsedWeight: weight);
-      }).toList();
-      return part.copyWith(exercises: updatedExercises);
-    }).toList();
+    final updatedParts =
+        base.parts.map((part) {
+          final updatedExercises =
+              part.exercises.map((exercise) {
+                final weight = lastWeights[exercise.name];
+                if (weight == null || weight <= 0) return exercise;
+                return exercise.copyWith(lastUsedWeight: weight);
+              }).toList();
+          return part.copyWith(exercises: updatedExercises);
+        }).toList();
     return base.copyWith(parts: updatedParts);
   }
 
@@ -1581,12 +1880,21 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       isCompleted: true,
     );
     if (finalSession != null) {
-      final updatedRoutine = _mergeLastUsedWeights(_currentWorkingRoutine, finalSession).copyWith(
+      final updatedRoutine = _mergeLastUsedWeights(
+        _currentWorkingRoutine,
+        finalSession,
+      ).copyWith(
         completionCount: _currentWorkingRoutine.completionCount + 1,
         lastCompletedDate: DateTime.now(),
       );
-      Provider.of<WorkoutSessionBloc>(context, listen: false).add(WorkoutSessionSaveCompleted(finalSession));
-      Provider.of<RoutinesBloc>(context, listen: false).updateRoutine(updatedRoutine);
+      Provider.of<WorkoutSessionBloc>(
+        context,
+        listen: false,
+      ).add(WorkoutSessionSaveCompleted(finalSession));
+      Provider.of<RoutinesBloc>(
+        context,
+        listen: false,
+      ).updateRoutine(updatedRoutine);
     }
 
     setState(() {
@@ -1615,10 +1923,7 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
             controller: textController,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             autofocus: true,
-            decoration: InputDecoration(
-              labelText: label,
-              suffixText: suffix,
-            ),
+            decoration: InputDecoration(labelText: label, suffixText: suffix),
           ),
           actions: <Widget>[
             TextButton(
@@ -1644,25 +1949,32 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
   Future<bool> _onWillPop() async {
     if (_finished) return true;
 
-    final shouldQuit = await showDialog<bool>(
+    final shouldQuit =
+        await showDialog<bool>(
           context: context,
           barrierDismissible: false,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Quit Workout?'),
-            content: const Text('Your progress for this session will not be saved if you quit now.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Stay'),
+          builder:
+              (dialogContext) => AlertDialog(
+                title: const Text('Quit Workout?'),
+                content: const Text(
+                  'Your progress for this session will not be saved if you quit now.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('Stay'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext, true);
+                    },
+                    child: const Text(
+                      'Quit Workout',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext, true);
-                },
-                child: const Text('Quit Workout', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
         ) ??
         false;
 
@@ -1674,10 +1986,14 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
 
   // --- Timed exercise overlay & flow (instance methods) ---
   Widget _timedOverlay() {
-    final nextName = (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1)
-        ? _currentExercises[_exerciseIndexesInStepOrder[_currentStepIndex + 1]].name
-        : 'Finish';
-    final total = _timedExerciseTotalSeconds == 0 ? 1 : _timedExerciseTotalSeconds;
+    final nextName =
+        (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1)
+            ? _currentExercises[_exerciseIndexesInStepOrder[_currentStepIndex +
+                    1]]
+                .name
+            : 'Finish';
+    final total =
+        _timedExerciseTotalSeconds == 0 ? 1 : _timedExerciseTotalSeconds;
     final progress = 1 - (_timedExerciseRemainingSeconds / total);
     return Container(
       color: Colors.black.withOpacity(0.9),
@@ -1685,15 +2001,36 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('Timed Set', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text(
+              'Timed Set',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text('Up next: $nextName', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            Text(
+              'Up next: $nextName',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
             const SizedBox(height: 20),
-            ProgressRing(size: 240, progress: progress, centerText: _timedExerciseRemainingSeconds.toString(), subtitle: 'seconds'),
+            ProgressRing(
+              size: 240,
+              progress: progress,
+              centerText: _timedExerciseRemainingSeconds.toString(),
+              subtitle: 'seconds',
+            ),
             const SizedBox(height: 24),
             OutlinedButton(
               onPressed: _stopTimedEarly,
-              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.white54), padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Colors.white54),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 14,
+                ),
+              ),
               child: const Text('Stop', style: TextStyle(color: Colors.white)),
             ),
           ],
@@ -1743,14 +2080,18 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       actualWeight: 0,
       isCompleted: true,
     );
-    final exercisePerformances = _activeWorkoutSession!.exercises.map((ep) {
-      if (ep.exerciseName == exercise.name) {
-        final newSets = List<SetPerformance>.from(ep.sets)..add(setPerformance);
-        return ep.copyWith(sets: newSets);
-      }
-      return ep;
-    }).toList();
-    _activeWorkoutSession = _activeWorkoutSession?.copyWith(exercises: exercisePerformances);
+    final exercisePerformances =
+        _activeWorkoutSession!.exercises.map((ep) {
+          if (ep.exerciseName == exercise.name) {
+            final newSets = List<SetPerformance>.from(ep.sets)
+              ..add(setPerformance);
+            return ep.copyWith(sets: newSets);
+          }
+          return ep;
+        }).toList();
+    _activeWorkoutSession = _activeWorkoutSession?.copyWith(
+      exercises: exercisePerformances,
+    );
 
     if (_currentStepIndex < _exerciseIndexesInStepOrder.length - 1) {
       setState(() {
@@ -1769,9 +2110,9 @@ class _RoutineStepPageV2State extends State<RoutineStepPageV2> with TickerProvid
       _finishWorkout();
     }
   }
-  }
+}
 
-  // Removed old top-level variant; now using instance method _timedOverlay() above
+// Removed old top-level variant; now using instance method _timedOverlay() above
 
 // --- Small UI helpers ---
 Widget _pill(String label) {
@@ -1797,34 +2138,40 @@ Widget _bullet(String text) {
   );
 }
 
-  Widget _chip(String text) {
-    return Container(
+Widget _chip(String text) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+    decoration: BoxDecoration(
+      color: Colors.redAccent.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(999),
+    ),
+    child: Text(text, style: const TextStyle(color: Colors.redAccent)),
+  );
+}
+
+Widget _pillButton(String text, {required VoidCallback onTap}) {
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(999),
+    child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.redAccent.withOpacity(0.15),
+        color: Colors.white10,
+        border: Border.all(color: Colors.white24),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(text, style: const TextStyle(color: Colors.redAccent)),
-    );
-  }
-
-  Widget _pillButton(String text, {required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white10,
-          border: Border.all(color: Colors.white24),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(text, style: const TextStyle(color: Colors.white70, fontSize: 12)),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
       ),
-    );
-  }
+    ),
+  );
+}
 
-Future<void> _applyAIRecommendedWeight(Exercise exercise, NumberTickerController controller) async {
+Future<void> _applyAIRecommendedWeight(
+  Exercise exercise,
+  NumberTickerController controller,
+) async {
   try {
     final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
     final service = AIWeightRecommendationService();
@@ -1839,24 +2186,44 @@ Future<void> _applyAIRecommendedWeight(Exercise exercise, NumberTickerController
   }
 }
 
-Future<void> _applyAIRecommendedRepsOrSeconds(Exercise exercise, NumberTickerController controller, {required bool isTimed}) async {
+Future<void> _applyAIRecommendedRepsOrSeconds(
+  Exercise exercise,
+  NumberTickerController controller, {
+  required bool isTimed,
+}) async {
   try {
     final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
     final svc = AIRepTimeRecommendationService();
-    final int rec = isTimed
-        ? await svc.recommendSeconds(exerciseName: exercise.name, userProfile: profile)
-        : await svc.recommendReps(exerciseName: exercise.name, userProfile: profile);
+    final int rec =
+        isTimed
+            ? await svc.recommendSeconds(
+              exerciseName: exercise.name,
+              userProfile: profile,
+            )
+            : await svc.recommendReps(
+              exerciseName: exercise.name,
+              userProfile: profile,
+            );
     controller.number = rec.toDouble();
   } catch (_) {}
 }
 
-Future<int> _getAiRepsOrSecondsSuggestion(Exercise exercise, {required bool isTimed}) async {
+Future<int> _getAiRepsOrSecondsSuggestion(
+  Exercise exercise, {
+  required bool isTimed,
+}) async {
   try {
     final UserProfile? profile = await sharedPrefsProvider.getUserProfile();
     final svc = AIRepTimeRecommendationService();
     return isTimed
-        ? await svc.recommendSeconds(exerciseName: exercise.name, userProfile: profile)
-        : await svc.recommendReps(exerciseName: exercise.name, userProfile: profile);
+        ? await svc.recommendSeconds(
+          exerciseName: exercise.name,
+          userProfile: profile,
+        )
+        : await svc.recommendReps(
+          exerciseName: exercise.name,
+          userProfile: profile,
+        );
   } catch (_) {
     return isTimed ? 30 : 12;
   }
@@ -1866,8 +2233,23 @@ bool _isBodyweight(Exercise ex) {
   if (ex.workoutType == WorkoutType.Weight && ex.weight <= 0.0) return true;
   final n = ex.name.toLowerCase();
   const bw = [
-    'push', 'push-up', 'push up', 'pull-up', 'pull up', 'crunch', 'sit-up', 'sit up', 'plank', 'mountain climber',
-    'dips', 'dip', 'burpee', 'jumping jack', 'bodyweight', 'hollow hold', 'leg raise'
+    'push',
+    'push-up',
+    'push up',
+    'pull-up',
+    'pull up',
+    'crunch',
+    'sit-up',
+    'sit up',
+    'plank',
+    'mountain climber',
+    'dips',
+    'dip',
+    'burpee',
+    'jumping jack',
+    'bodyweight',
+    'hollow hold',
+    'leg raise',
   ];
   return bw.any((k) => n.contains(k));
 }
@@ -1875,12 +2257,13 @@ bool _isBodyweight(Exercise ex) {
 bool _isTimed(Exercise ex) {
   if (ex.workoutType == WorkoutType.Timed) return true;
   final n = ex.name.toLowerCase();
-  const timed = ['plank', 'hold', 'wall sit', 'hollow hold', 'mountain climber', 'jumping jack'];
+  const timed = [
+    'plank',
+    'hold',
+    'wall sit',
+    'hollow hold',
+    'mountain climber',
+    'jumping jack',
+  ];
   return timed.any((k) => n.contains(k));
 }
-
-
-
-
-
-

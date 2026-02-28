@@ -31,8 +31,9 @@ class RoutineStepPage extends StatefulWidget {
 
 class _RoutineStepPageState extends State<RoutineStepPage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  final ConfettiController _confettiController =
-      ConfettiController(duration: const Duration(seconds: 4));
+  final ConfettiController _confettiController = ConfettiController(
+    duration: const Duration(seconds: 4),
+  );
 
   late Routine _currentWorkingRoutine;
   late List<Exercise> _currentExercises;
@@ -53,21 +54,26 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
   void initState() {
     super.initState();
     _currentWorkingRoutine = widget.originalRoutine.copyWith(
-      parts: widget.originalRoutine.parts.map((originalPart) {
-        return originalPart.copyWith(
-          exercises: originalPart.exercises.map((originalExercise) {
-            return originalExercise.copyWith();
+      parts:
+          widget.originalRoutine.parts.map((originalPart) {
+            return originalPart.copyWith(
+              exercises:
+                  originalPart.exercises.map((originalExercise) {
+                    return originalExercise.copyWith();
+                  }).toList(),
+            );
           }).toList(),
-        );
-      }).toList(),
     );
 
     _rebuildStateFromRoutine();
-    _activeWorkoutSession = WorkoutSession.startNew(routine: widget.originalRoutine);
+    _activeWorkoutSession = WorkoutSession.startNew(
+      routine: widget.originalRoutine,
+    );
   }
 
   void _rebuildStateFromRoutine() {
-    _currentExercises = _currentWorkingRoutine.parts.expand((p) => p.exercises).toList();
+    _currentExercises =
+        _currentWorkingRoutine.parts.expand((p) => p.exercises).toList();
     _exerciseIndexesInStepOrder.clear();
     _partIndexesInStepOrder.clear();
     _setsTotalInStepOrder.clear();
@@ -76,7 +82,11 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
     _weightTickerControllers = {};
 
     int exerciseCounter = 0;
-    for (int partIdx = 0; partIdx < _currentWorkingRoutine.parts.length; partIdx++) {
+    for (
+      int partIdx = 0;
+      partIdx < _currentWorkingRoutine.parts.length;
+      partIdx++
+    ) {
       final part = _currentWorkingRoutine.parts[partIdx];
       if (part.exercises.isEmpty) continue;
 
@@ -98,7 +108,10 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
           break;
       }
 
-      exercisesInThisSetGroup = min(exercisesInThisSetGroup, part.exercises.length);
+      exercisesInThisSetGroup = min(
+        exercisesInThisSetGroup,
+        part.exercises.length,
+      );
       if (exercisesInThisSetGroup == 0) continue;
 
       for (int i = 0; i < exercisesInThisSetGroup; i++) {
@@ -116,11 +129,12 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
           _setNumberOfStep.add(setNum);
 
           if (!_weightTickerControllers.containsKey(currentExerciseFlatIndex)) {
-            _weightTickerControllers[currentExerciseFlatIndex] = NumberTickerController(
-              initial: exercise.lastUsedWeight ?? exercise.weight,
-              step: 0.5,
-              minValue: 0,
-            );
+            _weightTickerControllers[currentExerciseFlatIndex] =
+                NumberTickerController(
+                  initial: exercise.lastUsedWeight ?? exercise.weight,
+                  step: 0.5,
+                  minValue: 0,
+                );
           }
         }
       }
@@ -145,8 +159,14 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (await _onWillPop() && mounted) {
+          Navigator.pop(context);
+        }
+      },
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: Colors.black,
@@ -175,16 +195,32 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
             blastDirectionality: BlastDirectionality.explosive,
             numberOfParticles: 18,
             emissionFrequency: 0.05,
-            colors: const [Colors.white, Colors.tealAccent, Colors.amber, Colors.pinkAccent],
+            colors: const [
+              Colors.white,
+              Colors.tealAccent,
+              Colors.amber,
+              Colors.pinkAccent,
+            ],
           ),
         ),
         Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.emoji_events_outlined, color: Colors.tealAccent, size: 72),
+              const Icon(
+                Icons.emoji_events_outlined,
+                color: Colors.tealAccent,
+                size: 72,
+              ),
               const SizedBox(height: 16),
-              const Text('Workout Complete!', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+              const Text(
+                'Workout Complete!',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: () {
@@ -231,10 +267,17 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 6),
-                Text('Set $setNum/$totalSets', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                Text(
+                  'Set $setNum/$totalSets',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
                 const SizedBox(height: 12),
               ],
             ),
@@ -267,17 +310,47 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
                     spacing: 12,
                     runSpacing: 4,
                     children: [
-                      Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Text('Sets:', style: TextStyle(color: Colors.white60, fontSize: 12)),
-                        const SizedBox(width: 4),
-                        Text('$totalSets', style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                      ]),
-                      if (exercise.workoutType == WorkoutType.Timed)
-                        Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Text('Target:', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Sets:',
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
                           const SizedBox(width: 4),
-                          Text('${int.tryParse(exercise.reps) ?? 0}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                        ]),
+                          Text(
+                            '$totalSets',
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (exercise.workoutType == WorkoutType.Timed)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Target:',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${int.tryParse(exercise.reps) ?? 0}',
+                              style: const TextStyle(
+                                color: Colors.white60,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -292,16 +365,24 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
                             child: _tickerRow(weightController),
                           ),
                         ),
-                      if (exercise.workoutType == WorkoutType.Weight) const SizedBox(width: 12),
+                      if (exercise.workoutType == WorkoutType.Weight)
+                        const SizedBox(width: 12),
                       Expanded(
                         child: _metricCard(
-                          label: exercise.workoutType == WorkoutType.Timed ? 'Seconds' : 'Reps',
+                          label:
+                              exercise.workoutType == WorkoutType.Timed
+                                  ? 'Seconds'
+                                  : 'Reps',
                           child: Center(
                             child: Text(
                               exercise.workoutType == WorkoutType.Timed
                                   ? '${exercise.reps} sec'
                                   : exercise.reps,
-                              style: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
@@ -320,7 +401,9 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: _handleStepContinue,
-                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
                 child: const Text('Done', style: TextStyle(fontSize: 18)),
               ),
             ),
@@ -347,7 +430,11 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
               fit: BoxFit.scaleDown,
               child: NumberTicker(
                 controller: controller,
-                textStyle: const TextStyle(color: Colors.white, fontSize: 40, fontWeight: FontWeight.bold),
+                textStyle: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                ),
                 fractionDigits: 1,
               ),
             ),
@@ -375,7 +462,10 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
           const SizedBox(height: 6),
           child,
         ],
@@ -410,8 +500,19 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
-                Text('Step $current of $total', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  'Step $current of $total',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
               ],
             ),
           ),
@@ -424,22 +525,28 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
     if (_currentStepIndex >= _exerciseIndexesInStepOrder.length) return;
 
     try {
-      final int exerciseFlatIndex = _exerciseIndexesInStepOrder[_currentStepIndex];
+      final int exerciseFlatIndex =
+          _exerciseIndexesInStepOrder[_currentStepIndex];
       final int setNumber = _setNumberOfStep[_currentStepIndex];
       final int setIndex = setNumber - 1;
       if (exerciseFlatIndex < _activeWorkoutSession!.exercises.length) {
-        final ExercisePerformance currentExercisePerf = _activeWorkoutSession!.exercises[exerciseFlatIndex];
+        final ExercisePerformance currentExercisePerf =
+            _activeWorkoutSession!.exercises[exerciseFlatIndex];
         if (setIndex >= 0 && setIndex < currentExercisePerf.sets.length) {
           final SetPerformance setToUpdate = currentExercisePerf.sets[setIndex];
-          final NumberTickerController? tickerController = _weightTickerControllers[exerciseFlatIndex];
-          final double actualWeight = tickerController?.number ?? setToUpdate.targetWeight;
+          final NumberTickerController? tickerController =
+              _weightTickerControllers[exerciseFlatIndex];
+          final double actualWeight =
+              tickerController?.number ?? setToUpdate.targetWeight;
           final exercise = _currentExercises[exerciseFlatIndex];
 
           int actualRepsToRecord = setToUpdate.targetReps;
           if (exercise.workoutType == WorkoutType.Timed) {
-            actualRepsToRecord = int.tryParse(exercise.reps) ?? actualRepsToRecord;
+            actualRepsToRecord =
+                int.tryParse(exercise.reps) ?? actualRepsToRecord;
           } else {
-            actualRepsToRecord = int.tryParse(exercise.reps) ?? actualRepsToRecord;
+            actualRepsToRecord =
+                int.tryParse(exercise.reps) ?? actualRepsToRecord;
           }
 
           final updatedSet = setToUpdate.copyWith(
@@ -448,13 +555,21 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
             isCompleted: true,
           );
 
-          final updatedSetsList = List<SetPerformance>.from(currentExercisePerf.sets);
+          final updatedSetsList = List<SetPerformance>.from(
+            currentExercisePerf.sets,
+          );
           updatedSetsList[setIndex] = updatedSet;
-          final updatedExercisePerf = currentExercisePerf.copyWith(sets: updatedSetsList);
+          final updatedExercisePerf = currentExercisePerf.copyWith(
+            sets: updatedSetsList,
+          );
 
-          final updatedSessionExercises = List<ExercisePerformance>.from(_activeWorkoutSession!.exercises);
+          final updatedSessionExercises = List<ExercisePerformance>.from(
+            _activeWorkoutSession!.exercises,
+          );
           updatedSessionExercises[exerciseFlatIndex] = updatedExercisePerf;
-          _activeWorkoutSession = _activeWorkoutSession!.copyWith(exercises: updatedSessionExercises);
+          _activeWorkoutSession = _activeWorkoutSession!.copyWith(
+            exercises: updatedSessionExercises,
+          );
         }
       }
     } catch (_) {}
@@ -484,25 +599,41 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
       for (int pIdx = 0; pIdx < routineToSave.parts.length; pIdx++) {
         Part currentPartTemplate = routineToSave.parts[pIdx];
         List<Exercise> updatedExercisesInPartData = [];
-        for (int eIdx = 0; eIdx < currentPartTemplate.exercises.length; eIdx++) {
-          Exercise currentExerciseTemplate = currentPartTemplate.exercises[eIdx];
+        for (
+          int eIdx = 0;
+          eIdx < currentPartTemplate.exercises.length;
+          eIdx++
+        ) {
+          Exercise currentExerciseTemplate =
+              currentPartTemplate.exercises[eIdx];
           double? newLastUsedWeightForThisExercise;
-          if (overallExercisePerformanceIndex < _activeWorkoutSession!.exercises.length) {
-            ExercisePerformance exercisePerf = _activeWorkoutSession!.exercises[overallExercisePerformanceIndex];
+          if (overallExercisePerformanceIndex <
+              _activeWorkoutSession!.exercises.length) {
+            ExercisePerformance exercisePerf =
+                _activeWorkoutSession!
+                    .exercises[overallExercisePerformanceIndex];
             if (exercisePerf.exerciseName == currentExerciseTemplate.name) {
-              SetPerformance? lastCompletedSetPerf = exercisePerf.sets.lastWhere(
-                (sp) => sp.isCompleted,
-                orElse: () => _nullPlaceholderSetPerformance,
-              );
+              SetPerformance? lastCompletedSetPerf = exercisePerf.sets
+                  .lastWhere(
+                    (sp) => sp.isCompleted,
+                    orElse: () => _nullPlaceholderSetPerformance,
+                  );
               if (lastCompletedSetPerf != _nullPlaceholderSetPerformance) {
-                newLastUsedWeightForThisExercise = lastCompletedSetPerf.actualWeight;
+                newLastUsedWeightForThisExercise =
+                    lastCompletedSetPerf.actualWeight;
               }
             }
           }
-          updatedExercisesInPartData.add(currentExerciseTemplate.copyWith(lastUsedWeight: newLastUsedWeightForThisExercise));
+          updatedExercisesInPartData.add(
+            currentExerciseTemplate.copyWith(
+              lastUsedWeight: newLastUsedWeightForThisExercise,
+            ),
+          );
           overallExercisePerformanceIndex++;
         }
-        updatedPartsData.add(currentPartTemplate.copyWith(exercises: updatedExercisesInPartData));
+        updatedPartsData.add(
+          currentPartTemplate.copyWith(exercises: updatedExercisesInPartData),
+        );
       }
       routineToSave = routineToSave.copyWith(parts: updatedPartsData);
     }
@@ -514,58 +645,75 @@ class _RoutineStepPageState extends State<RoutineStepPage> {
           isCompleted: true,
           endTime: routineToSave.lastCompletedDate,
         );
-        context.read<WorkoutSessionBloc>().add(WorkoutSessionSaveCompleted(finishedSessionForDb));
+        context.read<WorkoutSessionBloc>().add(
+          WorkoutSessionSaveCompleted(finishedSessionForDb),
+        );
       }
     } catch (_) {}
   }
 
   Future<void> _showWeightEditDialog(NumberTickerController controller) async {
-    final TextEditingController textController = TextEditingController(text: controller.number.toStringAsFixed(1));
+    final TextEditingController textController = TextEditingController(
+      text: controller.number.toStringAsFixed(1),
+    );
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Weight'),
-        content: TextField(
-          controller: textController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Weight (kg)'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              final v = double.tryParse(textController.text);
-              if (v != null && v >= 0) controller.number = v;
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Edit Weight'),
+            content: TextField(
+              controller: textController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Weight (kg)'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final v = double.tryParse(textController.text);
+                  if (v != null && v >= 0) controller.number = v;
+                  Navigator.pop(context);
+                },
+                child: const Text('Save'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   Future<bool> _onWillPop() async {
     if (_finished) return true;
-    final shouldQuit = await showDialog<bool>(
+    final shouldQuit =
+        await showDialog<bool>(
           context: context,
           barrierDismissible: false,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Quit Workout?'),
-            content: const Text('Your progress for this session will not be saved if you quit now.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Stay'),
+          builder:
+              (dialogContext) => AlertDialog(
+                title: const Text('Quit Workout?'),
+                content: const Text(
+                  'Your progress for this session will not be saved if you quit now.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogContext, false),
+                    child: const Text('Stay'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext, true);
+                    },
+                    child: const Text(
+                      'Quit Workout',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(dialogContext, true);
-                },
-                child: const Text('Quit Workout', style: TextStyle(color: Colors.red)),
-              ),
-            ],
-          ),
         ) ??
         false;
     if (shouldQuit) widget.onBackPressed?.call();

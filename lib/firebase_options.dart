@@ -3,7 +3,6 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
@@ -16,6 +15,19 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 /// );
 /// ```
 class DefaultFirebaseOptions {
+  static const String _webApiKey = String.fromEnvironment(
+    'FIREBASE_WEB_API_KEY',
+  );
+  static const String _iosApiKey = String.fromEnvironment(
+    'FIREBASE_IOS_API_KEY',
+  );
+  static const String _macosApiKey = String.fromEnvironment(
+    'FIREBASE_MACOS_API_KEY',
+  );
+  static const String _windowsApiKey = String.fromEnvironment(
+    'FIREBASE_WINDOWS_API_KEY',
+  );
+
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
       return web;
@@ -42,7 +54,7 @@ class DefaultFirebaseOptions {
   }
 
   static final FirebaseOptions web = FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _webApiKey,
     appId: '1:831897287544:web:faa7f4a5d2eaee3b7fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -52,12 +64,13 @@ class DefaultFirebaseOptions {
   );
 
   // Not used on Android — native config is loaded from google-services.json
-  static FirebaseOptions get android => throw UnsupportedError(
+  static FirebaseOptions get android =>
+      throw UnsupportedError(
         'Android FirebaseOptions are not used. Rely on native configuration via google-services.json.',
       );
 
   static final FirebaseOptions ios = FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_IOS_API_KEY']!,
+    apiKey: _iosApiKey,
     appId: '1:831897287544:ios:289dbdd6b6af76127fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -66,7 +79,7 @@ class DefaultFirebaseOptions {
   );
 
   static final FirebaseOptions macos = FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_MACOS_API_KEY']!,
+    apiKey: _macosApiKey,
     appId: '1:831897287544:ios:289dbdd6b6af76127fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',
@@ -75,7 +88,7 @@ class DefaultFirebaseOptions {
   );
 
   static final FirebaseOptions windows = FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WINDOWS_API_KEY']!,
+    apiKey: _windowsApiKey,
     appId: '1:831897287544:web:6142d30cca5f844f7fe68d',
     messagingSenderId: '831897287544',
     projectId: 'fitfam-c61fb',

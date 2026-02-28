@@ -1,8 +1,5 @@
 import 'package:workout_planner/models/routine.dart';
-import 'package:workout_planner/models/part.dart';
-import 'package:workout_planner/models/exercise.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/models/targeted_body_part.dart';
 
 class CuratedTemplates {
   static List<Routine> hypertrophy() => [

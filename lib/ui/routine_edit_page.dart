@@ -1,8 +1,7 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:timezone/timezone.dart' as tz;
 
 // Import BLoC, Models, Utils, Services
 import 'package:workout_planner/services/notification_service.dart';
@@ -36,10 +35,7 @@ class RoutineEditPage extends StatefulWidget {
     );
   }
 
-  factory RoutineEditPage.edit({
-    Key? key,
-    required Routine routine,
-  }) {
+  factory RoutineEditPage.edit({Key? key, required Routine routine}) {
     return RoutineEditPage._(
       key: key,
       addOrEdit: AddOrEdit.edit,
@@ -70,8 +66,11 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   }
 
   void _markDirtyOnNameChange() {
-    if (!_isDirty && _nameEditingController.text != _routineEditState.routineName) {
-      setState(() { _isDirty = true; });
+    if (!_isDirty &&
+        _nameEditingController.text != _routineEditState.routineName) {
+      setState(() {
+        _isDirty = true;
+      });
     }
   }
 
@@ -79,9 +78,14 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     if (widget.addOrEdit == AddOrEdit.edit && widget.initialRoutine != null) {
       final initial = widget.initialRoutine!;
       _routineEditState = initial.copyWith(
-        parts: initial.parts.map((p) => p.copyWith(
-          exercises: p.exercises.map((e) => e.copyWith()).toList(),
-        )).toList(),
+        parts:
+            initial.parts
+                .map(
+                  (p) => p.copyWith(
+                    exercises: p.exercises.map((e) => e.copyWith()).toList(),
+                  ),
+                )
+                .toList(),
         weekdays: List<int>.from(initial.weekdays),
         routineHistory: List<int>.from(initial.routineHistory),
       );
@@ -97,7 +101,10 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
       );
       _nameEditingController.text = '';
     }
-    _selectedWeekdaysBool = List.generate(7, (index) => _routineEditState.weekdays.contains(index + 1));
+    _selectedWeekdaysBool = List.generate(
+      7,
+      (index) => _routineEditState.weekdays.contains(index + 1),
+    );
     _isDirty = false;
   }
 
@@ -141,10 +148,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
       final Part? editedPart = await Navigator.push<Part?>(
         context,
         MaterialPageRoute(
-          builder: (context) => PartEditPage(
-            addOrEdit: AddOrEdit.add,
-            part: newPart,
-          ),
+          builder:
+              (context) =>
+                  PartEditPage(addOrEdit: AddOrEdit.add, part: newPart),
         ),
       );
 
@@ -174,10 +180,11 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
       final Part? editedPart = await Navigator.push<Part?>(
         context,
         MaterialPageRoute(
-          builder: (context) => PartEditPage(
-            addOrEdit: AddOrEdit.edit,
-            part: partCopyForEditing,
-          ),
+          builder:
+              (context) => PartEditPage(
+                addOrEdit: AddOrEdit.edit,
+                part: partCopyForEditing,
+              ),
         ),
       );
 
@@ -203,12 +210,13 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
       return;
     }
 
-    final finalRoutineName = _nameEditingController.text.trim().isEmpty
-        ? '${mainTargetedBodyPartToStringConverter(_routineEditState.mainTargetedBodyPart)} Workout'
-        : _nameEditingController.text.trim();
+    final finalRoutineName =
+        _nameEditingController.text.trim().isEmpty
+            ? '${mainTargetedBodyPartToStringConverter(_routineEditState.mainTargetedBodyPart)} Workout'
+            : _nameEditingController.text.trim();
 
     Routine finalRoutineToSave = _routineEditState.copyWith(
-      routineName: finalRoutineName
+      routineName: finalRoutineName,
     );
 
     // Schedule notifications for selected weekdays
@@ -237,7 +245,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         } else {
           debugPrint("Error: Editing routine with null ID. Saving as new.");
           _showSnackBar("Error: Missing ID. Saved as new routine.");
-          routinesBlocInstance.addRoutine(finalRoutineToSave.copyWith(id: null));
+          routinesBlocInstance.addRoutine(
+            finalRoutineToSave.copyWith(id: null),
+          );
         }
       }
       _isDirty = false;
@@ -265,7 +275,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   void _onDeletePart(Part partToDelete) {
     setState(() {
       _routineEditState = _routineEditState.copyWith(
-        parts: _routineEditState.parts.where((p) => p != partToDelete).toList()
+        parts: _routineEditState.parts.where((p) => p != partToDelete).toList(),
       );
       _isDirty = true;
     });
@@ -292,27 +302,32 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
     final shouldPop = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Discard changes?'),
-        content: const Text('Your edits will not be saved.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Discard changes?'),
+            content: const Text('Your edits will not be saved.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text(
+                  'Discard',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Discard', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
     );
     return shouldPop ?? false;
   }
 
   void _showDeleteDialog() {
     final routinesBlocInstance = context.read<RoutinesBloc>();
-    final routineIdToDelete = (widget.addOrEdit == AddOrEdit.edit) ? _routineEditState.id : null;
+    final routineIdToDelete =
+        (widget.addOrEdit == AddOrEdit.edit) ? _routineEditState.id : null;
     if (routineIdToDelete == null) {
       _showSnackBar("Cannot delete unsaved routine.");
       return;
@@ -320,41 +335,54 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Routine?'),
-        content: Text('Permanently delete "${_routineEditState.routineName}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+      builder:
+          (dialogContext) => AlertDialog(
+            title: const Text('Delete Routine?'),
+            content: Text(
+              'Permanently delete "${_routineEditState.routineName}"?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  try {
+                    routinesBlocInstance.deleteRoutine(routineIdToDelete);
+                    _showSnackBar("Routine deleted.");
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                  } catch (e) {
+                    _showSnackBar("Failed to delete routine: ${e.toString()}");
+                  }
+                },
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          TextButton(
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              try {
-                routinesBlocInstance.deleteRoutine(routineIdToDelete);
-                _showSnackBar("Routine deleted.");
-                if (Navigator.canPop(context)) Navigator.pop(context);
-              } catch (e) {
-                _showSnackBar("Failed to delete routine: ${e.toString()}");
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (await _onWillPop() && mounted) {
+          Navigator.pop(context);
+        }
+      },
       child: Scaffold(
         key: _scaffoldKey,
         appBar: AppBar(
-          title: Text(widget.addOrEdit == AddOrEdit.add ? 'Create Routine' : 'Edit Routine'),
+          title: Text(
+            widget.addOrEdit == AddOrEdit.add
+                ? 'Create Routine'
+                : 'Edit Routine',
+          ),
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Back',
@@ -365,7 +393,8 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             },
           ),
           actions: [
-            if (widget.addOrEdit == AddOrEdit.edit && _routineEditState.id != null)
+            if (widget.addOrEdit == AddOrEdit.edit &&
+                _routineEditState.id != null)
               IconButton(
                 icon: const Icon(Icons.delete_outline),
                 tooltip: 'Delete Routine',
@@ -419,13 +448,21 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
-              border: Border(top: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.5))),
+              border: Border(
+                top: BorderSide(
+                  color: Theme.of(context).dividerColor.withOpacity(0.5),
+                ),
+              ),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () async { if (await _onWillPop()) { if (mounted) Navigator.maybePop(context); } },
+                    onPressed: () async {
+                      if (await _onWillPop()) {
+                        if (mounted) Navigator.maybePop(context);
+                      }
+                    },
                     icon: const Icon(Icons.close),
                     label: const Text('Cancel'),
                   ),
@@ -502,11 +539,16 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 hintStyle: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant.withOpacity(0.7),
                 ),
               ),
-              validator: (value) =>
-                  (value == null || value.trim().isEmpty) ? 'Please enter a routine title' : null,
+              validator:
+                  (value) =>
+                      (value == null || value.trim().isEmpty)
+                          ? 'Please enter a routine title'
+                          : null,
               textInputAction: TextInputAction.done,
               onChanged: (_) => _markDirtyOnNameChange(),
             ),
@@ -519,7 +561,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   /// Schedules notifications for the routine based on selected weekdays
   void _scheduleRoutineNotifications(Routine routine) async {
     final notificationService = NotificationService();
-    
+
     // Cancel any existing notifications for this routine
     if (routine.id != null) {
       await notificationService.cancelNotification(routine.id!);
@@ -532,7 +574,7 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
 
     // Get current time
     final now = DateTime.now();
-    
+
     // Weekly recurring notifications at 9:00 for selected weekdays
     for (int weekday in routine.weekdays) {
       try {
@@ -544,7 +586,9 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
           hour: 9,
           minute: 0,
         );
-        debugPrint('Scheduled weekly notification for ${routine.routineName} on weekday $weekday');
+        debugPrint(
+          'Scheduled weekly notification for ${routine.routineName} on weekday $weekday',
+        );
       } catch (e) {
         debugPrint('Failed to schedule weekly notification: $e');
       }
@@ -552,7 +596,15 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
   }
 
   Widget _buildWeekdaySelectorCard() {
-    final List<String> dayAbbreviations = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final List<String> dayAbbreviations = [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       child: Card(
@@ -583,25 +635,35 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
                     onSelected: (bool selected) {
                       _onWeekdaySelected(index);
                     },
-                    selectedColor: Theme.of(context).colorScheme.primaryContainer,
+                    selectedColor:
+                        Theme.of(context).colorScheme.primaryContainer,
                     labelStyle: TextStyle(
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color:
+                          isSelected
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
-                    backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                       side: BorderSide(
-                        color: isSelected
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : Theme.of(context).colorScheme.outline.withOpacity(0.5),
+                        color:
+                            isSelected
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(
+                                  context,
+                                ).colorScheme.outline.withOpacity(0.5),
                         width: 1,
                       ),
                     ),
                     showCheckmark: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                   );
                 }),
               ),
@@ -632,7 +694,11 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.view_agenda_rounded, color: cs.onPrimaryContainer, size: 28),
+            Icon(
+              Icons.view_agenda_rounded,
+              color: cs.onPrimaryContainer,
+              size: 28,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -641,16 +707,16 @@ class _RoutineEditPageState extends State<RoutineEditPage> {
                   Text(
                     'Build Your Routine',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: cs.onPrimaryContainer,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      color: cs.onPrimaryContainer,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Name it, pick days, then add parts. You can reorder parts anytime.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: cs.onPrimaryContainer.withOpacity(0.95),
-                        ),
+                      color: cs.onPrimaryContainer.withOpacity(0.95),
+                    ),
                   ),
                 ],
               ),

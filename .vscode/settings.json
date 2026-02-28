@@ -3,5 +3,6 @@
         "{**/.c4z/.extsrcs/*.PROTSYM.cbl,**/.c4z/.extsrcs/*.PROTSYM.listing}": true
     },
     "cmake.sourceDirectory": "C:/Users/Nelson kridd/AndroidStudioProjects/dumbbell_new/linux",
-    "chatgpt.openOnStartup": true
+    "chatgpt.openOnStartup": true,
+    "cmake.ignoreCMakeListsMissing": true
 }

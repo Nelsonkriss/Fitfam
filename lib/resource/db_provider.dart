@@ -6,11 +6,6 @@ import 'db_provider_interface.dart';
 import 'db_provider_io.dart';
 import 'db_provider_web.dart';
 
-// Conditional Export: Exports either DBProviderIO or DBProviderWeb *as* DBProviderImpl
-// This makes the concrete class name consistent regardless of platform.
-export 'db_provider_io.dart' if (dart.library.html) 'db_provider_web.dart' show DBProviderWeb hide DBProviderIO;
-export 'db_provider_io.dart' if (dart.library.io) 'db_provider_io.dart' show DBProviderIO hide DBProviderWeb;
-
 // Factory function to create the correct implementation
 DbProviderInterface createDbProvider() {
   if (kIsWeb) {

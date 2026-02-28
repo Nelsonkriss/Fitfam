@@ -5,15 +5,12 @@ import 'package:workout_planner/bloc/workout_session_bloc.dart';
 import 'package:workout_planner/models/routine.dart';
 import 'package:workout_planner/ui/routine_step_page.dart';
 import 'package:workout_planner/models/main_targeted_body_part.dart';
-import 'package:workout_planner/resource/db_provider_interface.dart';
-
-class MockDbProvider implements DbProviderInterface {
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
+import '../helpers/fake_db_provider.dart';
 
 void main() {
-  testWidgets('RoutineStepPage handles timed exercise correctly', (WidgetTester tester) async {
+  testWidgets('RoutineStepPage handles timed exercise correctly', (
+    WidgetTester tester,
+  ) async {
     // Create a timed exercise
     final exercise = Exercise(
       name: 'Plank',
@@ -40,17 +37,13 @@ void main() {
     );
 
     // Create a mock WorkoutSessionBloc
-    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: MockDbProvider());
+    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: FakeDbProvider());
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
       BlocProvider.value(
         value: workoutSessionBloc,
-        child: MaterialApp(
-          home: RoutineStepPage(
-            routine: routine,
-          ),
-        ),
+        child: MaterialApp(home: RoutineStepPage(routine: routine)),
       ),
     );
 
@@ -71,7 +64,9 @@ void main() {
     expect(find.text('Set 2/3'), findsOneWidget);
   });
 
-  testWidgets('RoutineStepPage handles regular exercise correctly', (WidgetTester tester) async {
+  testWidgets('RoutineStepPage handles regular exercise correctly', (
+    WidgetTester tester,
+  ) async {
     // Create a regular weight exercise
     final exercise = Exercise(
       name: 'Bench Press',
@@ -98,17 +93,13 @@ void main() {
     );
 
     // Create a mock WorkoutSessionBloc
-    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: MockDbProvider());
+    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: FakeDbProvider());
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
       BlocProvider.value(
         value: workoutSessionBloc,
-        child: MaterialApp(
-          home: RoutineStepPage(
-            routine: routine,
-          ),
-        ),
+        child: MaterialApp(home: RoutineStepPage(routine: routine)),
       ),
     );
 
@@ -129,7 +120,9 @@ void main() {
     expect(find.text('Set 2/3'), findsOneWidget);
   });
 
-  testWidgets('RoutineStepPage completes workout correctly', (WidgetTester tester) async {
+  testWidgets('RoutineStepPage completes workout correctly', (
+    WidgetTester tester,
+  ) async {
     // Create a timed exercise
     final exercise = Exercise(
       name: 'Plank',
@@ -156,17 +149,13 @@ void main() {
     );
 
     // Create a mock WorkoutSessionBloc
-    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: MockDbProvider());
+    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: FakeDbProvider());
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
       BlocProvider.value(
         value: workoutSessionBloc,
-        child: MaterialApp(
-          home: RoutineStepPage(
-            routine: routine,
-          ),
-        ),
+        child: MaterialApp(home: RoutineStepPage(routine: routine)),
       ),
     );
 
@@ -185,7 +174,9 @@ void main() {
     expect(find.text('Workout Complete!'), findsOneWidget);
   });
 
-  testWidgets('RoutineStepPage displays exercise details correctly', (WidgetTester tester) async {
+  testWidgets('RoutineStepPage displays exercise details correctly', (
+    WidgetTester tester,
+  ) async {
     // Create an exercise with specific details
     final exercise = Exercise(
       name: 'Crunches',
@@ -212,17 +203,13 @@ void main() {
     );
 
     // Create a mock WorkoutSessionBloc
-    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: MockDbProvider());
+    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: FakeDbProvider());
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
       BlocProvider.value(
         value: workoutSessionBloc,
-        child: MaterialApp(
-          home: RoutineStepPage(
-            routine: routine,
-          ),
-        ),
+        child: MaterialApp(home: RoutineStepPage(routine: routine)),
       ),
     );
 
@@ -233,7 +220,9 @@ void main() {
     expect(find.text('Set 1/3'), findsOneWidget); // Set counter
   });
 
-  testWidgets('RoutineStepPage handles long exercise names without overflow', (WidgetTester tester) async {
+  testWidgets('RoutineStepPage handles long exercise names without overflow', (
+    WidgetTester tester,
+  ) async {
     // Create an exercise with a long name
     final exercise = Exercise(
       name: 'Very Long Exercise Name That Should Not Overflow The UI Layout',
@@ -260,18 +249,18 @@ void main() {
     );
 
     // Create a mock WorkoutSessionBloc
-    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: MockDbProvider());
+    final workoutSessionBloc = WorkoutSessionBloc(dbProvider: FakeDbProvider());
 
     // Build the RoutineStepPage widget
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
-          data: const MediaQueryData(size: Size(400, 800)), // Simulate phone screen
+          data: const MediaQueryData(
+            size: Size(400, 800),
+          ), // Simulate phone screen
           child: BlocProvider.value(
             value: workoutSessionBloc,
-            child: RoutineStepPage(
-              routine: routine,
-            ),
+            child: RoutineStepPage(routine: routine),
           ),
         ),
       ),

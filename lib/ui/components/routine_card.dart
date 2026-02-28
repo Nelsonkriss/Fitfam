@@ -5,7 +5,6 @@ import 'package:provider/provider.dart'; // <--- Import Provider package if usin
 
 import 'package:workout_planner/bloc/routines_bloc.dart'; // Your RxDart Bloc
 import 'package:workout_planner/ui/routine_detail_page.dart';
-import 'package:workout_planner/ui/routine_step_page.dart';
 import 'package:workout_planner/ui/routine_edit_page.dart';
 // ... other imports
 
@@ -105,7 +104,7 @@ class RoutineCard extends StatelessWidget {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ),
         ),
