@@ -153,9 +153,10 @@ class WorkoutSession {
         debugPrint("Warning: No exercises found within the parts of routine '${routine.routineName}'.");
       }
       return defaultPerformances;
-    } catch (e, s) {
-      debugPrint("Error creating default ExercisePerformances for routine '${routine.routineName}': $e\n$s");
-      return []; // Return empty list on error
+  } on Exception catch (e, s) {
+    debugPrint("Error creating default ExercisePerformances for routine '${routine.routineName}': $e\n$s");
+    throw StateError("Failed to create default ExercisePerformances: $e");
+  }
     }
   }
 
